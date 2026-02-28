@@ -463,3 +463,11 @@ class TestProviderParamsResolution:
         params: dict[str, BaseModel] = {"other": FakeParams(tag="wrong")}
         reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
         assert prov.last_params is None
+
+    def test_reregister_without_default_clears_old_default(self) -> None:
+        prov = RecordingProvider()
+        reg = Registry()
+        reg.register("rec", prov, default_params=FakeParams(tag="old"))
+        reg.register("rec", prov)
+        reg.chat("rec/model", [UserMessage(content="Hi")])
+        assert prov.last_params is None

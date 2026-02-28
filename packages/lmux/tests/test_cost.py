@@ -81,6 +81,23 @@ class TestCalculateCost:
         assert cost.cache_read_cost is None
         assert cost.cache_creation_cost is None
 
+    def test_long_context_threshold_does_not_double_count_cache(self) -> None:
+        """Cached tokens are a subset of input_tokens — they should not be added again for the threshold check."""
+        pricing = ModelPricing(
+            input_cost_per_token=per_million_tokens(3.00),
+            output_cost_per_token=per_million_tokens(15.00),
+            cache_read_cost_per_token=per_million_tokens(0.30),
+            long_context_input_cost_per_token=per_million_tokens(6.00),
+            long_context_output_cost_per_token=per_million_tokens(22.50),
+            long_context_threshold=200_000,
+        )
+        # 150K input with 100K cache reads — total is still 150K (under threshold)
+        usage = Usage(input_tokens=150_000, output_tokens=100, cache_read_tokens=100_000)
+        cost = calculate_cost(usage, pricing)
+        # Should use standard rate ($3/MTok), not long-context rate ($6/MTok)
+        billable_input = 150_000 - 100_000  # 50K at standard rate
+        assert cost.input_cost == pytest.approx(billable_input * per_million_tokens(3.00))
+
     def test_with_cache_read_only(self) -> None:
         # input_tokens=1000 total, 200 cached — billable input = 800
         usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)

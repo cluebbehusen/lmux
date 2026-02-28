@@ -50,7 +50,7 @@ class Registry:
 
     def __init__(self) -> None:
         self._providers: dict[str, Provider] = {}
-        self._default_params: dict[str, BaseModel] = {}
+        self._default_params: dict[str, BaseModel | None] = {}
 
     def register[ParamsT: BaseModel | None](
         self,
@@ -61,8 +61,7 @@ class Registry:
     ) -> None:
         """Register a provider under a prefix (e.g., ``"openai"``, ``"anthropic"``)."""
         self._providers[prefix] = provider
-        if default_params is not None:
-            self._default_params[prefix] = default_params
+        self._default_params[prefix] = default_params
 
     def _resolve(self, model: str) -> tuple[Provider, str, str]:
         parts = model.split("/", maxsplit=1)
