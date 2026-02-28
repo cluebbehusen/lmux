@@ -84,7 +84,7 @@ class Registry:
 
         Precedence: per-call params > default_params > None.
         """
-        if isinstance(provider_params, dict):
+        if isinstance(provider_params, Mapping):
             params = provider_params.get(prefix)
         elif isinstance(provider_params, BaseModel):
             params = provider_params

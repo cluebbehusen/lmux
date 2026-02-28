@@ -31,7 +31,9 @@ def _resolve_rates(usage: Usage, pricing: ModelPricing) -> tuple[float, float]:
     if total_input > pricing.long_context_threshold:
         return (
             pricing.long_context_input_cost_per_token,
-            pricing.long_context_output_cost_per_token or pricing.output_cost_per_token,
+            pricing.long_context_output_cost_per_token
+            if pricing.long_context_output_cost_per_token is not None
+            else pricing.output_cost_per_token,
         )
     return pricing.input_cost_per_token, pricing.output_cost_per_token
 
