@@ -2,10 +2,10 @@
 
 from typing import Literal
 
-from pydantic import BaseModel
+from lmux.types import BaseProviderParams
 
 
-class AnthropicParams(BaseModel):
+class AnthropicParams(BaseProviderParams):
     """Anthropic-specific parameters passed via ``provider_params``."""
 
     thinking: dict[str, object] | None = None

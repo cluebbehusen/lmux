@@ -4,6 +4,13 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+# MARK: Provider Params
+
+
+class BaseProviderParams(BaseModel):
+    """Base class for provider-specific parameter types."""
+
+
 # MARK: Content Parts
 
 
