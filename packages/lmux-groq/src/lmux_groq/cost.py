@@ -7,28 +7,40 @@ _PRICING: dict[str, ModelPricing] = {
     # GPT OSS family (prompt caching: 50% discount on cached input tokens)
     "gpt-oss-20b-128k": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(0.075), output_cost_per_token=per_million_tokens(0.30))
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.075),
+                output_cost_per_token=per_million_tokens(0.30),
+                cache_read_cost_per_token=per_million_tokens(0.0375),
+            )
         ],
-        cache_read_cost_per_token=per_million_tokens(0.0375),
     ),
     "gpt-oss-safeguard-20b": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(0.075), output_cost_per_token=per_million_tokens(0.30))
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.075),
+                output_cost_per_token=per_million_tokens(0.30),
+                cache_read_cost_per_token=per_million_tokens(0.0375),
+            )
         ],
-        cache_read_cost_per_token=per_million_tokens(0.0375),
     ),
     "gpt-oss-120b-128k": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(0.15), output_cost_per_token=per_million_tokens(0.60))
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.15),
+                output_cost_per_token=per_million_tokens(0.60),
+                cache_read_cost_per_token=per_million_tokens(0.075),
+            )
         ],
-        cache_read_cost_per_token=per_million_tokens(0.075),
     ),
     # Kimi family (prompt caching: 50% discount on cached input tokens)
     "kimi-k2": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(1.00), output_cost_per_token=per_million_tokens(3.00))
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.00),
+                output_cost_per_token=per_million_tokens(3.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            )
         ],
-        cache_read_cost_per_token=per_million_tokens(0.50),
     ),
     # Llama 4 family
     "llama-4-scout": ModelPricing(

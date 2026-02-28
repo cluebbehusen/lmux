@@ -19,11 +19,23 @@ class TestPricingTier:
         tier = PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015)
         assert tier.input_cost_per_token == 0.000003
         assert tier.output_cost_per_token == 0.000015
+        assert tier.cache_read_cost_per_token is None
+        assert tier.cache_creation_cost_per_token is None
         assert tier.min_input_tokens == 0
 
     def test_with_threshold(self) -> None:
         tier = PricingTier(input_cost_per_token=0.000006, output_cost_per_token=0.00003, min_input_tokens=200_000)
         assert tier.min_input_tokens == 200_000
+
+    def test_with_cache_pricing(self) -> None:
+        tier = PricingTier(
+            input_cost_per_token=0.000003,
+            output_cost_per_token=0.000015,
+            cache_read_cost_per_token=0.0000003,
+            cache_creation_cost_per_token=0.00000375,
+        )
+        assert tier.cache_read_cost_per_token == 0.0000003
+        assert tier.cache_creation_cost_per_token == 0.00000375
 
 
 class TestModelPricing:
@@ -33,17 +45,22 @@ class TestModelPricing:
         )
         assert p.tiers[0].input_cost_per_token == 0.000003
         assert p.tiers[0].output_cost_per_token == 0.000015
-        assert p.cache_read_cost_per_token is None
-        assert p.cache_creation_cost_per_token is None
+        assert p.tiers[0].cache_read_cost_per_token is None
+        assert p.tiers[0].cache_creation_cost_per_token is None
 
     def test_with_cache_pricing(self) -> None:
         p = ModelPricing(
-            tiers=[PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015)],
-            cache_read_cost_per_token=0.0000003,
-            cache_creation_cost_per_token=0.00000375,
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=0.000003,
+                    output_cost_per_token=0.000015,
+                    cache_read_cost_per_token=0.0000003,
+                    cache_creation_cost_per_token=0.00000375,
+                )
+            ],
         )
-        assert p.cache_read_cost_per_token == 0.0000003
-        assert p.cache_creation_cost_per_token == 0.00000375
+        assert p.tiers[0].cache_read_cost_per_token == 0.0000003
+        assert p.tiers[0].cache_creation_cost_per_token == 0.00000375
 
     def test_with_multiple_tiers(self) -> None:
         p = ModelPricing(
@@ -54,6 +71,38 @@ class TestModelPricing:
         )
         assert len(p.tiers) == 2
         assert p.tiers[1].min_input_tokens == 200_000
+
+    def test_empty_tiers_rejected(self) -> None:
+        with pytest.raises(ValueError, match="tiers must not be empty"):
+            ModelPricing(tiers=[])
+
+    def test_missing_base_tier_rejected(self) -> None:
+        with pytest.raises(ValueError, match="first tier must have min_input_tokens == 0"):
+            ModelPricing(
+                tiers=[
+                    PricingTier(input_cost_per_token=0.000006, output_cost_per_token=0.00003, min_input_tokens=200_000)
+                ]
+            )
+
+    def test_unordered_tiers_rejected(self) -> None:
+        with pytest.raises(ValueError, match="tiers must be ordered by strictly ascending min_input_tokens"):
+            ModelPricing(
+                tiers=[
+                    PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015),
+                    PricingTier(input_cost_per_token=0.000006, output_cost_per_token=0.00003, min_input_tokens=200_000),
+                    PricingTier(input_cost_per_token=0.000009, output_cost_per_token=0.00004, min_input_tokens=100_000),
+                ],
+            )
+
+    def test_duplicate_thresholds_rejected(self) -> None:
+        with pytest.raises(ValueError, match="tiers must be ordered by strictly ascending min_input_tokens"):
+            ModelPricing(
+                tiers=[
+                    PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015),
+                    PricingTier(input_cost_per_token=0.000006, output_cost_per_token=0.00003, min_input_tokens=200_000),
+                    PricingTier(input_cost_per_token=0.000009, output_cost_per_token=0.00004, min_input_tokens=200_000),
+                ],
+            )
 
 
 class TestCalculateCost:
@@ -75,9 +124,14 @@ class TestCalculateCost:
         # Billable input = 1000 - 200 - 100 = 700 at the full input rate.
         usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200, cache_creation_tokens=100)
         pricing = ModelPricing(
-            tiers=[PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015)],
-            cache_read_cost_per_token=0.0000003,
-            cache_creation_cost_per_token=0.00000375,
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=0.000003,
+                    output_cost_per_token=0.000015,
+                    cache_read_cost_per_token=0.0000003,
+                    cache_creation_cost_per_token=0.00000375,
+                )
+            ],
         )
         cost = calculate_cost(usage, pricing)
         assert cost.input_cost == pytest.approx(700 * 0.000003)
@@ -99,8 +153,13 @@ class TestCalculateCost:
     def test_zero_cache_tokens_are_none(self) -> None:
         usage = Usage(input_tokens=100, output_tokens=50, cache_read_tokens=0)
         pricing = ModelPricing(
-            tiers=[PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015)],
-            cache_read_cost_per_token=0.0000003,
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=0.000003,
+                    output_cost_per_token=0.000015,
+                    cache_read_cost_per_token=0.0000003,
+                )
+            ],
         )
         cost = calculate_cost(usage, pricing)
         assert cost.cache_read_cost is None
@@ -111,15 +170,17 @@ class TestCalculateCost:
         pricing = ModelPricing(
             tiers=[
                 PricingTier(
-                    input_cost_per_token=per_million_tokens(3.00), output_cost_per_token=per_million_tokens(15.00)
+                    input_cost_per_token=per_million_tokens(3.00),
+                    output_cost_per_token=per_million_tokens(15.00),
+                    cache_read_cost_per_token=per_million_tokens(0.30),
                 ),
                 PricingTier(
                     input_cost_per_token=per_million_tokens(6.00),
                     output_cost_per_token=per_million_tokens(22.50),
+                    cache_read_cost_per_token=per_million_tokens(0.30),
                     min_input_tokens=200_000,
                 ),
             ],
-            cache_read_cost_per_token=per_million_tokens(0.30),
         )
         # 150K input with 100K cache reads — total is still 150K (under threshold)
         usage = Usage(input_tokens=150_000, output_tokens=100, cache_read_tokens=100_000)
@@ -132,8 +193,13 @@ class TestCalculateCost:
         # input_tokens=1000 total, 200 cached — billable input = 800
         usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)
         pricing = ModelPricing(
-            tiers=[PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015)],
-            cache_read_cost_per_token=0.0000003,
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=0.000003,
+                    output_cost_per_token=0.000015,
+                    cache_read_cost_per_token=0.0000003,
+                )
+            ],
         )
         cost = calculate_cost(usage, pricing)
         assert cost.input_cost == pytest.approx(800 * 0.000003)
@@ -144,7 +210,8 @@ class TestCalculateCost:
         pricing = ModelPricing(
             tiers=[
                 PricingTier(
-                    input_cost_per_token=per_million_tokens(3.00), output_cost_per_token=per_million_tokens(15.00)
+                    input_cost_per_token=per_million_tokens(3.00),
+                    output_cost_per_token=per_million_tokens(15.00),
                 ),
                 PricingTier(
                     input_cost_per_token=per_million_tokens(6.00),
@@ -163,7 +230,8 @@ class TestCalculateCost:
         pricing = ModelPricing(
             tiers=[
                 PricingTier(
-                    input_cost_per_token=per_million_tokens(3.00), output_cost_per_token=per_million_tokens(15.00)
+                    input_cost_per_token=per_million_tokens(3.00),
+                    output_cost_per_token=per_million_tokens(15.00),
                 ),
                 PricingTier(
                     input_cost_per_token=per_million_tokens(6.00),
@@ -182,7 +250,8 @@ class TestCalculateCost:
         pricing = ModelPricing(
             tiers=[
                 PricingTier(
-                    input_cost_per_token=per_million_tokens(1.00), output_cost_per_token=per_million_tokens(5.00)
+                    input_cost_per_token=per_million_tokens(1.00),
+                    output_cost_per_token=per_million_tokens(5.00),
                 ),
                 PricingTier(
                     input_cost_per_token=per_million_tokens(2.00),

@@ -10,136 +10,181 @@ _PRICING: dict[str, ModelPricing] = {
     # Claude 4.6 family
     "claude-opus-4-6": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(5.00), output_cost_per_token=per_million_tokens(25.00)),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(25.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
+            ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(10.00),
                 output_cost_per_token=per_million_tokens(37.50),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
                 min_input_tokens=200_000,
             ),
         ],
-        cache_read_cost_per_token=per_million_tokens(0.50),
-        cache_creation_cost_per_token=per_million_tokens(6.25),
     ),
     "claude-sonnet-4-6": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(3.00), output_cost_per_token=per_million_tokens(15.00)),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.00),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.30),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(6.00),
                 output_cost_per_token=per_million_tokens(22.50),
+                cache_read_cost_per_token=per_million_tokens(0.30),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
                 min_input_tokens=200_000,
             ),
         ],
-        cache_read_cost_per_token=per_million_tokens(0.30),
-        cache_creation_cost_per_token=per_million_tokens(3.75),
     ),
     # Claude 4.5 family
     "claude-opus-4-5": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(5.00), output_cost_per_token=per_million_tokens(25.00)),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(25.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
+            ),
         ],
-        cache_read_cost_per_token=per_million_tokens(0.50),
-        cache_creation_cost_per_token=per_million_tokens(6.25),
     ),
     "claude-sonnet-4-5": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(3.00), output_cost_per_token=per_million_tokens(15.00)),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.00),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.30),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(6.00),
                 output_cost_per_token=per_million_tokens(22.50),
+                cache_read_cost_per_token=per_million_tokens(0.30),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
                 min_input_tokens=200_000,
             ),
         ],
-        cache_read_cost_per_token=per_million_tokens(0.30),
-        cache_creation_cost_per_token=per_million_tokens(3.75),
     ),
     "claude-haiku-4-5": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(1.00), output_cost_per_token=per_million_tokens(5.00)),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.00),
+                output_cost_per_token=per_million_tokens(5.00),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+                cache_creation_cost_per_token=per_million_tokens(1.25),
+            ),
         ],
-        cache_read_cost_per_token=per_million_tokens(0.10),
-        cache_creation_cost_per_token=per_million_tokens(1.25),
     ),
     # Claude 4.1 family
     "claude-opus-4-1": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(15.00), output_cost_per_token=per_million_tokens(75.00)
+                input_cost_per_token=per_million_tokens(15.00),
+                output_cost_per_token=per_million_tokens(75.00),
+                cache_read_cost_per_token=per_million_tokens(1.50),
+                cache_creation_cost_per_token=per_million_tokens(18.75),
             ),
         ],
-        cache_read_cost_per_token=per_million_tokens(1.50),
-        cache_creation_cost_per_token=per_million_tokens(18.75),
     ),
     # Claude 4 family
     "claude-opus-4": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(15.00), output_cost_per_token=per_million_tokens(75.00)
+                input_cost_per_token=per_million_tokens(15.00),
+                output_cost_per_token=per_million_tokens(75.00),
+                cache_read_cost_per_token=per_million_tokens(1.50),
+                cache_creation_cost_per_token=per_million_tokens(18.75),
             ),
         ],
-        cache_read_cost_per_token=per_million_tokens(1.50),
-        cache_creation_cost_per_token=per_million_tokens(18.75),
     ),
     "claude-sonnet-4": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(3.00), output_cost_per_token=per_million_tokens(15.00)),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.00),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.30),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(6.00),
                 output_cost_per_token=per_million_tokens(22.50),
+                cache_read_cost_per_token=per_million_tokens(0.30),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
                 min_input_tokens=200_000,
             ),
         ],
-        cache_read_cost_per_token=per_million_tokens(0.30),
-        cache_creation_cost_per_token=per_million_tokens(3.75),
     ),
     # Claude 3.7 family
     "claude-3-7-sonnet": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(3.00), output_cost_per_token=per_million_tokens(15.00)),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.00),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.30),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(6.00),
                 output_cost_per_token=per_million_tokens(22.50),
+                cache_read_cost_per_token=per_million_tokens(0.30),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
                 min_input_tokens=200_000,
             ),
         ],
-        cache_read_cost_per_token=per_million_tokens(0.30),
-        cache_creation_cost_per_token=per_million_tokens(3.75),
     ),
     # Claude 3.5 family
     "claude-3-5-sonnet": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(3.00), output_cost_per_token=per_million_tokens(15.00)),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.00),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.30),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(6.00),
                 output_cost_per_token=per_million_tokens(22.50),
+                cache_read_cost_per_token=per_million_tokens(0.30),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
                 min_input_tokens=200_000,
             ),
         ],
-        cache_read_cost_per_token=per_million_tokens(0.30),
-        cache_creation_cost_per_token=per_million_tokens(3.75),
     ),
     "claude-3-5-haiku": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(0.80), output_cost_per_token=per_million_tokens(4.00)),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.80),
+                output_cost_per_token=per_million_tokens(4.00),
+                cache_read_cost_per_token=per_million_tokens(0.08),
+                cache_creation_cost_per_token=per_million_tokens(1.00),
+            ),
         ],
-        cache_read_cost_per_token=per_million_tokens(0.08),
-        cache_creation_cost_per_token=per_million_tokens(1.00),
     ),
     # Claude 3 family
     "claude-3-opus": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(15.00), output_cost_per_token=per_million_tokens(75.00)
+                input_cost_per_token=per_million_tokens(15.00),
+                output_cost_per_token=per_million_tokens(75.00),
+                cache_read_cost_per_token=per_million_tokens(1.50),
+                cache_creation_cost_per_token=per_million_tokens(18.75),
             ),
         ],
-        cache_read_cost_per_token=per_million_tokens(1.50),
-        cache_creation_cost_per_token=per_million_tokens(18.75),
     ),
     "claude-3-haiku": ModelPricing(
         tiers=[
-            PricingTier(input_cost_per_token=per_million_tokens(0.25), output_cost_per_token=per_million_tokens(1.25)),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.25),
+                output_cost_per_token=per_million_tokens(1.25),
+                cache_read_cost_per_token=per_million_tokens(0.03),
+                cache_creation_cost_per_token=per_million_tokens(0.30),
+            ),
         ],
-        cache_read_cost_per_token=per_million_tokens(0.03),
-        cache_creation_cost_per_token=per_million_tokens(0.30),
     ),
 }
 
