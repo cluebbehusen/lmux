@@ -17,6 +17,25 @@ class ModelPricing(BaseModel):
     output_cost_per_token: float
     cache_read_cost_per_token: float | None = None
     cache_creation_cost_per_token: float | None = None
+    long_context_input_cost_per_token: float | None = None
+    long_context_output_cost_per_token: float | None = None
+    long_context_threshold: int = 200_000
+
+
+def _resolve_rates(usage: Usage, pricing: ModelPricing) -> tuple[float, float]:
+    """Return (input_cost_per_token, output_cost_per_token), switching to long-context rates when applicable."""
+    if pricing.long_context_input_cost_per_token is None:
+        return pricing.input_cost_per_token, pricing.output_cost_per_token
+
+    total_input = usage.input_tokens
+    if total_input > pricing.long_context_threshold:
+        return (
+            pricing.long_context_input_cost_per_token,
+            pricing.long_context_output_cost_per_token
+            if pricing.long_context_output_cost_per_token is not None
+            else pricing.output_cost_per_token,
+        )
+    return pricing.input_cost_per_token, pricing.output_cost_per_token
 
 
 def calculate_cost(usage: Usage, pricing: ModelPricing) -> Cost:
@@ -26,15 +45,21 @@ def calculate_cost(usage: Usage, pricing: ModelPricing) -> Cost:
     the provider API.  Cached tokens (read and creation) are subsets of this
     total, so they are subtracted before billing at the regular input rate to
     avoid double-counting.
+
+    When ``pricing`` includes long-context rates and the total input tokens
+    (including cached) exceed ``long_context_threshold``, the higher rates
+    are used for all tokens in the request.
     """
     cache_read_tokens = usage.cache_read_tokens or 0
     cache_creation_tokens = usage.cache_creation_tokens or 0
 
+    input_rate, output_rate = _resolve_rates(usage, pricing)
+
     # Cached tokens are a subset of input_tokens — bill them at their own rate,
     # not the full input rate.
     billable_input = usage.input_tokens - cache_read_tokens - cache_creation_tokens
-    input_cost = billable_input * pricing.input_cost_per_token
-    output_cost = usage.output_tokens * pricing.output_cost_per_token
+    input_cost = billable_input * input_rate
+    output_cost = usage.output_tokens * output_rate
 
     cache_read_cost_per_token = pricing.cache_read_cost_per_token or 0.0
     cache_creation_cost_per_token = pricing.cache_creation_cost_per_token or 0.0
