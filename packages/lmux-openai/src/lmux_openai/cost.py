@@ -1,10 +1,10 @@
 """OpenAI pricing data and cost calculation."""
 
-from lmux.cost import ModelPricing, calculate_token_cost, per_million_tokens
+from lmux.cost import ModelPricing, calculate_cost, per_million_tokens
 from lmux.types import Cost, Usage
 
-# Pricing as of Feb 2026 (source: https://openai.com/api/pricing/)
-PRICING: dict[str, ModelPricing] = {
+# Pricing as of Feb 28, 2026 (source: https://openai.com/api/pricing/)
+_PRICING: dict[str, ModelPricing] = {
     # GPT-5 family
     "gpt-5.2-pro": ModelPricing(
         input_cost_per_token=per_million_tokens(21.00), output_cost_per_token=per_million_tokens(168.00)
@@ -90,12 +90,12 @@ PRICING: dict[str, ModelPricing] = {
 }
 
 # Pre-sorted by key length descending for prefix matching (longest match first)
-_PRICING_BY_PREFIX = sorted(PRICING.items(), key=lambda item: len(item[0]), reverse=True)
+_PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
 
 
 def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:
     """Calculate cost for an OpenAI API call. Returns None if model pricing is unknown."""
-    pricing = PRICING.get(model)
+    pricing = _PRICING.get(model)
     if pricing is None:
         for prefix, p in _PRICING_BY_PREFIX:
             if model.startswith(prefix):
@@ -103,13 +103,4 @@ def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:
                 break
     if pricing is None:
         return None
-    return calculate_token_cost(
-        input_tokens=usage.input_tokens,
-        output_tokens=usage.output_tokens,
-        input_cost_per_token=pricing.input_cost_per_token,
-        output_cost_per_token=pricing.output_cost_per_token,
-        cache_read_tokens=usage.cache_read_tokens or 0,
-        cache_read_cost_per_token=pricing.cache_read_cost_per_token or 0.0,
-        cache_creation_tokens=usage.cache_creation_tokens or 0,
-        cache_creation_cost_per_token=pricing.cache_creation_cost_per_token or 0.0,
-    )
+    return calculate_cost(usage, pricing)

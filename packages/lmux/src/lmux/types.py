@@ -208,6 +208,36 @@ class EmbeddingResponse(BaseModel):
     provider: str
 
 
+# MARK: Responses API Input
+
+
+class ResponseInputMessage(BaseModel):
+    """A message item in Responses API input."""
+
+    role: Literal["user", "assistant", "system", "developer"]
+    content: str
+
+
+class ResponseInputFunctionCall(BaseModel):
+    """A function call item in Responses API input (for multi-turn tool use)."""
+
+    type: Literal["function_call"] = "function_call"
+    call_id: str
+    name: str
+    arguments: str
+
+
+class ResponseInputFunctionCallOutput(BaseModel):
+    """A function call output item in Responses API input."""
+
+    type: Literal["function_call_output"] = "function_call_output"
+    call_id: str
+    output: str
+
+
+type ResponseInputItem = ResponseInputMessage | ResponseInputFunctionCall | ResponseInputFunctionCallOutput
+
+
 # MARK: Responses API Response
 
 

@@ -3,39 +3,7 @@
 import pytest
 
 from lmux.types import Usage
-from lmux_openai.cost import PRICING, calculate_openai_cost
-
-
-class TestPricingData:
-    def test_known_models_exist(self) -> None:
-        expected_models = [
-            "gpt-5.2-pro",
-            "gpt-5.2",
-            "gpt-5.1",
-            "gpt-5-pro",
-            "gpt-5-mini",
-            "gpt-5-nano",
-            "gpt-5",
-            "gpt-4o",
-            "gpt-4o-mini",
-            "gpt-4.1",
-            "gpt-4.1-mini",
-            "gpt-4.1-nano",
-            "o3-pro",
-            "o3",
-            "o3-mini",
-            "o4-mini",
-            "text-embedding-3-small",
-            "text-embedding-3-large",
-            "text-embedding-ada-002",
-        ]
-        for model in expected_models:
-            assert model in PRICING, f"Missing pricing for {model}"
-
-    def test_embedding_models_zero_output_cost(self) -> None:
-        embedding_models = ["text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"]
-        for model in embedding_models:
-            assert PRICING[model].output_cost_per_token == 0.0
+from lmux_openai.cost import calculate_openai_cost
 
 
 class TestCalculateOpenAICost:

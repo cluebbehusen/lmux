@@ -9,6 +9,7 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta, ChoiceDeltaToolCall, ChoiceDeltaToolCallFunction
 from openai.types.chat.chat_completion_message_function_tool_call import Function as ToolCallFunction
+from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCallUnion
 from openai.types.completion_usage import CompletionUsage, PromptTokensDetails
 from openai.types.create_embedding_response import CreateEmbeddingResponse
 from openai.types.create_embedding_response import Usage as EmbUsage
@@ -27,6 +28,8 @@ from lmux.types import (
     ImageContent,
     JsonObjectResponseFormat,
     JsonSchemaResponseFormat,
+    ResponseInputFunctionCallOutput,
+    ResponseInputMessage,
     ResponseResponse,
     SystemMessage,
     TextContent,
@@ -44,6 +47,7 @@ from lmux_openai._mappers import (
     map_embedding_response,
     map_messages,
     map_response_format,
+    map_response_input,
     map_responses_response,
     map_tools,
 )
@@ -210,6 +214,25 @@ class TestMapResponseFormat:
         }
 
 
+# MARK: map_response_input
+
+
+class TestMapResponseInput:
+    def test_string_passthrough(self) -> None:
+        assert map_response_input("Hello") == "Hello"
+
+    def test_list_of_items(self) -> None:
+        items = [
+            ResponseInputMessage(role="user", content="call the tool"),
+            ResponseInputFunctionCallOutput(call_id="call_1", output='{"result": 42}'),
+        ]
+        result = map_response_input(items)
+        assert result == [
+            {"role": "user", "content": "call the tool"},
+            {"type": "function_call_output", "call_id": "call_1", "output": '{"result": 42}'},
+        ]
+
+
 # MARK: map_chat_completion
 
 
@@ -227,7 +250,7 @@ class TestMapChatCompletion:
         )
 
     def test_with_tool_calls(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        tool_calls = [
+        tool_calls: list[ChatCompletionMessageToolCallUnion] = [
             ChatCompletionMessageToolCall(
                 id="tc1",
                 type="function",
@@ -243,7 +266,7 @@ class TestMapChatCompletion:
                     message=ChatCompletionMessage(
                         content=None,
                         role="assistant",
-                        tool_calls=tool_calls,  # pyright: ignore[reportArgumentType]
+                        tool_calls=tool_calls,
                     ),
                 )
             ],

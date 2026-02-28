@@ -14,6 +14,7 @@ from lmux.types import (
     EmbeddingResponse,
     Message,
     ResponseFormat,
+    ResponseInputItem,
     ResponseResponse,
     Tool,
 )
@@ -27,7 +28,7 @@ class MockCallRecord:
     model: str
     messages: Sequence[Message] | None = None
     text: str | list[str] | None = None
-    input_data: str | list[dict[str, object]] | None = None
+    input_data: str | Sequence[ResponseInputItem] | None = None
 
 
 class MockProvider(
@@ -206,7 +207,7 @@ class MockProvider(
     def create_response(
         self,
         model: str,
-        input: str | list[dict[str, object]],  # noqa: A002
+        input: str | Sequence[ResponseInputItem],  # noqa: A002
         *,
         provider_params: None = None,
     ) -> ResponseResponse:
@@ -217,7 +218,7 @@ class MockProvider(
     async def acreate_response(
         self,
         model: str,
-        input: str | list[dict[str, object]],  # noqa: A002
+        input: str | Sequence[ResponseInputItem],  # noqa: A002
         *,
         provider_params: None = None,
     ) -> ResponseResponse:

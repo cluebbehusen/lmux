@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import openai
 
-from lmux.cost import ModelPricing, calculate_cost_from_usage
+from lmux.cost import ModelPricing, calculate_cost
 from lmux.protocols import AuthProvider, CompletionProvider, EmbeddingProvider, PricingProvider, ResponsesProvider
 from lmux.types import (
     ChatChunk,
@@ -15,6 +15,7 @@ from lmux.types import (
     EmbeddingResponse,
     Message,
     ResponseFormat,
+    ResponseInputItem,
     ResponseResponse,
     Tool,
     Usage,
@@ -27,6 +28,7 @@ from lmux_openai._mappers import (
     map_embedding_response,
     map_messages,
     map_response_format,
+    map_response_input,
     map_responses_response,
     map_tools,
 )
@@ -57,8 +59,8 @@ class OpenAIProvider(
         self._base_url = base_url
         self._timeout = timeout
         self._max_retries = max_retries
-        self._sync_client: "openai.OpenAI | None" = None  # noqa: UP037
-        self._async_client: "openai.AsyncOpenAI | None" = None  # noqa: UP037
+        self._sync_client: openai.OpenAI | None = None
+        self._async_client: openai.AsyncOpenAI | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
     # MARK: Pricing
@@ -69,7 +71,7 @@ class OpenAIProvider(
     def _calculate_cost(self, model: str, usage: Usage) -> Cost | None:
         pricing = self._custom_pricing.get(model)
         if pricing is not None:
-            return calculate_cost_from_usage(usage, pricing)
+            return calculate_cost(usage, pricing)
         return calculate_openai_cost(model, usage)
 
     def _get_sync_client(self) -> "openai.OpenAI":
@@ -117,12 +119,11 @@ class OpenAIProvider(
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
-        kwargs["stream"] = False
         try:
-            completion = client.chat.completions.create(**kwargs)  # pyright: ignore[reportUnknownVariableType]
+            completion = client.chat.completions.create(**kwargs, stream=False)
         except Exception as e:
             raise map_openai_error(e) from e
-        return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)  # pyright: ignore[reportUnknownArgumentType]
+        return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
 
     async def achat(  # noqa: PLR0913
         self,
@@ -141,12 +142,11 @@ class OpenAIProvider(
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
-        kwargs["stream"] = False
         try:
-            completion = await client.chat.completions.create(**kwargs)  # pyright: ignore[reportUnknownVariableType]
+            completion = await client.chat.completions.create(**kwargs, stream=False)
         except Exception as e:
             raise map_openai_error(e) from e
-        return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)  # pyright: ignore[reportUnknownArgumentType]
+        return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
 
     def chat_stream(  # noqa: PLR0913
         self,
@@ -165,18 +165,17 @@ class OpenAIProvider(
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
-        kwargs["stream"] = True
         kwargs["stream_options"] = {"include_usage": True}
         try:
-            stream = client.chat.completions.create(**kwargs)  # pyright: ignore[reportUnknownVariableType]
+            stream = client.chat.completions.create(**kwargs, stream=True)
         except Exception as e:
             raise map_openai_error(e) from e
 
         try:
-            for chunk in stream:  # pyright: ignore[reportUnknownVariableType]
-                mapped = map_chat_chunk(chunk)  # pyright: ignore[reportUnknownArgumentType]
+            for chunk in stream:
+                mapped = map_chat_chunk(chunk)
                 if mapped.usage is not None:
-                    mapped = mapped.model_copy(update={"cost": self._calculate_cost(chunk.model, mapped.usage)})  # pyright: ignore[reportUnknownArgumentType]
+                    mapped = mapped.model_copy(update={"cost": self._calculate_cost(chunk.model, mapped.usage)})
                 yield mapped
         except Exception as e:
             raise map_openai_error(e) from e
@@ -198,18 +197,17 @@ class OpenAIProvider(
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
-        kwargs["stream"] = True
         kwargs["stream_options"] = {"include_usage": True}
         try:
-            stream = await client.chat.completions.create(**kwargs)  # pyright: ignore[reportUnknownVariableType]
+            stream = await client.chat.completions.create(**kwargs, stream=True)
         except Exception as e:
             raise map_openai_error(e) from e
 
         try:
-            async for chunk in stream:  # pyright: ignore[reportUnknownVariableType]
-                mapped = map_chat_chunk(chunk)  # pyright: ignore[reportUnknownArgumentType]
+            async for chunk in stream:
+                mapped = map_chat_chunk(chunk)
                 if mapped.usage is not None:
-                    mapped = mapped.model_copy(update={"cost": self._calculate_cost(chunk.model, mapped.usage)})  # pyright: ignore[reportUnknownArgumentType]
+                    mapped = mapped.model_copy(update={"cost": self._calculate_cost(chunk.model, mapped.usage)})
                 yield mapped
         except Exception as e:
             raise map_openai_error(e) from e
@@ -249,36 +247,36 @@ class OpenAIProvider(
     def create_response(
         self,
         model: str,
-        input: str | list[dict[str, object]],  # noqa: A002
+        input: str | Sequence[ResponseInputItem],  # noqa: A002
         *,
         provider_params: OpenAIParams | None = None,
     ) -> ResponseResponse:
         client = self._get_sync_client()
-        kwargs: dict[str, Any] = {"model": model, "input": input}
-        if provider_params:
-            kwargs.update(self._provider_params_kwargs(provider_params))
+        extra: dict[str, Any] = self._provider_params_kwargs(provider_params) if provider_params else {}
         try:
-            response = client.responses.create(**kwargs)  # pyright: ignore[reportUnknownVariableType]
+            response = client.responses.create(
+                model=model, input=map_response_input(input), stream=False, **extra
+            )
         except Exception as e:
             raise map_openai_error(e) from e
-        return map_responses_response(response, PROVIDER_NAME, self._calculate_cost)  # pyright: ignore[reportUnknownArgumentType]
+        return map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
 
     async def acreate_response(
         self,
         model: str,
-        input: str | list[dict[str, object]],  # noqa: A002
+        input: str | Sequence[ResponseInputItem],  # noqa: A002
         *,
         provider_params: OpenAIParams | None = None,
     ) -> ResponseResponse:
         client = await self._get_async_client()
-        kwargs: dict[str, Any] = {"model": model, "input": input}
-        if provider_params:
-            kwargs.update(self._provider_params_kwargs(provider_params))
+        extra: dict[str, Any] = self._provider_params_kwargs(provider_params) if provider_params else {}
         try:
-            response = await client.responses.create(**kwargs)  # pyright: ignore[reportUnknownVariableType]
+            response = await client.responses.create(
+                model=model, input=map_response_input(input), stream=False, **extra
+            )
         except Exception as e:
             raise map_openai_error(e) from e
-        return map_responses_response(response, PROVIDER_NAME, self._calculate_cost)  # pyright: ignore[reportUnknownArgumentType]
+        return map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
 
     # MARK: Internal Helpers
 

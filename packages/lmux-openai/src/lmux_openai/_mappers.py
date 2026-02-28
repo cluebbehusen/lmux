@@ -16,6 +16,7 @@ from lmux.types import (
     JsonObjectResponseFormat,
     Message,
     ResponseFormat,
+    ResponseInputItem,
     ResponseResponse,
     SystemMessage,
     TextContent,
@@ -29,6 +30,7 @@ from lmux.types import (
 
 if TYPE_CHECKING:
     from openai.types.chat import ChatCompletion, ChatCompletionChunk
+    from openai.types.chat.chat_completion_message_function_tool_call import ChatCompletionMessageFunctionToolCall
     from openai.types.create_embedding_response import CreateEmbeddingResponse
     from openai.types.responses import Response as OAIResponse
 
@@ -110,7 +112,26 @@ def map_response_format(rf: ResponseFormat) -> dict[str, Any]:
     return {"type": "json_schema", "json_schema": schema_dict}
 
 
+def map_response_input(input: str | Sequence[ResponseInputItem]) -> Any:  # noqa: A002, ANN401
+    """Convert lmux ResponseInputItem sequence to OpenAI-compatible dicts.
+
+    Returns ``Any`` because the OpenAI SDK expects its own TypedDict union
+    (``ResponseInputItemParam``), which is structurally compatible with the
+    dicts produced by ``model_dump()`` but not assignable due to nominal typing.
+    """
+    if isinstance(input, str):
+        return input
+    return [item.model_dump(exclude_none=True) for item in input]
+
+
 # MARK: Output Mappers (OpenAI SDK responses -> lmux)
+
+
+def _map_function_tool_call(tc: "ChatCompletionMessageFunctionToolCall") -> ToolCall:
+    return ToolCall(
+        id=tc.id,
+        function=FunctionCallResult(name=tc.function.name, arguments=tc.function.arguments),
+    )
 
 
 def map_chat_completion(
@@ -124,13 +145,7 @@ def map_chat_completion(
 
     tool_calls: list[ToolCall] | None = None
     if message.tool_calls:
-        tool_calls = [
-            ToolCall(
-                id=tc.id,
-                function=FunctionCallResult(name=tc.function.name, arguments=tc.function.arguments),  # pyright: ignore[reportAttributeAccessIssue, reportUnknownArgumentType]
-            )
-            for tc in message.tool_calls
-        ]
+        tool_calls = [_map_function_tool_call(tc) for tc in message.tool_calls if tc.type == "function"]
 
     usage = _map_completion_usage(completion)
     cost = cost_fn(completion.model, usage)

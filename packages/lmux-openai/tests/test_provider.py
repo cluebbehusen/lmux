@@ -1,5 +1,6 @@
 """Tests for OpenAI provider."""
 
+from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -114,31 +115,29 @@ def responses_mock() -> MagicMock:
 
 
 @pytest.fixture
-def sync_provider(fake_auth: FakeAuth) -> OpenAIProvider:
-    provider = OpenAIProvider(auth=fake_auth)
-    provider._sync_client = MagicMock()  # pyright: ignore[reportPrivateUsage]
-    return provider
+def mock_sync_client() -> MagicMock:
+    return MagicMock()
 
 
 @pytest.fixture
-def mock_sync_client(sync_provider: OpenAIProvider) -> MagicMock:
-    return sync_provider._sync_client  # pyright: ignore[reportPrivateUsage, reportReturnType]
+def sync_provider(fake_auth: FakeAuth, mock_sync_client: MagicMock) -> Iterator[OpenAIProvider]:
+    with patch("lmux_openai.provider.create_sync_client", return_value=mock_sync_client):
+        yield OpenAIProvider(auth=fake_auth)
 
 
 @pytest.fixture
-def async_provider(fake_auth: FakeAuth) -> OpenAIProvider:
-    provider = OpenAIProvider(auth=fake_auth)
-    mock_client = MagicMock()
-    mock_client.chat.completions.create = AsyncMock()
-    mock_client.embeddings.create = AsyncMock()
-    mock_client.responses.create = AsyncMock()
-    provider._async_client = mock_client  # pyright: ignore[reportPrivateUsage]
-    return provider
+def mock_async_client() -> MagicMock:
+    mock = MagicMock()
+    mock.chat.completions.create = AsyncMock()
+    mock.embeddings.create = AsyncMock()
+    mock.responses.create = AsyncMock()
+    return mock
 
 
 @pytest.fixture
-def mock_async_client(async_provider: OpenAIProvider) -> MagicMock:
-    return async_provider._async_client  # pyright: ignore[reportPrivateUsage, reportReturnType]
+def async_provider(fake_auth: FakeAuth, mock_async_client: MagicMock) -> Iterator[OpenAIProvider]:
+    with patch("lmux_openai.provider.create_async_client", return_value=mock_async_client):
+        yield OpenAIProvider(auth=fake_auth)
 
 
 @pytest.fixture
@@ -512,7 +511,7 @@ class TestCreateResponse:
         assert result.id == "resp_123"
         assert result.output_text == "Hi!"
         assert result.provider == "openai"
-        mock_sync_client.responses.create.assert_called_once_with(model="gpt-4o", input="Hello")
+        mock_sync_client.responses.create.assert_called_once_with(model="gpt-4o", input="Hello", stream=False)
         mock_sync_client.chat.completions.create.assert_not_called()
 
     def test_with_provider_params(
@@ -522,7 +521,9 @@ class TestCreateResponse:
 
         sync_provider.create_response("gpt-4o", "Hello", provider_params=OpenAIParams(service_tier="flex"))
 
-        mock_sync_client.responses.create.assert_called_once_with(model="gpt-4o", input="Hello", service_tier="flex")
+        mock_sync_client.responses.create.assert_called_once_with(
+            model="gpt-4o", input="Hello", stream=False, service_tier="flex"
+        )
 
     def test_exception_mapping(
         self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, not_found_error: openai.NotFoundError
@@ -540,7 +541,7 @@ class TestCreateResponse:
         result = await async_provider.acreate_response("gpt-4o", "Hello")
 
         assert result.output_text == "Hi!"
-        mock_async_client.responses.create.assert_awaited_once_with(model="gpt-4o", input="Hello")
+        mock_async_client.responses.create.assert_awaited_once_with(model="gpt-4o", input="Hello", stream=False)
 
     async def test_acreate_response_with_provider_params(
         self, async_provider: OpenAIProvider, mock_async_client: MagicMock, responses_mock: MagicMock
@@ -549,7 +550,9 @@ class TestCreateResponse:
 
         await async_provider.acreate_response("gpt-4o", "Hello", provider_params=OpenAIParams(service_tier="flex"))
 
-        mock_async_client.responses.create.assert_awaited_once_with(model="gpt-4o", input="Hello", service_tier="flex")
+        mock_async_client.responses.create.assert_awaited_once_with(
+            model="gpt-4o", input="Hello", stream=False, service_tier="flex"
+        )
 
     async def test_acreate_response_exception_mapping(
         self, async_provider: OpenAIProvider, mock_async_client: MagicMock, not_found_error: openai.NotFoundError
@@ -651,19 +654,32 @@ class TestClientManagement:
 
 
 class TestProviderParamsKwargs:
-    def test_empty_params(self) -> None:
-        result = OpenAIProvider._provider_params_kwargs(OpenAIParams())  # pyright: ignore[reportPrivateUsage]
-        assert result == {}
+    def test_empty_params(
+        self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
 
-    def test_all_params(self) -> None:
+        sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], provider_params=OpenAIParams())
+
+        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
+        assert "service_tier" not in call_kwargs
+        assert "reasoning" not in call_kwargs
+        assert "seed" not in call_kwargs
+        assert "user" not in call_kwargs
+
+    def test_all_params(
+        self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
         params = OpenAIParams(service_tier="auto", reasoning_effort="low", seed=42, user="u1")
-        result = OpenAIProvider._provider_params_kwargs(params)  # pyright: ignore[reportPrivateUsage]
-        assert result == {
-            "service_tier": "auto",
-            "reasoning": {"effort": "low"},
-            "seed": 42,
-            "user": "u1",
-        }
+
+        sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], provider_params=params)
+
+        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["service_tier"] == "auto"
+        assert call_kwargs["reasoning"] == {"effort": "low"}
+        assert call_kwargs["seed"] == 42
+        assert call_kwargs["user"] == "u1"
 
 
 # MARK: Register Pricing

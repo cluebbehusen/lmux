@@ -12,6 +12,7 @@ from lmux.types import (
     EmbeddingResponse,
     Message,
     ResponseFormat,
+    ResponseInputItem,
     ResponseResponse,
     Tool,
 )
@@ -114,7 +115,7 @@ class ResponsesProvider[ParamsT](Protocol):
     def create_response(
         self,
         model: str,
-        input: str | list[dict[str, object]],  # noqa: A002
+        input: str | Sequence[ResponseInputItem],  # noqa: A002
         *,
         provider_params: ParamsT | None = None,
     ) -> ResponseResponse: ...
@@ -122,7 +123,7 @@ class ResponsesProvider[ParamsT](Protocol):
     async def acreate_response(
         self,
         model: str,
-        input: str | list[dict[str, object]],  # noqa: A002
+        input: str | Sequence[ResponseInputItem],  # noqa: A002
         *,
         provider_params: ParamsT | None = None,
     ) -> ResponseResponse: ...

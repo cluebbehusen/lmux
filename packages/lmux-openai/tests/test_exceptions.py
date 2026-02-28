@@ -14,7 +14,7 @@ from lmux.exceptions import (
     RateLimitError,
     TimeoutError,  # noqa: A004
 )
-from lmux_openai._exceptions import _extract_retry_after, map_openai_error  # pyright: ignore[reportPrivateUsage]
+from lmux_openai._exceptions import map_openai_error
 
 # MARK: Fixtures
 
@@ -146,6 +146,17 @@ class TestMapOpenAIError:
         assert isinstance(result, ProviderError)
         assert result.provider == "openai"
 
+    def test_rate_limit_no_response_attribute(self) -> None:
+        """Exercise _extract_retry_after when error has no response."""
+        exc = openai.RateLimitError(
+            message="rate limited", response=MagicMock(status_code=429, headers={}), body=None
+        )
+        # Remove the response attribute so _extract_retry_after hits the None branch
+        del exc.response
+        result = map_openai_error(exc)
+        assert isinstance(result, RateLimitError)
+        assert result.retry_after is None
+
     @pytest.mark.parametrize(
         "error",
         [
@@ -176,9 +187,3 @@ class TestMapOpenAIError:
     def test_all_mapped_errors_are_lmux_errors(self, error: Exception) -> None:
         result = map_openai_error(error)
         assert isinstance(result, LmuxError)
-
-
-class TestExtractRetryAfter:
-    def test_no_response_attribute(self) -> None:
-        error = RuntimeError("no response")
-        assert _extract_retry_after(error) is None

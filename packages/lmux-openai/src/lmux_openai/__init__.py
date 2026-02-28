@@ -1,13 +1,11 @@
 """lmux-openai — OpenAI provider for lmux."""
 
 from lmux_openai.auth import OpenAIEnvAuthProvider
-from lmux_openai.cost import PRICING as OPENAI_PRICING
 from lmux_openai.cost import calculate_openai_cost
 from lmux_openai.params import OpenAIParams
 from lmux_openai.provider import OpenAIProvider
 
 __all__ = [
-    "OPENAI_PRICING",
     "OpenAIEnvAuthProvider",
     "OpenAIParams",
     "OpenAIProvider",

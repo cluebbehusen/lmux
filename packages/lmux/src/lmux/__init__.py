@@ -1,6 +1,6 @@
 """lmux — Modular Python language model multiplexer."""
 
-from lmux.cost import ModelPricing, calculate_cost_from_usage, calculate_token_cost, per_million_tokens
+from lmux.cost import ModelPricing, calculate_cost, per_million_tokens
 from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
@@ -35,6 +35,10 @@ from lmux.types import (
     JsonSchemaResponseFormat,
     Message,
     ResponseFormat,
+    ResponseInputFunctionCall,
+    ResponseInputFunctionCallOutput,
+    ResponseInputItem,
+    ResponseInputMessage,
     ResponseResponse,
     SystemMessage,
     TextContent,
@@ -75,6 +79,10 @@ __all__ = [
     "ProviderError",
     "RateLimitError",
     "ResponseFormat",
+    "ResponseInputFunctionCall",
+    "ResponseInputFunctionCallOutput",
+    "ResponseInputItem",
+    "ResponseInputMessage",
     "ResponseResponse",
     "ResponsesProvider",
     "SystemMessage",
@@ -88,7 +96,6 @@ __all__ = [
     "UnsupportedFeatureError",
     "Usage",
     "UserMessage",
-    "calculate_cost_from_usage",
-    "calculate_token_cost",
+    "calculate_cost",
     "per_million_tokens",
 ]
