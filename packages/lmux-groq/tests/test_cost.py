@@ -71,3 +71,31 @@ class TestCalculateGroqCost:
         assert cost is not None
         assert cost.input_cost == pytest.approx(1000 * 0.29 / 1_000_000)
         assert cost.output_cost == pytest.approx(500 * 0.59 / 1_000_000)
+
+    def test_with_cache_tokens_gpt_oss(self) -> None:
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)
+        cost = calculate_groq_cost("gpt-oss-20b-128k", usage)
+        assert cost is not None
+        # 200 cached tokens at 50% discount ($0.0375/M), 800 regular input at $0.075/M
+        assert cost.cache_read_cost is not None
+        assert cost.cache_read_cost == pytest.approx(200 * 0.0375 / 1_000_000)
+        assert cost.input_cost == pytest.approx(800 * 0.075 / 1_000_000)
+
+    def test_with_cache_tokens_kimi(self) -> None:
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=300)
+        cost = calculate_groq_cost("kimi-k2-0905-instruct", usage)
+        assert cost is not None
+        assert cost.cache_read_cost is not None
+        assert cost.cache_read_cost == pytest.approx(300 * 0.50 / 1_000_000)
+        assert cost.input_cost == pytest.approx(700 * 1.00 / 1_000_000)
+
+    def test_no_cache_pricing_llama(self) -> None:
+        """Llama models don't have cache pricing — cache_read_cost is zero."""
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)
+        cost = calculate_groq_cost("llama-3.3-70b-versatile", usage)
+        assert cost is not None
+        # Without cache_read_cost_per_token configured, cached tokens reduce billable input
+        # but the cache read cost itself is zero
+        assert cost.cache_read_cost == 0.0
+        # Only 800 non-cached tokens billed at full input rate
+        assert cost.input_cost == pytest.approx(800 * 0.59 / 1_000_000)
