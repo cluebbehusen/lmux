@@ -1,0 +1,126 @@
+[project]
+name = "lmux-workspace"
+version = "0.0.0"
+description = "Modular Python language model multiplexer"
+requires-python = ">=3.12"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[dependency-groups]
+dev = [
+  "basedpyright>=1.20",
+  "pytest>=8.1",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=6.0",
+  "ruff>=0.9",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+src = ["packages/*/src"]
+
+[tool.ruff.lint]
+select = [
+  "F",      # pyflakes
+  "E",      # pycodestyle errors
+  "W",      # pycodestyle warnings
+  "I",      # isort
+  "N",      # pep8-naming
+  "UP",     # pyupgrade
+  "ANN",    # flake8-annotations
+  "ASYNC",  # flake8-async
+  "S",      # flake8-bandit (security)
+  "BLE",    # flake8-blind-except
+  "B",      # flake8-bugbear
+  "A",      # flake8-builtins
+  "C4",     # flake8-comprehensions
+  "T10",    # flake8-debugger
+  "ISC",    # flake8-implicit-str-concat
+  "ICN",    # flake8-import-conventions
+  "LOG",    # flake8-logging
+  "G",      # flake8-logging-format
+  "PIE",    # flake8-pie
+  "T20",    # flake8-print
+  "PYI",    # flake8-pyi
+  "PT",     # flake8-pytest-style
+  "Q",      # flake8-quotes
+  "RSE",    # flake8-raise
+  "RET",    # flake8-return
+  "SLOT",   # flake8-slots
+  "SIM",    # flake8-simplify
+  "TID",    # flake8-tidy-imports
+  "TC",     # flake8-type-checking
+  "PGH",    # pygrep-hooks
+  "PL",     # pylint
+  "TRY",    # tryceratops
+  "FLY",    # flynt
+  "PERF",   # perflint
+  "FURB",   # refurb
+  "RUF",    # ruff-specific rules
+]
+ignore = [
+  "ISC001",   # single-line-implicit-string-concatenation (conflicts with ruff formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**/*.py" = [
+  "S101",     # assert is fine in tests
+  "PLR2004",  # magic values are fine in tests
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "lmux",
+  "lmux_openai",
+  "lmux_anthropic",
+  "lmux_azure_openai",
+  "lmux_bedrock",
+  "lmux_google",
+  "lmux_groq",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+docstring-code-format = true
+docstring-code-line-length = 80
+
+# ── basedpyright ──────────────────────────────────────────────
+[tool.basedpyright]
+pythonVersion = "3.12"
+pythonPlatform = "All"
+typeCheckingMode = "strict"
+include = [
+  "packages/*/src",
+  "packages/*/tests",
+]
+exclude = [
+  "**/__pycache__",
+  "**/.venv",
+]
+reportMissingTypeStubs = "warning"
+reportUnusedImport = "error"
+reportUnusedVariable = "error"
+reportUnnecessaryTypeIgnoreComment = "error"
+
+# ── Pytest ────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["packages/*/tests"]
+asyncio_mode = "auto"
+
+# ── Coverage ──────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["packages/*/src"]
+branch = true
+parallel = true
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+precision = 2

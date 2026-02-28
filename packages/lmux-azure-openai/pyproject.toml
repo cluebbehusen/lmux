@@ -1,0 +1,18 @@
+[project]
+name = "lmux-azure-openai"
+version = "0.1.0"
+description = "Azure OpenAI provider for lmux"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+  "lmux",
+  "openai~=2.20",
+  "azure-identity~=1.20",
+]
+
+[tool.uv.sources]
+lmux = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.10.7,<0.11.0"]
+build-backend = "uv_build"
