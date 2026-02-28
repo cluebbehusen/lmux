@@ -148,7 +148,7 @@ def map_chat_completion(
         tool_calls = [_map_function_tool_call(tc) for tc in message.tool_calls if tc.type == "function"]
 
     usage = _map_completion_usage(completion)
-    cost = cost_fn(completion.model, usage)
+    cost = cost_fn(completion.model, usage) if usage else None
 
     return ChatResponse(
         content=message.content,
@@ -161,11 +161,11 @@ def map_chat_completion(
     )
 
 
-def _map_completion_usage(completion: "ChatCompletion") -> Usage:
-    """Extract Usage from a ChatCompletion."""
+def _map_completion_usage(completion: "ChatCompletion") -> Usage | None:
+    """Extract Usage from a ChatCompletion, or None if the SDK omits it."""
     oai_usage = completion.usage
     if oai_usage is None:
-        return Usage(input_tokens=0, output_tokens=0)
+        return None
 
     cache_read = None
     if oai_usage.prompt_tokens_details and oai_usage.prompt_tokens_details.cached_tokens:
@@ -253,16 +253,18 @@ def map_responses_response(
 ) -> ResponseResponse:
     """Convert OpenAI Responses API Response to lmux ResponseResponse."""
     usage_data = response.usage
-    cache_read: int | None = None
-    if usage_data and usage_data.input_tokens_details and usage_data.input_tokens_details.cached_tokens:
-        cache_read = usage_data.input_tokens_details.cached_tokens
+    usage: Usage | None = None
+    if usage_data:
+        cache_read: int | None = None
+        if usage_data.input_tokens_details and usage_data.input_tokens_details.cached_tokens:
+            cache_read = usage_data.input_tokens_details.cached_tokens
+        usage = Usage(
+            input_tokens=usage_data.input_tokens,
+            output_tokens=usage_data.output_tokens,
+            cache_read_tokens=cache_read,
+        )
 
-    usage = Usage(
-        input_tokens=usage_data.input_tokens if usage_data else 0,
-        output_tokens=usage_data.output_tokens if usage_data else 0,
-        cache_read_tokens=cache_read,
-    )
-    cost = cost_fn(response.model, usage)
+    cost = cost_fn(response.model, usage) if usage else None
     return ResponseResponse(
         id=response.id,
         output_text=response.output_text,

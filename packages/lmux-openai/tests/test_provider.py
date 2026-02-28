@@ -186,6 +186,7 @@ class TestChat:
         assert result.content == "Hello!"
         assert result.model == "gpt-4o"
         assert result.provider == "openai"
+        assert result.usage is not None
         assert result.usage.input_tokens == 10
         assert result.usage.output_tokens == 5
         mock_sync_client.chat.completions.create.assert_called_once()
@@ -489,6 +490,34 @@ class TestEmbed:
         assert result.embeddings == [[0.1, 0.2, 0.3]]
         mock_async_client.embeddings.create.assert_awaited_once_with(model="text-embedding-3-small", input="hello")
         mock_async_client.chat.completions.create.assert_not_called()
+
+    def test_embed_with_provider_params(
+        self,
+        sync_provider: OpenAIProvider,
+        mock_sync_client: MagicMock,
+        embedding_response: CreateEmbeddingResponse,
+    ) -> None:
+        mock_sync_client.embeddings.create.return_value = embedding_response
+
+        sync_provider.embed("text-embedding-3-small", "hello", provider_params=OpenAIParams(user="u1"))
+
+        mock_sync_client.embeddings.create.assert_called_once_with(
+            model="text-embedding-3-small", input="hello", user="u1"
+        )
+
+    async def test_aembed_with_provider_params(
+        self,
+        async_provider: OpenAIProvider,
+        mock_async_client: MagicMock,
+        embedding_response: CreateEmbeddingResponse,
+    ) -> None:
+        mock_async_client.embeddings.create.return_value = embedding_response
+
+        await async_provider.aembed("text-embedding-3-small", "hello", provider_params=OpenAIParams(user="u1"))
+
+        mock_async_client.embeddings.create.assert_awaited_once_with(
+            model="text-embedding-3-small", input="hello", user="u1"
+        )
 
     async def test_aembed_exception_mapping(
         self, async_provider: OpenAIProvider, mock_async_client: MagicMock, bad_request_error: openai.BadRequestError

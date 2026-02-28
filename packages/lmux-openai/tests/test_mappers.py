@@ -1,6 +1,6 @@
 """Tests for OpenAI type mappers."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,11 +9,13 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta, ChoiceDeltaToolCall, ChoiceDeltaToolCallFunction
 from openai.types.chat.chat_completion_message_function_tool_call import Function as ToolCallFunction
-from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCallUnion
 from openai.types.completion_usage import CompletionUsage, PromptTokensDetails
 from openai.types.create_embedding_response import CreateEmbeddingResponse
 from openai.types.create_embedding_response import Usage as EmbUsage
 from openai.types.embedding import Embedding
+
+if TYPE_CHECKING:
+    from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCallUnion
 
 from lmux.types import (
     AssistantMessage,
@@ -302,12 +304,14 @@ class TestMapChatCompletion:
             ),
         )
         result = map_chat_completion(completion, "openai", noop_cost_fn)
+        assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
 
     def test_none_usage(self, chat_completion: ChatCompletion, noop_cost_fn: Any) -> None:  # noqa: ANN401
         chat_completion.usage = None
         result = map_chat_completion(chat_completion, "openai", noop_cost_fn)
-        assert result.usage == Usage(input_tokens=0, output_tokens=0)
+        assert result.usage is None
+        assert result.cost is None
 
     def test_cost_from_calculator(self, chat_completion: ChatCompletion, noop_cost_fn: Any) -> None:  # noqa: ANN401
         result = map_chat_completion(chat_completion, "openai", noop_cost_fn)
@@ -503,4 +507,15 @@ class TestMapResponsesResponse:
         mock.usage.output_tokens = 5
         mock.usage.input_tokens_details.cached_tokens = 50
         result = map_responses_response(mock, "openai", noop_cost_fn)
+        assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
+
+    def test_none_usage(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        mock = MagicMock()
+        mock.id = "resp_456"
+        mock.output_text = "Hi!"
+        mock.model = "gpt-4o"
+        mock.usage = None
+        result = map_responses_response(mock, "openai", noop_cost_fn)
+        assert result.usage is None
+        assert result.cost is None

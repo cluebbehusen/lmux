@@ -177,7 +177,7 @@ class ChatResponse(BaseModel):
 
     content: str | None
     tool_calls: list[ToolCall] | None = None
-    usage: Usage
+    usage: Usage | None
     cost: Cost | None
     model: str
     provider: str
@@ -246,7 +246,7 @@ class ResponseResponse(BaseModel):
 
     id: str
     output_text: str
-    usage: Usage
+    usage: Usage | None
     cost: Cost | None
     model: str
     provider: str

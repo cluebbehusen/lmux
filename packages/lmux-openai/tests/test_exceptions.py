@@ -148,9 +148,7 @@ class TestMapOpenAIError:
 
     def test_rate_limit_no_response_attribute(self) -> None:
         """Exercise _extract_retry_after when error has no response."""
-        exc = openai.RateLimitError(
-            message="rate limited", response=MagicMock(status_code=429, headers={}), body=None
-        )
+        exc = openai.RateLimitError(message="rate limited", response=MagicMock(status_code=429, headers={}), body=None)
         # Remove the response attribute so _extract_retry_after hits the None branch
         del exc.response
         result = map_openai_error(exc)
