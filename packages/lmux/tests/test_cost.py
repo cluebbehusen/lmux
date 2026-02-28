@@ -225,6 +225,26 @@ class TestCalculateCost:
         assert cost.input_cost == pytest.approx(250_000 * per_million_tokens(6.00))
         assert cost.output_cost == pytest.approx(1000 * per_million_tokens(30.00))
 
+    def test_base_tier_used_at_exact_threshold(self) -> None:
+        """When input equals a tier's min_input_tokens exactly, the base tier still applies (need to exceed)."""
+        pricing = ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.00),
+                    output_cost_per_token=per_million_tokens(15.00),
+                ),
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(6.00),
+                    output_cost_per_token=per_million_tokens(30.00),
+                    min_input_tokens=200_000,
+                ),
+            ],
+        )
+        usage = Usage(input_tokens=200_000, output_tokens=1000)
+        cost = calculate_cost(usage, pricing)
+        assert cost.input_cost == pytest.approx(200_000 * per_million_tokens(3.00))
+        assert cost.output_cost == pytest.approx(1000 * per_million_tokens(15.00))
+
     def test_base_tier_used_below_threshold(self) -> None:
         """Below the higher tier threshold, the base tier rates apply."""
         pricing = ModelPricing(

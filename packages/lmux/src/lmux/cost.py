@@ -47,7 +47,11 @@ class ModelPricing(BaseModel):
 
 
 def _resolve_tier(usage: Usage, pricing: ModelPricing) -> PricingTier:
-    """Return the highest-threshold tier whose ``min_input_tokens`` is exceeded by the total input."""
+    """Return the highest-threshold tier whose ``min_input_tokens`` is exceeded by the total input.
+
+    A tier with ``min_input_tokens=200_000`` applies when ``total_input > 200_000``,
+    matching provider semantics (e.g. Anthropic bills at premium rates for >200K tokens).
+    """
     total_input = usage.input_tokens
 
     # Iterate tiers in descending min_input_tokens order; pick the first one whose threshold is exceeded.
@@ -55,8 +59,8 @@ def _resolve_tier(usage: Usage, pricing: ModelPricing) -> PricingTier:
         if total_input > tier.min_input_tokens:
             return tier
 
-    # Fallback to the base tier (min_input_tokens == 0) when total_input == 0.
-    return min(pricing.tiers, key=lambda t: t.min_input_tokens)
+    # The validated base tier (min_input_tokens == 0) guarantees a match for total_input == 0.
+    return pricing.tiers[0]
 
 
 def calculate_cost(usage: Usage, pricing: ModelPricing) -> Cost:
