@@ -118,7 +118,7 @@ addopts = "--import-mode=importlib --cov"
 
 # ── Coverage ──────────────────────────────────────────────────
 [tool.coverage.run]
-source = ["lmux", "lmux_openai", "lmux_anthropic"]
+source = ["lmux", "lmux_openai", "lmux_anthropic", "lmux_groq"]
 branch = true
 
 [tool.coverage.report]
