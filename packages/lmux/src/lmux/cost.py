@@ -10,32 +10,39 @@ def per_million_tokens(price: float) -> float:
     return price / 1_000_000
 
 
-class ModelPricing(BaseModel):
-    """Pricing data for a specific model."""
+class PricingTier(BaseModel):
+    """A single pricing tier based on total input token count."""
 
     input_cost_per_token: float
     output_cost_per_token: float
+    min_input_tokens: int = 0
+
+
+class ModelPricing(BaseModel):
+    """Pricing data for a specific model.
+
+    ``tiers`` must contain at least one entry with ``min_input_tokens == 0``
+    (the base tier).  Additional tiers define premium rates that apply when
+    the total input token count exceeds their ``min_input_tokens`` threshold.
+    """
+
+    tiers: list[PricingTier]
     cache_read_cost_per_token: float | None = None
     cache_creation_cost_per_token: float | None = None
-    long_context_input_cost_per_token: float | None = None
-    long_context_output_cost_per_token: float | None = None
-    long_context_threshold: int = 200_000
 
 
 def _resolve_rates(usage: Usage, pricing: ModelPricing) -> tuple[float, float]:
-    """Return (input_cost_per_token, output_cost_per_token), switching to long-context rates when applicable."""
-    if pricing.long_context_input_cost_per_token is None:
-        return pricing.input_cost_per_token, pricing.output_cost_per_token
-
+    """Return (input_cost_per_token, output_cost_per_token), selecting the highest-threshold tier that applies."""
     total_input = usage.input_tokens
-    if total_input > pricing.long_context_threshold:
-        return (
-            pricing.long_context_input_cost_per_token,
-            pricing.long_context_output_cost_per_token
-            if pricing.long_context_output_cost_per_token is not None
-            else pricing.output_cost_per_token,
-        )
-    return pricing.input_cost_per_token, pricing.output_cost_per_token
+
+    # Iterate tiers in descending min_input_tokens order; pick the first one whose threshold is exceeded.
+    for tier in sorted(pricing.tiers, key=lambda t: t.min_input_tokens, reverse=True):
+        if total_input > tier.min_input_tokens:
+            return tier.input_cost_per_token, tier.output_cost_per_token
+
+    # Fallback to the base tier (min_input_tokens == 0) when total_input == 0.
+    base = min(pricing.tiers, key=lambda t: t.min_input_tokens)
+    return base.input_cost_per_token, base.output_cost_per_token
 
 
 def calculate_cost(usage: Usage, pricing: ModelPricing) -> Cost:
@@ -46,8 +53,8 @@ def calculate_cost(usage: Usage, pricing: ModelPricing) -> Cost:
     total, so they are subtracted before billing at the regular input rate to
     avoid double-counting.
 
-    When ``pricing`` includes long-context rates and the total input tokens
-    (including cached) exceed ``long_context_threshold``, the higher rates
+    When ``pricing`` includes multiple tiers and the total input tokens
+    exceed a tier's ``min_input_tokens`` threshold, the higher rates
     are used for all tokens in the request.
     """
     cache_read_tokens = usage.cache_read_tokens or 0

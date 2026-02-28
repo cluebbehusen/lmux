@@ -2,7 +2,7 @@
 
 import pytest
 
-from lmux.cost import ModelPricing
+from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import LmuxError, ProviderError
 from lmux.mock import MockProvider
 from lmux.types import (
@@ -219,14 +219,20 @@ class TestMockErrors:
 class TestRegisterPricing:
     def test_register_pricing_stores_model(self) -> None:
         provider = MockProvider()
-        pricing = ModelPricing(input_cost_per_token=0.001, output_cost_per_token=0.002)
+        pricing = ModelPricing(
+            tiers=[PricingTier(input_cost_per_token=0.001, output_cost_per_token=0.002)],
+        )
         provider.register_pricing("my-model", pricing)
         assert provider._custom_pricing["my-model"] == pricing  # pyright: ignore[reportPrivateUsage]
 
     def test_register_pricing_overwrites(self) -> None:
         provider = MockProvider()
-        first = ModelPricing(input_cost_per_token=0.001, output_cost_per_token=0.002)
-        second = ModelPricing(input_cost_per_token=0.003, output_cost_per_token=0.004)
+        first = ModelPricing(
+            tiers=[PricingTier(input_cost_per_token=0.001, output_cost_per_token=0.002)],
+        )
+        second = ModelPricing(
+            tiers=[PricingTier(input_cost_per_token=0.003, output_cost_per_token=0.004)],
+        )
         provider.register_pricing("my-model", first)
         provider.register_pricing("my-model", second)
         assert provider._custom_pricing["my-model"] == second  # pyright: ignore[reportPrivateUsage]

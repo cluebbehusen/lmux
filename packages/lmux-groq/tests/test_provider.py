@@ -12,7 +12,7 @@ from groq.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from groq.types.chat.chat_completion_chunk import ChoiceDelta
 from groq.types.completion_usage import CompletionUsage
 
-from lmux.cost import ModelPricing
+from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError
 from lmux.types import (
     FunctionDefinition,
@@ -526,7 +526,9 @@ class TestRegisterPricing:
 
         sync_provider.register_pricing(
             "custom-model-v1",
-            ModelPricing(input_cost_per_token=5.0 / 1_000_000, output_cost_per_token=15.0 / 1_000_000),
+            ModelPricing(
+                tiers=[PricingTier(input_cost_per_token=5.0 / 1_000_000, output_cost_per_token=15.0 / 1_000_000)]
+            ),
         )
         result = sync_provider.chat("custom-model-v1", [UserMessage(content="Hi")])
 
@@ -539,7 +541,9 @@ class TestRegisterPricing:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        custom_pricing = ModelPricing(input_cost_per_token=99.0 / 1_000_000, output_cost_per_token=199.0 / 1_000_000)
+        custom_pricing = ModelPricing(
+            tiers=[PricingTier(input_cost_per_token=99.0 / 1_000_000, output_cost_per_token=199.0 / 1_000_000)]
+        )
         sync_provider.register_pricing("llama-3.3-70b-versatile", custom_pricing)
         result = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 

@@ -1,6 +1,6 @@
 """lmux — Modular Python language model multiplexer."""
 
-from lmux.cost import ModelPricing, calculate_cost, per_million_tokens
+from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
 from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
@@ -79,6 +79,7 @@ __all__ = [
     "ModelPricing",
     "NotFoundError",
     "PricingProvider",
+    "PricingTier",
     "Provider",
     "ProviderError",
     "RateLimitError",
