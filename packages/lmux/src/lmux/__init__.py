@@ -22,6 +22,7 @@ from lmux.protocols import (
 from lmux.registry import Provider, Registry
 from lmux.types import (
     AssistantMessage,
+    BaseProviderParams,
     ChatChunk,
     ChatResponse,
     ContentPart,
@@ -56,6 +57,7 @@ __all__ = [
     "AssistantMessage",
     "AuthProvider",
     "AuthenticationError",
+    "BaseProviderParams",
     "ChatChunk",
     "ChatResponse",
     "CompletionProvider",

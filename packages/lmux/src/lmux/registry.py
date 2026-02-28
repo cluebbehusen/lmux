@@ -5,11 +5,10 @@
 from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from typing import Any
 
-from pydantic import BaseModel
-
 from lmux.exceptions import InvalidRequestError, UnsupportedFeatureError
 from lmux.protocols import CompletionProvider, EmbeddingProvider, ResponsesProvider
 from lmux.types import (
+    BaseProviderParams,
     ChatChunk,
     ChatResponse,
     EmbeddingResponse,
@@ -37,7 +36,7 @@ class Registry:
         registry.register("anthropic", AnthropicProvider())
         response = registry.chat("openai/gpt-4o", messages=[...])
 
-    Provider-specific params can be passed per-call as a single ``BaseModel`` or as a
+    Provider-specific params can be passed per-call as a single ``BaseProviderParams`` or as a
     ``dict`` keyed by prefix for multi-provider loops::
 
         params = {
@@ -50,9 +49,9 @@ class Registry:
 
     def __init__(self) -> None:
         self._providers: dict[str, Provider] = {}
-        self._default_params: dict[str, BaseModel | None] = {}
+        self._default_params: dict[str, BaseProviderParams | None] = {}
 
-    def register[ParamsT: BaseModel | None](
+    def register[ParamsT: BaseProviderParams | None](
         self,
         prefix: str,
         provider: CompletionProvider[ParamsT] | EmbeddingProvider[ParamsT] | ResponsesProvider[ParamsT],
@@ -78,15 +77,15 @@ class Registry:
     def _resolve_params(
         self,
         prefix: str,
-        provider_params: BaseModel | Mapping[str, BaseModel] | None,
-    ) -> BaseModel | None:
-        """Resolve provider_params to a single BaseModel or None.
+        provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None,
+    ) -> BaseProviderParams | None:
+        """Resolve provider_params to a single BaseProviderParams or None.
 
         Precedence: per-call params > default_params > None.
         """
         if isinstance(provider_params, Mapping):
             params = provider_params.get(prefix)
-        elif isinstance(provider_params, BaseModel):
+        elif isinstance(provider_params, BaseProviderParams):
             params = provider_params
         else:
             params = None
@@ -107,7 +106,7 @@ class Registry:
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
-        provider_params: BaseModel | Mapping[str, BaseModel] | None = None,
+        provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> ChatResponse:
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, CompletionProvider):
@@ -136,7 +135,7 @@ class Registry:
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
-        provider_params: BaseModel | Mapping[str, BaseModel] | None = None,
+        provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> ChatResponse:
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, CompletionProvider):
@@ -165,7 +164,7 @@ class Registry:
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
-        provider_params: BaseModel | Mapping[str, BaseModel] | None = None,
+        provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> Iterator[ChatChunk]:
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, CompletionProvider):
@@ -194,7 +193,7 @@ class Registry:
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
-        provider_params: BaseModel | Mapping[str, BaseModel] | None = None,
+        provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> AsyncIterator[ChatChunk]:
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, CompletionProvider):
@@ -220,7 +219,7 @@ class Registry:
         model: str,
         input: str | list[str],  # noqa: A002
         *,
-        provider_params: BaseModel | Mapping[str, BaseModel] | None = None,
+        provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> EmbeddingResponse:
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, EmbeddingProvider):
@@ -233,7 +232,7 @@ class Registry:
         model: str,
         input: str | list[str],  # noqa: A002
         *,
-        provider_params: BaseModel | Mapping[str, BaseModel] | None = None,
+        provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> EmbeddingResponse:
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, EmbeddingProvider):
@@ -248,7 +247,7 @@ class Registry:
         model: str,
         input: str | Sequence[ResponseInputItem],  # noqa: A002
         *,
-        provider_params: BaseModel | Mapping[str, BaseModel] | None = None,
+        provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> ResponseResponse:
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, ResponsesProvider):
@@ -264,7 +263,7 @@ class Registry:
         model: str,
         input: str | Sequence[ResponseInputItem],  # noqa: A002
         *,
-        provider_params: BaseModel | Mapping[str, BaseModel] | None = None,
+        provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> ResponseResponse:
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, ResponsesProvider):

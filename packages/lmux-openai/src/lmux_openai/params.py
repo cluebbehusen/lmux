@@ -2,10 +2,10 @@
 
 from typing import Literal
 
-from pydantic import BaseModel
+from lmux.types import BaseProviderParams
 
 
-class OpenAIParams(BaseModel):
+class OpenAIParams(BaseProviderParams):
     """Provider-specific parameters for OpenAI API calls."""
 
     service_tier: Literal["auto", "default", "flex"] | None = None

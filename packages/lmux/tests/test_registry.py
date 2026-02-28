@@ -3,13 +3,13 @@
 from collections.abc import AsyncIterator, Iterator, Sequence
 
 import pytest
-from pydantic import BaseModel
 
 from lmux.exceptions import InvalidRequestError, UnsupportedFeatureError
 from lmux.mock import MockProvider
 from lmux.protocols import CompletionProvider, EmbeddingProvider
 from lmux.registry import Registry
 from lmux.types import (
+    BaseProviderParams,
     ChatChunk,
     ChatResponse,
     Cost,
@@ -327,14 +327,14 @@ class TestUnsupportedFeature:
 # MARK: Provider Params Resolution
 
 
-class FakeParams(BaseModel):
+class FakeParams(BaseProviderParams):
     tag: str = "default"
 
 
 class RecordingProvider(CompletionProvider[FakeParams]):
     """A provider that records the provider_params it receives."""
 
-    last_params: BaseModel | None = None
+    last_params: BaseProviderParams | None = None
 
     def chat(  # noqa: PLR0913
         self,
@@ -442,7 +442,7 @@ class TestProviderParamsResolution:
         prov = RecordingProvider()
         reg = Registry()
         reg.register("rec", prov, default_params=FakeParams(tag="fallback"))
-        params: dict[str, BaseModel] = {"other": FakeParams(tag="wrong")}
+        params: dict[str, BaseProviderParams] = {"other": FakeParams(tag="wrong")}
         reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
         assert isinstance(prov.last_params, FakeParams)
         assert prov.last_params.tag == "fallback"
@@ -460,7 +460,7 @@ class TestProviderParamsResolution:
         prov = RecordingProvider()
         reg = Registry()
         reg.register("rec", prov)
-        params: dict[str, BaseModel] = {"other": FakeParams(tag="wrong")}
+        params: dict[str, BaseProviderParams] = {"other": FakeParams(tag="wrong")}
         reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
         assert prov.last_params is None
 
