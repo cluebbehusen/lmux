@@ -127,6 +127,7 @@ uv run pytest
 - `pytest-asyncio` with `asyncio_mode = "auto"` — async test methods just work
 - `--import-mode=importlib` to avoid namespace collisions between packages
 - **No `tests/__init__.py` files** (required for importlib mode)
+- **Prefer testing through public API** over accessing private attributes/methods directly. For example, test `_provider_params_kwargs` by calling `chat()` with `provider_params` and asserting what gets passed to the SDK mock — not by calling the private method. Use `# pyright: ignore[reportPrivateUsage]` only when there's no public path to exercise the behavior (e.g., accessing `_custom_pricing` to verify `register_pricing`).
 - 100% branch coverage required
 
 ### Test Structure
