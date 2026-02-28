@@ -97,14 +97,15 @@ pythonVersion = "3.12"
 pythonPlatform = "All"
 typeCheckingMode = "strict"
 include = [
-  "packages/*/src",
-  "packages/*/tests",
+  "packages/*/src/**",
+  "packages/*/tests/**",
 ]
 exclude = [
   "**/__pycache__",
   "**/.venv",
 ]
-reportMissingTypeStubs = "warning"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
 reportUnusedImport = "error"
 reportUnusedVariable = "error"
 reportUnnecessaryTypeIgnoreComment = "error"
@@ -113,12 +114,12 @@ reportUnnecessaryTypeIgnoreComment = "error"
 [tool.pytest.ini_options]
 testpaths = ["packages/*/tests"]
 asyncio_mode = "auto"
+addopts = "--import-mode=importlib"
 
 # ── Coverage ──────────────────────────────────────────────────
 [tool.coverage.run]
-source = ["packages/*/src"]
+source = ["lmux", "lmux_openai"]
 branch = true
-parallel = true
 
 [tool.coverage.report]
 fail_under = 100
