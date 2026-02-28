@@ -114,11 +114,11 @@ reportUnnecessaryTypeIgnoreComment = "error"
 [tool.pytest.ini_options]
 testpaths = ["packages/*/tests"]
 asyncio_mode = "auto"
-addopts = "--import-mode=importlib"
+addopts = "--import-mode=importlib --cov"
 
 # ── Coverage ──────────────────────────────────────────────────
 [tool.coverage.run]
-source = ["lmux", "lmux_openai"]
+source = ["lmux", "lmux_openai", "lmux_anthropic"]
 branch = true
 
 [tool.coverage.report]

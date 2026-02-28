@@ -19,6 +19,7 @@ from lmux.protocols import (
     PricingProvider,
     ResponsesProvider,
 )
+from lmux.registry import Provider, Registry
 from lmux.types import (
     AssistantMessage,
     ChatChunk,
@@ -76,8 +77,10 @@ __all__ = [
     "ModelPricing",
     "NotFoundError",
     "PricingProvider",
+    "Provider",
     "ProviderError",
     "RateLimitError",
+    "Registry",
     "ResponseFormat",
     "ResponseInputFunctionCall",
     "ResponseInputFunctionCallOutput",
