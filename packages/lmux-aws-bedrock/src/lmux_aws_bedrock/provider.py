@@ -187,17 +187,13 @@ class BedrockProvider(
         try:
             async with await self._get_async_client_ctx() as client:
                 response = await client.converse_stream(**kwargs)
-        except Exception as e:
-            raise map_bedrock_error(e) from e
-
-        try:
-            event_stream = response.get("stream", [])
-            async for event in event_stream:
-                chunk = map_stream_event(event)
-                if chunk is not None:
-                    if chunk.usage is not None:
-                        chunk = chunk.model_copy(update={"cost": self._calculate_cost(model, chunk.usage)})
-                    yield chunk
+                event_stream = response.get("stream", [])
+                async for event in event_stream:
+                    chunk = map_stream_event(event)
+                    if chunk is not None:
+                        if chunk.usage is not None:
+                            chunk = chunk.model_copy(update={"cost": self._calculate_cost(model, chunk.usage)})
+                        yield chunk
         except Exception as e:
             raise map_bedrock_error(e) from e
 
