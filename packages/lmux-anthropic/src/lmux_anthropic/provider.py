@@ -23,7 +23,6 @@ from lmux_anthropic._mappers import (
 )
 from lmux_anthropic.auth import AnthropicEnvAuthProvider
 from lmux_anthropic.cost import (
-    FAST_MODE_MULTIPLIER,
     US_INFERENCE_MULTIPLIER,
     apply_cost_multiplier,
     calculate_anthropic_cost,
@@ -291,8 +290,6 @@ class AnthropicProvider(
             kwargs["service_tier"] = params.service_tier
         if params.inference_geo is not None:
             kwargs["inference_geo"] = params.inference_geo
-        if params.speed is not None:
-            kwargs["speed"] = params.speed
         return kwargs
 
     @staticmethod
@@ -303,8 +300,6 @@ class AnthropicProvider(
             return multiplier
         if provider_params.inference_geo == "us":
             multiplier *= US_INFERENCE_MULTIPLIER
-        if provider_params.speed == "fast":
-            multiplier *= FAST_MODE_MULTIPLIER
         return multiplier
 
     @staticmethod
@@ -317,7 +312,7 @@ class AnthropicProvider(
         return apply_cost_multiplier(cost, multiplier)
 
     def _apply_multipliers(self, response: ChatResponse, provider_params: AnthropicParams | None) -> ChatResponse:
-        """Apply inference_geo / speed cost multipliers to a completed response."""
+        """Apply inference_geo cost multipliers to a completed response."""
         adjusted = self._apply_cost_multipliers(response.cost, provider_params)
         if adjusted is response.cost:
             return response

@@ -14,7 +14,6 @@ class TestAnthropicParams:
         assert params.top_k is None
         assert params.service_tier is None
         assert params.inference_geo is None
-        assert params.speed is None
 
     def test_invalid_service_tier_rejected(self) -> None:
         with pytest.raises(ValidationError):
