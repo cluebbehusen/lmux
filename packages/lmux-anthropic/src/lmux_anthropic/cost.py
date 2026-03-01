@@ -191,7 +191,6 @@ _PRICING: dict[str, ModelPricing] = {
 _PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
 
 US_INFERENCE_MULTIPLIER = 1.1
-FAST_MODE_MULTIPLIER = 6.0
 
 
 def calculate_anthropic_cost(model: str, usage: Usage) -> Cost | None:

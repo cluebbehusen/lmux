@@ -345,22 +345,6 @@ class TestChat:
         assert result_us.cost is not None
         assert result_us.cost.total_cost == pytest.approx(result_standard.cost.total_cost * 1.1)
 
-    def test_chat_fast_mode_multiplier(
-        self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
-    ) -> None:
-        mock_sync_client.messages.create.return_value = message_response
-
-        result_standard = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
-        result_fast = sync_provider.chat(
-            "claude-sonnet-4-6",
-            [UserMessage(content="Hi")],
-            provider_params=AnthropicParams(speed="fast"),
-        )
-
-        assert result_standard.cost is not None
-        assert result_fast.cost is not None
-        assert result_fast.cost.total_cost == pytest.approx(result_standard.cost.total_cost * 6.0)
-
     def test_chat_no_multiplier_without_params(
         self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
     ) -> None:
@@ -723,7 +707,6 @@ class TestProviderParamsKwargs:
         assert "top_k" not in call_kwargs
         assert "service_tier" not in call_kwargs
         assert "inference_geo" not in call_kwargs
-        assert "speed" not in call_kwargs
 
     def test_all_params(
         self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
@@ -735,7 +718,6 @@ class TestProviderParamsKwargs:
             top_k=40,
             service_tier="auto",
             inference_geo="us",
-            speed="fast",
         )
 
         sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], provider_params=params)
@@ -746,7 +728,6 @@ class TestProviderParamsKwargs:
         assert call_kwargs["top_k"] == 40
         assert call_kwargs["service_tier"] == "auto"
         assert call_kwargs["inference_geo"] == "us"
-        assert call_kwargs["speed"] == "fast"
 
 
 # MARK: Register Pricing
