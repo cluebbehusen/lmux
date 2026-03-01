@@ -1,7 +1,7 @@
 """Internal mappers between lmux types and Groq SDK types."""
 
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from lmux.types import (
     AssistantMessage,
@@ -26,8 +26,23 @@ from lmux.types import (
 )
 
 if TYPE_CHECKING:
-    from groq.types.chat import ChatCompletion, ChatCompletionChunk
+    from groq.types.chat import (
+        ChatCompletion,
+        ChatCompletionAssistantMessageParam,
+        ChatCompletionChunk,
+        ChatCompletionContentPartParam,
+        ChatCompletionMessageParam,
+        ChatCompletionToolParam,
+    )
     from groq.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
+    from groq.types.chat.chat_completion_message_tool_call_param import ChatCompletionMessageToolCallParam
+    from groq.types.chat.completion_create_params import (
+        ResponseFormat as GroqResponseFormat,
+    )
+    from groq.types.chat.completion_create_params import (
+        ResponseFormatResponseFormatJsonSchemaJsonSchema,
+    )
+    from groq.types.shared_params.function_definition import FunctionDefinition
 
 type CostCalculator = Callable[[str, Usage], Cost | None]
 
@@ -35,9 +50,9 @@ type CostCalculator = Callable[[str, Usage], Cost | None]
 # MARK: Input Mappers (lmux -> Groq SDK params)
 
 
-def map_messages(messages: Sequence[Message]) -> list[dict[str, Any]]:
+def map_messages(messages: Sequence[Message]) -> list["ChatCompletionMessageParam"]:
     """Convert lmux Messages to Groq-compatible message dicts."""
-    result: list[dict[str, Any]] = []
+    result: list[ChatCompletionMessageParam] = []
     for msg in messages:
         if isinstance(msg, SystemMessage):
             result.append({"role": "system", "content": msg.content})
@@ -47,7 +62,7 @@ def map_messages(messages: Sequence[Message]) -> list[dict[str, Any]]:
             content = _map_user_content(msg.content)
             result.append({"role": "user", "content": content})
         elif isinstance(msg, AssistantMessage):
-            d: dict[str, Any] = {"role": "assistant"}
+            d: ChatCompletionAssistantMessageParam = {"role": "assistant"}
             if msg.content is not None:
                 d["content"] = msg.content
             if msg.tool_calls:
@@ -58,7 +73,7 @@ def map_messages(messages: Sequence[Message]) -> list[dict[str, Any]]:
     return result
 
 
-def _map_tool_call_param(tc: ToolCall) -> dict[str, Any]:
+def _map_tool_call_param(tc: ToolCall) -> "ChatCompletionMessageToolCallParam":
     return {
         "id": tc.id,
         "type": "function",
@@ -66,23 +81,23 @@ def _map_tool_call_param(tc: ToolCall) -> dict[str, Any]:
     }
 
 
-def _map_user_content(content: str | list[ContentPart]) -> str | list[dict[str, Any]]:
+def _map_user_content(content: str | list[ContentPart]) -> str | list["ChatCompletionContentPartParam"]:
     if isinstance(content, str):
         return content
     return [_map_content_part(part) for part in content]
 
 
-def _map_content_part(part: ContentPart) -> dict[str, Any]:
+def _map_content_part(part: ContentPart) -> "ChatCompletionContentPartParam":
     if isinstance(part, TextContent):
         return {"type": "text", "text": part.text}
     return {"type": "image_url", "image_url": {"url": part.url, "detail": part.detail}}
 
 
-def map_tools(tools: list[Tool]) -> list[dict[str, Any]]:
+def map_tools(tools: list[Tool]) -> list["ChatCompletionToolParam"]:
     """Convert lmux Tools to Groq tool param dicts."""
-    result: list[dict[str, Any]] = []
+    result: list[ChatCompletionToolParam] = []
     for tool in tools:
-        fn: dict[str, Any] = {"name": tool.function.name}
+        fn: FunctionDefinition = {"name": tool.function.name}
         if tool.function.description is not None:
             fn["description"] = tool.function.description
         if tool.function.parameters is not None:
@@ -93,13 +108,13 @@ def map_tools(tools: list[Tool]) -> list[dict[str, Any]]:
     return result
 
 
-def map_response_format(rf: ResponseFormat) -> dict[str, Any]:
+def map_response_format(rf: ResponseFormat) -> "GroqResponseFormat":
     """Convert lmux ResponseFormat to Groq response_format param dict."""
     if isinstance(rf, TextResponseFormat):
         return {"type": "text"}
     if isinstance(rf, JsonObjectResponseFormat):
         return {"type": "json_object"}
-    schema_dict: dict[str, Any] = {"name": rf.name, "schema": rf.json_schema}
+    schema_dict: ResponseFormatResponseFormatJsonSchemaJsonSchema = {"name": rf.name, "schema": rf.json_schema}
     if rf.description is not None:
         schema_dict["description"] = rf.description
     if rf.strict is not None:

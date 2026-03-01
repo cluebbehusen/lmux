@@ -29,10 +29,32 @@ from lmux.types import (
 )
 
 if TYPE_CHECKING:
-    from openai.types.chat import ChatCompletion, ChatCompletionChunk
+    from openai.types.chat import ChatCompletion, ChatCompletionChunk, ChatCompletionToolParam
+    from openai.types.chat.chat_completion_assistant_message_param import ChatCompletionAssistantMessageParam
+    from openai.types.chat.chat_completion_content_part_image_param import ChatCompletionContentPartImageParam
+    from openai.types.chat.chat_completion_content_part_param import ChatCompletionContentPartParam
+    from openai.types.chat.chat_completion_content_part_text_param import ChatCompletionContentPartTextParam
+    from openai.types.chat.chat_completion_developer_message_param import ChatCompletionDeveloperMessageParam
     from openai.types.chat.chat_completion_message_function_tool_call import ChatCompletionMessageFunctionToolCall
+    from openai.types.chat.chat_completion_message_function_tool_call_param import (
+        ChatCompletionMessageFunctionToolCallParam,
+    )
+    from openai.types.chat.chat_completion_message_function_tool_call_param import (
+        Function as FunctionToolCallParamFunction,
+    )
+    from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
+    from openai.types.chat.chat_completion_system_message_param import ChatCompletionSystemMessageParam
+    from openai.types.chat.chat_completion_tool_message_param import ChatCompletionToolMessageParam
+    from openai.types.chat.chat_completion_user_message_param import ChatCompletionUserMessageParam
     from openai.types.create_embedding_response import CreateEmbeddingResponse
     from openai.types.responses import Response as OAIResponse
+    from openai.types.shared_params import (
+        FunctionDefinition,
+        ResponseFormatJSONObject,
+        ResponseFormatJSONSchema,
+        ResponseFormatText,
+    )
+    from openai.types.shared_params.response_format_json_schema import JSONSchema
 
 type CostCalculator = Callable[[str, Usage], Cost | None]
 
@@ -40,54 +62,60 @@ type CostCalculator = Callable[[str, Usage], Cost | None]
 # MARK: Input Mappers (lmux -> OpenAI SDK params)
 
 
-def map_messages(messages: Sequence[Message]) -> list[dict[str, Any]]:
+def map_messages(messages: Sequence[Message]) -> list["ChatCompletionMessageParam"]:
     """Convert lmux Messages to OpenAI-compatible message dicts."""
-    result: list[dict[str, Any]] = []
+    result: list[ChatCompletionMessageParam] = []
     for msg in messages:
         if isinstance(msg, SystemMessage):
-            result.append({"role": "system", "content": msg.content})
+            sys_msg: ChatCompletionSystemMessageParam = {"role": "system", "content": msg.content}
+            result.append(sys_msg)
         elif isinstance(msg, DeveloperMessage):
-            result.append({"role": "developer", "content": msg.content})
+            dev_msg: ChatCompletionDeveloperMessageParam = {"role": "developer", "content": msg.content}
+            result.append(dev_msg)
         elif isinstance(msg, UserMessage):
             content = _map_user_content(msg.content)
-            result.append({"role": "user", "content": content})
+            user_msg: ChatCompletionUserMessageParam = {"role": "user", "content": content}
+            result.append(user_msg)
         elif isinstance(msg, AssistantMessage):
-            d: dict[str, Any] = {"role": "assistant"}
+            asst_msg: ChatCompletionAssistantMessageParam = {"role": "assistant"}
             if msg.content is not None:
-                d["content"] = msg.content
+                asst_msg["content"] = msg.content
             if msg.tool_calls:
-                d["tool_calls"] = [_map_tool_call_param(tc) for tc in msg.tool_calls]
-            result.append(d)
+                asst_msg["tool_calls"] = [_map_tool_call_param(tc) for tc in msg.tool_calls]
+            result.append(asst_msg)
         else:
-            result.append({"role": "tool", "content": msg.content, "tool_call_id": msg.tool_call_id})
+            tool_msg: ChatCompletionToolMessageParam = {
+                "role": "tool",
+                "content": msg.content,
+                "tool_call_id": msg.tool_call_id,
+            }
+            result.append(tool_msg)
     return result
 
 
-def _map_tool_call_param(tc: ToolCall) -> dict[str, Any]:
-    return {
-        "id": tc.id,
-        "type": "function",
-        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-    }
+def _map_tool_call_param(tc: ToolCall) -> "ChatCompletionMessageFunctionToolCallParam":
+    fn: FunctionToolCallParamFunction = {"name": tc.function.name, "arguments": tc.function.arguments}
+    return {"id": tc.id, "type": "function", "function": fn}
 
 
-def _map_user_content(content: str | list[ContentPart]) -> str | list[dict[str, Any]]:
+def _map_user_content(content: str | list[ContentPart]) -> str | list["ChatCompletionContentPartParam"]:
     if isinstance(content, str):
         return content
     return [_map_content_part(part) for part in content]
 
 
-def _map_content_part(part: ContentPart) -> dict[str, Any]:
+def _map_content_part(part: ContentPart) -> "ChatCompletionContentPartTextParam | ChatCompletionContentPartImageParam":
     if isinstance(part, TextContent):
-        return {"type": "text", "text": part.text}
+        text_part: ChatCompletionContentPartTextParam = {"type": "text", "text": part.text}
+        return text_part
     return {"type": "image_url", "image_url": {"url": part.url, "detail": part.detail}}
 
 
-def map_tools(tools: list[Tool]) -> list[dict[str, Any]]:
+def map_tools(tools: list[Tool]) -> list["ChatCompletionToolParam"]:
     """Convert lmux Tools to OpenAI tool param dicts."""
-    result: list[dict[str, Any]] = []
+    result: list[ChatCompletionToolParam] = []
     for tool in tools:
-        fn: dict[str, Any] = {"name": tool.function.name}
+        fn: FunctionDefinition = {"name": tool.function.name}
         if tool.function.description is not None:
             fn["description"] = tool.function.description
         if tool.function.parameters is not None:
@@ -98,13 +126,15 @@ def map_tools(tools: list[Tool]) -> list[dict[str, Any]]:
     return result
 
 
-def map_response_format(rf: ResponseFormat) -> dict[str, Any]:
+def map_response_format(
+    rf: ResponseFormat,
+) -> "ResponseFormatText | ResponseFormatJSONObject | ResponseFormatJSONSchema":
     """Convert lmux ResponseFormat to OpenAI response_format param dict."""
     if isinstance(rf, TextResponseFormat):
         return {"type": "text"}
     if isinstance(rf, JsonObjectResponseFormat):
         return {"type": "json_object"}
-    schema_dict: dict[str, Any] = {"name": rf.name, "schema": rf.json_schema}
+    schema_dict: JSONSchema = {"name": rf.name, "schema": rf.json_schema}
     if rf.description is not None:
         schema_dict["description"] = rf.description
     if rf.strict is not None:

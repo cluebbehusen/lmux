@@ -94,9 +94,14 @@ def mock_sync_client() -> MagicMock:
 
 
 @pytest.fixture
-def sync_provider(fake_auth: FakeAuth, mock_sync_client: MagicMock) -> Iterator[GroqProvider]:
-    with patch("lmux_groq.provider.create_sync_client", return_value=mock_sync_client):
-        yield GroqProvider(auth=fake_auth)
+def mock_sync_create(mock_sync_client: MagicMock) -> Iterator[MagicMock]:
+    with patch("lmux_groq.provider.create_sync_client", return_value=mock_sync_client) as mock_create:
+        yield mock_create
+
+
+@pytest.fixture
+def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> GroqProvider:
+    return GroqProvider(auth=fake_auth)
 
 
 @pytest.fixture
@@ -107,9 +112,14 @@ def mock_async_client() -> MagicMock:
 
 
 @pytest.fixture
-def async_provider(fake_auth: FakeAuth, mock_async_client: MagicMock) -> Iterator[GroqProvider]:
-    with patch("lmux_groq.provider.create_async_client", return_value=mock_async_client):
-        yield GroqProvider(auth=fake_auth)
+def mock_async_create(mock_async_client: MagicMock) -> Iterator[MagicMock]:
+    with patch("lmux_groq.provider.create_async_client", return_value=mock_async_client) as mock_create:
+        yield mock_create
+
+
+@pytest.fixture
+def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> GroqProvider:
+    return GroqProvider(auth=fake_auth)
 
 
 @pytest.fixture
@@ -410,67 +420,89 @@ class TestClientManagement:
 
         assert mock_async_client.chat.completions.create.call_count == 2
 
-    def test_custom_base_url_passed(self, fake_auth: FakeAuth, chat_completion: ChatCompletion) -> None:
+    def test_custom_base_url_passed(
+        self,
+        fake_auth: FakeAuth,
+        mock_sync_create: MagicMock,
+        mock_sync_client: MagicMock,
+        chat_completion: ChatCompletion,
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = chat_completion
+        provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
-        with patch("lmux_groq.provider.create_sync_client", return_value=mock_client) as mock_create:
-            provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        mock_sync_create.assert_called_once_with(
+            api_key="gsk-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
+        )
 
-            mock_create.assert_called_once_with(api_key="gsk-fake-key", base_url="https://custom.api/v1")
-
-    def test_timeout_and_retries_passed(self, fake_auth: FakeAuth, chat_completion: ChatCompletion) -> None:
+    def test_timeout_and_retries_passed(
+        self,
+        fake_auth: FakeAuth,
+        mock_sync_create: MagicMock,
+        mock_sync_client: MagicMock,
+        chat_completion: ChatCompletion,
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = chat_completion
+        provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
-        with patch("lmux_groq.provider.create_sync_client", return_value=mock_client) as mock_create:
-            provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        mock_sync_create.assert_called_once_with(api_key="gsk-fake-key", base_url=None, timeout=30.0, max_retries=5)
 
-            mock_create.assert_called_once_with(api_key="gsk-fake-key", timeout=30.0, max_retries=5)
-
-    def test_create_sync_client_called_once(self, fake_auth: FakeAuth, chat_completion: ChatCompletion) -> None:
+    def test_create_sync_client_called_once(
+        self,
+        fake_auth: FakeAuth,
+        mock_sync_create: MagicMock,
+        mock_sync_client: MagicMock,
+        chat_completion: ChatCompletion,
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth)
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = chat_completion
+        provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
 
-        with patch("lmux_groq.provider.create_sync_client", return_value=mock_client) as mock_create:
-            provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-            provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
+        mock_sync_create.assert_called_once()
 
-            mock_create.assert_called_once()
-
-    async def test_create_async_client_called_once(self, fake_auth: FakeAuth, chat_completion: ChatCompletion) -> None:
+    async def test_create_async_client_called_once(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: MagicMock,
+        chat_completion: ChatCompletion,
+    ) -> None:
+        mock_async_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth)
-        mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=chat_completion)
+        await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
 
-        with patch("lmux_groq.provider.create_async_client", return_value=mock_client) as mock_create:
-            await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-            await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
+        mock_async_create.assert_called_once()
 
-            mock_create.assert_called_once()
-
-    async def test_async_custom_base_url_passed(self, fake_auth: FakeAuth, chat_completion: ChatCompletion) -> None:
+    async def test_async_custom_base_url_passed(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: MagicMock,
+        chat_completion: ChatCompletion,
+    ) -> None:
+        mock_async_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=chat_completion)
+        await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
-        with patch("lmux_groq.provider.create_async_client", return_value=mock_client) as mock_create:
-            await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        mock_async_create.assert_called_once_with(
+            api_key="gsk-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
+        )
 
-            mock_create.assert_called_once_with(api_key="gsk-fake-key", base_url="https://custom.api/v1")
-
-    async def test_async_timeout_and_retries_passed(self, fake_auth: FakeAuth, chat_completion: ChatCompletion) -> None:
+    async def test_async_timeout_and_retries_passed(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: MagicMock,
+        chat_completion: ChatCompletion,
+    ) -> None:
+        mock_async_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=chat_completion)
+        await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
-        with patch("lmux_groq.provider.create_async_client", return_value=mock_client) as mock_create:
-            await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-
-            mock_create.assert_called_once_with(api_key="gsk-fake-key", timeout=30.0, max_retries=5)
+        mock_async_create.assert_called_once_with(api_key="gsk-fake-key", base_url=None, timeout=30.0, max_retries=5)
 
 
 # MARK: Provider Params Kwargs

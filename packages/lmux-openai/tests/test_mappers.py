@@ -123,7 +123,7 @@ class TestMapMessages:
         parts = [TextContent(text="What?"), ImageContent(url="https://img.png", detail="high")]
         result = map_messages([UserMessage(content=parts)])
         assert len(result) == 1
-        content = result[0]["content"]
+        content = result[0]["content"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
         assert isinstance(content, list)
         assert content[0] == {"type": "text", "text": "What?"}
         assert content[1] == {"type": "image_url", "image_url": {"url": "https://img.png", "detail": "high"}}
@@ -139,7 +139,9 @@ class TestMapMessages:
         msg = result[0]
         assert msg["role"] == "assistant"
         assert "content" not in msg
-        assert msg["tool_calls"] == [{"id": "tc1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]
+        assert msg["tool_calls"] == [  # pyright: ignore[reportTypedDictNotRequiredAccess]
+            {"id": "tc1", "type": "function", "function": {"name": "f", "arguments": "{}"}}
+        ]
 
     def test_tool_message(self) -> None:
         result = map_messages([ToolMessage(content="result", tool_call_id="tc1")])
@@ -179,9 +181,9 @@ class TestMapTools:
         result = map_tools(tools)
         fn = result[0]["function"]
         assert fn["name"] == "get_weather"
-        assert fn["description"] == "Get weather"
-        assert fn["parameters"] == {"type": "object"}
-        assert fn["strict"] is True
+        assert fn["description"] == "Get weather"  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert fn["parameters"] == {"type": "object"}  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert fn["strict"] is True  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
 
 # MARK: map_response_format

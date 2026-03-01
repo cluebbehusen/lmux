@@ -2,7 +2,7 @@
 name = "lmux-workspace"
 version = "0.0.0"
 description = "Modular Python language model multiplexer"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 
 [tool.uv]
 package = false
@@ -12,15 +12,17 @@ members = ["packages/*"]
 
 [dependency-groups]
 dev = [
-  "basedpyright>=1.20",
-  "pytest>=8.1",
-  "pytest-asyncio>=0.24",
-  "pytest-cov>=6.0",
-  "ruff>=0.9",
+  "basedpyright~=1.38.2",
+  "boto3-stubs[bedrock-runtime]~=1.42.59",
+  "pytest~=9.0.2",
+  "pytest-asyncio~=1.3.0",
+  "pytest-cov~=7.0.0",
+  "ruff~=0.15.4",
+  "types-aiobotocore[bedrock-runtime]~=3.2.0",
 ]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 120
 src = ["packages/*/src"]
 
@@ -72,6 +74,12 @@ ignore = [
   "S101",     # assert is fine in tests
   "PLR2004",  # magic values are fine in tests
 ]
+"scripts/**/*.py" = [
+  "T20",      # print is expected in CLI scripts
+  "S603",     # subprocess calls are intentional
+  "S607",     # partial executable paths are fine for known CLIs
+  "PLR0911",  # many returns are fine in mapping functions
+]
 
 [tool.ruff.lint.isort]
 known-first-party = [
@@ -79,7 +87,7 @@ known-first-party = [
   "lmux_openai",
   "lmux_anthropic",
   "lmux_azure_openai",
-  "lmux_bedrock",
+  "lmux_aws_bedrock",
   "lmux_google",
   "lmux_groq",
 ]
@@ -93,12 +101,13 @@ docstring-code-line-length = 80
 
 # ── basedpyright ──────────────────────────────────────────────
 [tool.basedpyright]
-pythonVersion = "3.12"
+pythonVersion = "3.13"
 pythonPlatform = "All"
 typeCheckingMode = "strict"
 include = [
   "packages/*/src/**",
   "packages/*/tests/**",
+  "scripts/**"
 ]
 exclude = [
   "**/__pycache__",
@@ -118,8 +127,9 @@ addopts = "--import-mode=importlib --cov"
 
 # ── Coverage ──────────────────────────────────────────────────
 [tool.coverage.run]
-source = ["lmux", "lmux_openai", "lmux_anthropic", "lmux_groq"]
+source = ["lmux", "lmux_openai", "lmux_anthropic", "lmux_groq", "lmux_aws_bedrock"]
 branch = true
+omit = ["**/_lazy.py"]
 
 [tool.coverage.report]
 fail_under = 100

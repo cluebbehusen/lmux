@@ -3,7 +3,7 @@
 import json
 import re
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from lmux.exceptions import UnsupportedFeatureError
 from lmux.types import (
@@ -31,9 +31,23 @@ from lmux.types import (
 )
 
 if TYPE_CHECKING:
-    from anthropic.types import Message as AnthropicMessage
-    from anthropic.types import MessageDeltaUsage
-    from anthropic.types import Usage as AnthropicUsage
+    from anthropic.types import (
+        ImageBlockParam,
+        JSONOutputFormatParam,
+        MessageDeltaUsage,
+        MessageParam,
+        OutputConfigParam,
+        TextBlockParam,
+        ToolParam,
+        ToolResultBlockParam,
+        ToolUseBlockParam,
+    )
+    from anthropic.types import (
+        Message as AnthropicMessage,
+    )
+    from anthropic.types import (
+        Usage as AnthropicUsage,
+    )
     from anthropic.types.raw_content_block_delta_event import RawContentBlockDeltaEvent
     from anthropic.types.raw_content_block_start_event import RawContentBlockStartEvent
     from anthropic.types.raw_message_delta_event import RawMessageDeltaEvent
@@ -47,7 +61,7 @@ _DATA_URI_PATTERN = re.compile(r"^data:(image/[^;]+);base64,(.+)$", re.DOTALL)
 # MARK: Input Mappers (lmux -> Anthropic SDK params)
 
 
-def map_messages(messages: Sequence[Message]) -> tuple[str | None, list[dict[str, Any]]]:
+def map_messages(messages: Sequence[Message]) -> tuple[str | None, list["MessageParam"]]:
     """Convert lmux Messages to Anthropic format.
 
     Returns ``(system_text, messages_list)`` where ``system_text`` is extracted
@@ -55,7 +69,7 @@ def map_messages(messages: Sequence[Message]) -> tuple[str | None, list[dict[str
     contains only ``user`` and ``assistant`` role messages.
     """
     system_parts: list[str] = []
-    result: list[dict[str, Any]] = []
+    result: list[MessageParam] = []
 
     for msg in messages:
         if isinstance(msg, (SystemMessage, DeveloperMessage)):
@@ -72,30 +86,27 @@ def map_messages(messages: Sequence[Message]) -> tuple[str | None, list[dict[str
     return system, result
 
 
-def _map_user_content(content: str | list[ContentPart]) -> str | list[dict[str, Any]]:
+def _map_user_content(content: str | list[ContentPart]) -> str | list["TextBlockParam | ImageBlockParam"]:
     if isinstance(content, str):
         return content
     return [_map_content_part(part) for part in content]
 
 
-def _map_content_part(part: ContentPart) -> dict[str, Any]:
+def _map_content_part(part: ContentPart) -> "TextBlockParam | ImageBlockParam":
     if isinstance(part, TextContent):
         return {"type": "text", "text": part.text}
     return _map_image_content(part)
 
 
-def _map_image_content(img: ImageContent) -> dict[str, Any]:
+def _map_image_content(img: ImageContent) -> "ImageBlockParam":
     match = _DATA_URI_PATTERN.match(img.url)
     if match:
-        return {
-            "type": "image",
-            "source": {"type": "base64", "media_type": match.group(1), "data": match.group(2)},
-        }
+        return {"type": "image", "source": {"type": "base64", "media_type": match.group(1), "data": match.group(2)}}  # pyright: ignore[reportReturnType]  # media_type is a dynamic str, not a literal
     return {"type": "image", "source": {"type": "url", "url": img.url}}
 
 
-def _map_assistant_message(msg: AssistantMessage) -> dict[str, Any]:
-    content: list[dict[str, Any]] = []
+def _map_assistant_message(msg: AssistantMessage) -> "MessageParam":
+    content: list[TextBlockParam | ToolUseBlockParam] = []
     if msg.content is not None:
         content.append({"type": "text", "text": msg.content})
     if msg.tool_calls:
@@ -111,26 +122,28 @@ def _map_assistant_message(msg: AssistantMessage) -> dict[str, Any]:
     return {"role": "assistant", "content": content}
 
 
-def _append_tool_result(result: list[dict[str, Any]], msg: ToolMessage) -> None:
+def _append_tool_result(result: list["MessageParam"], msg: ToolMessage) -> None:
     """Append a tool_result block, merging consecutive tool results into one user message."""
-    tool_block: dict[str, Any] = {
+    tool_block: ToolResultBlockParam = {
         "type": "tool_result",
         "tool_use_id": msg.tool_call_id,
         "content": msg.content,
     }
-    if result and result[-1].get("role") == "user" and isinstance(result[-1].get("content"), list):
-        last_content = result[-1]["content"]
-        if last_content and isinstance(last_content[0], dict) and last_content[0].get("type") == "tool_result":
-            last_content.append(tool_block)
-            return
+    if result and result[-1].get("role") == "user":
+        last_content = result[-1].get("content")
+        if isinstance(last_content, list) and last_content:
+            first = last_content[0]
+            if isinstance(first, dict) and first.get("type") == "tool_result":
+                last_content.append(tool_block)
+                return
     result.append({"role": "user", "content": [tool_block]})
 
 
-def map_tools(tools: list[Tool]) -> list[dict[str, Any]]:
+def map_tools(tools: list[Tool]) -> list["ToolParam"]:
     """Convert lmux Tools to Anthropic tool param dicts."""
-    result: list[dict[str, Any]] = []
+    result: list[ToolParam] = []
     for tool in tools:
-        t: dict[str, Any] = {
+        t: ToolParam = {
             "name": tool.function.name,
             "input_schema": tool.function.parameters or {"type": "object"},
         }
@@ -140,14 +153,14 @@ def map_tools(tools: list[Tool]) -> list[dict[str, Any]]:
     return result
 
 
-def map_response_format(rf: ResponseFormat) -> dict[str, Any] | None:
+def map_response_format(rf: ResponseFormat) -> "OutputConfigParam | None":
     """Convert lmux ResponseFormat to Anthropic output_config dict, or None for text."""
     if isinstance(rf, TextResponseFormat):
         return None
     if isinstance(rf, JsonObjectResponseFormat):
         msg = "JsonObjectResponseFormat is not supported by Anthropic; use JsonSchemaResponseFormat instead"
         raise UnsupportedFeatureError(msg, provider="anthropic")
-    schema_dict: dict[str, Any] = {"type": "json_schema", "schema": rf.json_schema}
+    schema_dict: JSONOutputFormatParam = {"type": "json_schema", "schema": rf.json_schema}
     return {"format": schema_dict}
 
 
