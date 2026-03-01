@@ -1,6 +1,6 @@
 """Cost calculation utility functions."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from lmux.types import Cost, Usage
 
@@ -10,32 +10,57 @@ def per_million_tokens(price: float) -> float:
     return price / 1_000_000
 
 
-class ModelPricing(BaseModel):
-    """Pricing data for a specific model."""
+class PricingTier(BaseModel):
+    """A single pricing tier based on total input token count."""
 
     input_cost_per_token: float
     output_cost_per_token: float
     cache_read_cost_per_token: float | None = None
     cache_creation_cost_per_token: float | None = None
-    long_context_input_cost_per_token: float | None = None
-    long_context_output_cost_per_token: float | None = None
-    long_context_threshold: int = 200_000
+    min_input_tokens: int = 0
 
 
-def _resolve_rates(usage: Usage, pricing: ModelPricing) -> tuple[float, float]:
-    """Return (input_cost_per_token, output_cost_per_token), switching to long-context rates when applicable."""
-    if pricing.long_context_input_cost_per_token is None:
-        return pricing.input_cost_per_token, pricing.output_cost_per_token
+class ModelPricing(BaseModel):
+    """Pricing data for a specific model.
 
+    ``tiers`` must contain at least one entry with ``min_input_tokens == 0``
+    (the base tier).  Additional tiers define premium rates that apply when
+    the total input token count exceeds their ``min_input_tokens`` threshold.
+    Tiers must be ordered by ascending ``min_input_tokens``.
+    """
+
+    tiers: list[PricingTier]
+
+    @model_validator(mode="after")
+    def _validate_tiers(self) -> "ModelPricing":
+        if not self.tiers:
+            msg = "tiers must not be empty"
+            raise ValueError(msg)
+        if self.tiers[0].min_input_tokens != 0:
+            msg = "first tier must have min_input_tokens == 0 (base tier)"
+            raise ValueError(msg)
+        for i in range(1, len(self.tiers)):
+            if self.tiers[i].min_input_tokens <= self.tiers[i - 1].min_input_tokens:
+                msg = "tiers must be ordered by strictly ascending min_input_tokens"
+                raise ValueError(msg)
+        return self
+
+
+def _resolve_tier(usage: Usage, pricing: ModelPricing) -> PricingTier:
+    """Return the highest-threshold tier whose ``min_input_tokens`` is exceeded by the total input.
+
+    A tier with ``min_input_tokens=200_000`` applies when ``total_input > 200_000``,
+    matching provider semantics (e.g. Anthropic bills at premium rates for >200K tokens).
+    """
     total_input = usage.input_tokens
-    if total_input > pricing.long_context_threshold:
-        return (
-            pricing.long_context_input_cost_per_token,
-            pricing.long_context_output_cost_per_token
-            if pricing.long_context_output_cost_per_token is not None
-            else pricing.output_cost_per_token,
-        )
-    return pricing.input_cost_per_token, pricing.output_cost_per_token
+
+    # Iterate tiers in descending min_input_tokens order; pick the first one whose threshold is exceeded.
+    for tier in sorted(pricing.tiers, key=lambda t: t.min_input_tokens, reverse=True):
+        if total_input > tier.min_input_tokens:
+            return tier
+
+    # The validated base tier (min_input_tokens == 0) guarantees a match for total_input == 0.
+    return pricing.tiers[0]
 
 
 def calculate_cost(usage: Usage, pricing: ModelPricing) -> Cost:
@@ -46,23 +71,23 @@ def calculate_cost(usage: Usage, pricing: ModelPricing) -> Cost:
     total, so they are subtracted before billing at the regular input rate to
     avoid double-counting.
 
-    When ``pricing`` includes long-context rates and the total input tokens
-    (including cached) exceed ``long_context_threshold``, the higher rates
+    When ``pricing`` includes multiple tiers and the total input tokens
+    exceed a tier's ``min_input_tokens`` threshold, the higher rates
     are used for all tokens in the request.
     """
     cache_read_tokens = usage.cache_read_tokens or 0
     cache_creation_tokens = usage.cache_creation_tokens or 0
 
-    input_rate, output_rate = _resolve_rates(usage, pricing)
+    tier = _resolve_tier(usage, pricing)
 
     # Cached tokens are a subset of input_tokens — bill them at their own rate,
     # not the full input rate.
     billable_input = usage.input_tokens - cache_read_tokens - cache_creation_tokens
-    input_cost = billable_input * input_rate
-    output_cost = usage.output_tokens * output_rate
+    input_cost = billable_input * tier.input_cost_per_token
+    output_cost = usage.output_tokens * tier.output_cost_per_token
 
-    cache_read_cost_per_token = pricing.cache_read_cost_per_token or 0.0
-    cache_creation_cost_per_token = pricing.cache_creation_cost_per_token or 0.0
+    cache_read_cost_per_token = tier.cache_read_cost_per_token or 0.0
+    cache_creation_cost_per_token = tier.cache_creation_cost_per_token or 0.0
     cache_read_cost = cache_read_tokens * cache_read_cost_per_token if cache_read_tokens else None
     cache_creation_cost = cache_creation_tokens * cache_creation_cost_per_token if cache_creation_tokens else None
     total = input_cost + output_cost + (cache_read_cost or 0.0) + (cache_creation_cost or 0.0)

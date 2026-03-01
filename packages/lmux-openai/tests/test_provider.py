@@ -15,7 +15,7 @@ from openai.types.create_embedding_response import CreateEmbeddingResponse
 from openai.types.create_embedding_response import Usage as EmbUsage
 from openai.types.embedding import Embedding
 
-from lmux.cost import ModelPricing
+from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, NotFoundError, ProviderError
 from lmux.types import (
     FunctionDefinition,
@@ -738,7 +738,9 @@ class TestRegisterPricing:
 
         sync_provider.register_pricing(
             "ft:gpt-4o:my-org:custom:id",
-            ModelPricing(input_cost_per_token=5.0 / 1_000_000, output_cost_per_token=15.0 / 1_000_000),
+            ModelPricing(
+                tiers=[PricingTier(input_cost_per_token=5.0 / 1_000_000, output_cost_per_token=15.0 / 1_000_000)]
+            ),
         )
         result = sync_provider.chat("ft:gpt-4o:my-org:custom:id", [UserMessage(content="Hi")])
 
@@ -753,7 +755,9 @@ class TestRegisterPricing:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
         # Register custom pricing for a model that already has built-in pricing
-        custom_pricing = ModelPricing(input_cost_per_token=99.0 / 1_000_000, output_cost_per_token=199.0 / 1_000_000)
+        custom_pricing = ModelPricing(
+            tiers=[PricingTier(input_cost_per_token=99.0 / 1_000_000, output_cost_per_token=199.0 / 1_000_000)]
+        )
         sync_provider.register_pricing("gpt-4o", custom_pricing)
         result = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
 

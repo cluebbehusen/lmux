@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import anthropic
 import pytest
 
-from lmux.cost import ModelPricing
+from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
@@ -761,7 +761,9 @@ class TestRegisterPricing:
 
         sync_provider.register_pricing(
             "claude-custom-v1",
-            ModelPricing(input_cost_per_token=5.0 / 1_000_000, output_cost_per_token=15.0 / 1_000_000),
+            ModelPricing(
+                tiers=[PricingTier(input_cost_per_token=5.0 / 1_000_000, output_cost_per_token=15.0 / 1_000_000)]
+            ),
         )
         result = sync_provider.chat("claude-custom-v1", [UserMessage(content="Hi")])
 
@@ -774,7 +776,9 @@ class TestRegisterPricing:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
 
-        custom_pricing = ModelPricing(input_cost_per_token=99.0 / 1_000_000, output_cost_per_token=199.0 / 1_000_000)
+        custom_pricing = ModelPricing(
+            tiers=[PricingTier(input_cost_per_token=99.0 / 1_000_000, output_cost_per_token=199.0 / 1_000_000)]
+        )
         sync_provider.register_pricing("claude-sonnet-4-6", custom_pricing)
         result = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 

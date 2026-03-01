@@ -1,92 +1,165 @@
 """OpenAI pricing data and cost calculation."""
 
-from lmux.cost import ModelPricing, calculate_cost, per_million_tokens
+from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
 from lmux.types import Cost, Usage
 
 # Pricing as of Feb 28, 2026 (source: https://openai.com/api/pricing/)
 _PRICING: dict[str, ModelPricing] = {
     # GPT-5 family
     "gpt-5.2-pro": ModelPricing(
-        input_cost_per_token=per_million_tokens(21.00), output_cost_per_token=per_million_tokens(168.00)
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(21.00),
+                output_cost_per_token=per_million_tokens(168.00),
+            )
+        ]
     ),
     "gpt-5.2": ModelPricing(
-        input_cost_per_token=per_million_tokens(1.75),
-        output_cost_per_token=per_million_tokens(14.00),
-        cache_read_cost_per_token=per_million_tokens(0.175),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.75),
+                output_cost_per_token=per_million_tokens(14.00),
+                cache_read_cost_per_token=per_million_tokens(0.175),
+            )
+        ],
     ),
     "gpt-5.1": ModelPricing(
-        input_cost_per_token=per_million_tokens(1.25),
-        output_cost_per_token=per_million_tokens(10.00),
-        cache_read_cost_per_token=per_million_tokens(0.125),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.125),
+            )
+        ],
     ),
     "gpt-5-pro": ModelPricing(
-        input_cost_per_token=per_million_tokens(15.00), output_cost_per_token=per_million_tokens(120.00)
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(15.00),
+                output_cost_per_token=per_million_tokens(120.00),
+            )
+        ]
     ),
     "gpt-5-mini": ModelPricing(
-        input_cost_per_token=per_million_tokens(0.25),
-        output_cost_per_token=per_million_tokens(2.00),
-        cache_read_cost_per_token=per_million_tokens(0.025),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.25),
+                output_cost_per_token=per_million_tokens(2.00),
+                cache_read_cost_per_token=per_million_tokens(0.025),
+            )
+        ],
     ),
     "gpt-5-nano": ModelPricing(
-        input_cost_per_token=per_million_tokens(0.05),
-        output_cost_per_token=per_million_tokens(0.40),
-        cache_read_cost_per_token=per_million_tokens(0.005),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.05),
+                output_cost_per_token=per_million_tokens(0.40),
+                cache_read_cost_per_token=per_million_tokens(0.005),
+            )
+        ],
     ),
     "gpt-5": ModelPricing(
-        input_cost_per_token=per_million_tokens(1.25),
-        output_cost_per_token=per_million_tokens(10.00),
-        cache_read_cost_per_token=per_million_tokens(0.125),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.125),
+            )
+        ],
     ),
     # GPT-4.1 family
     "gpt-4.1-mini": ModelPricing(
-        input_cost_per_token=per_million_tokens(0.40),
-        output_cost_per_token=per_million_tokens(1.60),
-        cache_read_cost_per_token=per_million_tokens(0.10),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.40),
+                output_cost_per_token=per_million_tokens(1.60),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+            )
+        ],
     ),
     "gpt-4.1-nano": ModelPricing(
-        input_cost_per_token=per_million_tokens(0.10),
-        output_cost_per_token=per_million_tokens(0.40),
-        cache_read_cost_per_token=per_million_tokens(0.025),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.10),
+                output_cost_per_token=per_million_tokens(0.40),
+                cache_read_cost_per_token=per_million_tokens(0.025),
+            )
+        ],
     ),
     "gpt-4.1": ModelPricing(
-        input_cost_per_token=per_million_tokens(2.00),
-        output_cost_per_token=per_million_tokens(8.00),
-        cache_read_cost_per_token=per_million_tokens(0.50),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(8.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
     ),
     # GPT-4o family
     "gpt-4o-mini": ModelPricing(
-        input_cost_per_token=per_million_tokens(0.15),
-        output_cost_per_token=per_million_tokens(0.60),
-        cache_read_cost_per_token=per_million_tokens(0.075),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.15),
+                output_cost_per_token=per_million_tokens(0.60),
+                cache_read_cost_per_token=per_million_tokens(0.075),
+            )
+        ],
     ),
     "gpt-4o": ModelPricing(
-        input_cost_per_token=per_million_tokens(2.50),
-        output_cost_per_token=per_million_tokens(10.00),
-        cache_read_cost_per_token=per_million_tokens(1.25),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(1.25),
+            )
+        ],
     ),
     # Reasoning models
     "o3-pro": ModelPricing(
-        input_cost_per_token=per_million_tokens(20.00), output_cost_per_token=per_million_tokens(80.00)
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(20.00),
+                output_cost_per_token=per_million_tokens(80.00),
+            )
+        ]
     ),
     "o3-mini": ModelPricing(
-        input_cost_per_token=per_million_tokens(1.10),
-        output_cost_per_token=per_million_tokens(4.40),
-        cache_read_cost_per_token=per_million_tokens(0.55),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.10),
+                output_cost_per_token=per_million_tokens(4.40),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+            )
+        ],
     ),
     "o3": ModelPricing(
-        input_cost_per_token=per_million_tokens(2.00),
-        output_cost_per_token=per_million_tokens(8.00),
-        cache_read_cost_per_token=per_million_tokens(0.50),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(8.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
     ),
     "o4-mini": ModelPricing(
-        input_cost_per_token=per_million_tokens(1.10),
-        output_cost_per_token=per_million_tokens(4.40),
-        cache_read_cost_per_token=per_million_tokens(0.275),
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.10),
+                output_cost_per_token=per_million_tokens(4.40),
+                cache_read_cost_per_token=per_million_tokens(0.275),
+            )
+        ],
     ),
     # Embedding models
-    "text-embedding-3-small": ModelPricing(input_cost_per_token=per_million_tokens(0.02), output_cost_per_token=0.0),
-    "text-embedding-3-large": ModelPricing(input_cost_per_token=per_million_tokens(0.13), output_cost_per_token=0.0),
-    "text-embedding-ada-002": ModelPricing(input_cost_per_token=per_million_tokens(0.10), output_cost_per_token=0.0),
+    "text-embedding-3-small": ModelPricing(
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.02), output_cost_per_token=0.0)]
+    ),
+    "text-embedding-3-large": ModelPricing(
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.13), output_cost_per_token=0.0)]
+    ),
+    "text-embedding-ada-002": ModelPricing(
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.10), output_cost_per_token=0.0)]
+    ),
 }
 
 # Pre-sorted by key length descending for prefix matching (longest match first)
