@@ -113,9 +113,14 @@ def mock_sync_client() -> MagicMock:
 
 
 @pytest.fixture
-def sync_provider(fake_auth: FakeAuth, mock_sync_client: MagicMock) -> Iterator[AnthropicProvider]:
-    with patch("lmux_anthropic.provider.create_sync_client", return_value=mock_sync_client):
-        yield AnthropicProvider(auth=fake_auth)
+def mock_sync_create(mock_sync_client: MagicMock) -> Iterator[MagicMock]:
+    with patch("lmux_anthropic.provider.create_sync_client", return_value=mock_sync_client) as mock_create:
+        yield mock_create
+
+
+@pytest.fixture
+def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> AnthropicProvider:
+    return AnthropicProvider(auth=fake_auth)
 
 
 @pytest.fixture
@@ -126,9 +131,14 @@ def mock_async_client() -> MagicMock:
 
 
 @pytest.fixture
-def async_provider(fake_auth: FakeAuth, mock_async_client: MagicMock) -> Iterator[AnthropicProvider]:
-    with patch("lmux_anthropic.provider.create_async_client", return_value=mock_async_client):
-        yield AnthropicProvider(auth=fake_auth)
+def mock_async_create(mock_async_client: MagicMock) -> Iterator[MagicMock]:
+    with patch("lmux_anthropic.provider.create_async_client", return_value=mock_async_client) as mock_create:
+        yield mock_create
+
+
+@pytest.fixture
+def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> AnthropicProvider:
+    return AnthropicProvider(auth=fake_auth)
 
 
 @pytest.fixture
@@ -627,67 +637,89 @@ class TestClientManagement:
 
         assert mock_async_client.messages.create.call_count == 2
 
-    def test_custom_base_url_passed(self, fake_auth: FakeAuth, message_response: MagicMock) -> None:
+    def test_custom_base_url_passed(
+        self,
+        fake_auth: FakeAuth,
+        mock_sync_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = message_response
+        provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
-        with patch("lmux_anthropic.provider.create_sync_client", return_value=mock_client) as mock_create:
-            provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        mock_sync_create.assert_called_once_with(
+            api_key="sk-ant-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
+        )
 
-            mock_create.assert_called_once_with(api_key="sk-ant-fake-key", base_url="https://custom.api/v1")
-
-    def test_timeout_and_retries_passed(self, fake_auth: FakeAuth, message_response: MagicMock) -> None:
+    def test_timeout_and_retries_passed(
+        self,
+        fake_auth: FakeAuth,
+        mock_sync_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = message_response
+        provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
-        with patch("lmux_anthropic.provider.create_sync_client", return_value=mock_client) as mock_create:
-            provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        mock_sync_create.assert_called_once_with(api_key="sk-ant-fake-key", base_url=None, timeout=30.0, max_retries=5)
 
-            mock_create.assert_called_once_with(api_key="sk-ant-fake-key", timeout=30.0, max_retries=5)
-
-    def test_create_sync_client_called_once(self, fake_auth: FakeAuth, message_response: MagicMock) -> None:
+    def test_create_sync_client_called_once(
+        self,
+        fake_auth: FakeAuth,
+        mock_sync_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth)
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = message_response
+        provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
 
-        with patch("lmux_anthropic.provider.create_sync_client", return_value=mock_client) as mock_create:
-            provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
-            provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
+        mock_sync_create.assert_called_once()
 
-            mock_create.assert_called_once()
-
-    async def test_create_async_client_called_once(self, fake_auth: FakeAuth, message_response: MagicMock) -> None:
+    async def test_create_async_client_called_once(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_async_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth)
-        mock_client = MagicMock()
-        mock_client.messages.create = AsyncMock(return_value=message_response)
+        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
 
-        with patch("lmux_anthropic.provider.create_async_client", return_value=mock_client) as mock_create:
-            await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
-            await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
+        mock_async_create.assert_called_once()
 
-            mock_create.assert_called_once()
-
-    async def test_async_custom_base_url_passed(self, fake_auth: FakeAuth, message_response: MagicMock) -> None:
+    async def test_async_custom_base_url_passed(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_async_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        mock_client = MagicMock()
-        mock_client.messages.create = AsyncMock(return_value=message_response)
+        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
-        with patch("lmux_anthropic.provider.create_async_client", return_value=mock_client) as mock_create:
-            await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        mock_async_create.assert_called_once_with(
+            api_key="sk-ant-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
+        )
 
-            mock_create.assert_called_once_with(api_key="sk-ant-fake-key", base_url="https://custom.api/v1")
-
-    async def test_async_timeout_and_retries_passed(self, fake_auth: FakeAuth, message_response: MagicMock) -> None:
+    async def test_async_timeout_and_retries_passed(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_async_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        mock_client = MagicMock()
-        mock_client.messages.create = AsyncMock(return_value=message_response)
+        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
-        with patch("lmux_anthropic.provider.create_async_client", return_value=mock_client) as mock_create:
-            await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
-
-            mock_create.assert_called_once_with(api_key="sk-ant-fake-key", timeout=30.0, max_retries=5)
+        mock_async_create.assert_called_once_with(api_key="sk-ant-fake-key", base_url=None, timeout=30.0, max_retries=5)
 
 
 # MARK: Provider Params Kwargs
@@ -782,16 +814,19 @@ class TestRegisterPricing:
 
 
 class TestCustomDefaultMaxTokens:
-    def test_custom_default(self, fake_auth: FakeAuth, message_response: MagicMock) -> None:
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = message_response
+    def test_custom_default(
+        self,
+        fake_auth: FakeAuth,
+        mock_sync_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+        provider = AnthropicProvider(auth=fake_auth, default_max_tokens=8192)
+        provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
-        with patch("lmux_anthropic.provider.create_sync_client", return_value=mock_client):
-            provider = AnthropicProvider(auth=fake_auth, default_max_tokens=8192)
-            provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
-
-            call_kwargs = mock_client.messages.create.call_args.kwargs
-            assert call_kwargs["max_tokens"] == 8192
+        call_kwargs = mock_sync_client.messages.create.call_args.kwargs
+        assert call_kwargs["max_tokens"] == 8192
 
 
 # MARK: Preload

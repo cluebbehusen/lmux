@@ -60,28 +60,22 @@ class GroqProvider(
 
     def _get_sync_client(self) -> "groq.Groq":
         if self._sync_client is None:
-            api_key = self._auth.get_credentials()
-            kwargs: dict[str, Any] = {"api_key": api_key}
-            if self._base_url is not None:
-                kwargs["base_url"] = self._base_url
-            if self._timeout is not None:
-                kwargs["timeout"] = self._timeout
-            if self._max_retries is not None:
-                kwargs["max_retries"] = self._max_retries
-            self._sync_client = create_sync_client(**kwargs)
+            self._sync_client = create_sync_client(
+                api_key=self._auth.get_credentials(),
+                base_url=self._base_url,
+                timeout=self._timeout,
+                max_retries=self._max_retries,
+            )
         return self._sync_client
 
     async def _get_async_client(self) -> "groq.AsyncGroq":
         if self._async_client is None:
-            api_key = await self._auth.aget_credentials()
-            kwargs: dict[str, Any] = {"api_key": api_key}
-            if self._base_url is not None:
-                kwargs["base_url"] = self._base_url
-            if self._timeout is not None:
-                kwargs["timeout"] = self._timeout
-            if self._max_retries is not None:
-                kwargs["max_retries"] = self._max_retries
-            self._async_client = create_async_client(**kwargs)
+            self._async_client = create_async_client(
+                api_key=await self._auth.aget_credentials(),
+                base_url=self._base_url,
+                timeout=self._timeout,
+                max_retries=self._max_retries,
+            )
         return self._async_client
 
     # MARK: Chat

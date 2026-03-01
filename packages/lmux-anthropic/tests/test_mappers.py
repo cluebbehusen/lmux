@@ -104,6 +104,7 @@ class TestMapMessages:
     def test_user_message_base64_image(self) -> None:
         _, messages = map_messages([UserMessage(content=[ImageContent(url="data:image/png;base64,iVBOR==")])])
         content = messages[0]["content"]
+        assert isinstance(content, list)
         assert content[0] == {
             "type": "image",
             "source": {"type": "base64", "media_type": "image/png", "data": "iVBOR=="},
@@ -150,9 +151,10 @@ class TestMapMessages:
             ]
         )
         content = messages[0]["content"]
+        assert isinstance(content, list)
         assert len(content) == 2
         assert content[0] == {"type": "text", "text": "Let me check."}
-        assert content[1]["type"] == "tool_use"
+        assert content[1]["type"] == "tool_use"  # pyright: ignore[reportIndexIssue]
 
     def test_tool_message(self) -> None:
         _, messages = map_messages([ToolMessage(content="72°F", tool_call_id="call_1")])
@@ -169,9 +171,11 @@ class TestMapMessages:
         )
         assert len(messages) == 1
         assert messages[0]["role"] == "user"
-        assert len(messages[0]["content"]) == 2
-        assert messages[0]["content"][0]["tool_use_id"] == "call_1"
-        assert messages[0]["content"][1]["tool_use_id"] == "call_2"
+        content = messages[0]["content"]
+        assert isinstance(content, list)
+        assert len(content) == 2
+        assert content[0]["tool_use_id"] == "call_1"  # pyright: ignore[reportIndexIssue, reportGeneralTypeIssues]
+        assert content[1]["tool_use_id"] == "call_2"  # pyright: ignore[reportIndexIssue, reportGeneralTypeIssues]
 
     def test_tool_message_after_multimodal_user_not_merged(self) -> None:
         _, messages = map_messages(
@@ -183,7 +187,9 @@ class TestMapMessages:
         assert len(messages) == 2
         assert messages[0]["role"] == "user"
         assert messages[1]["role"] == "user"
-        assert messages[1]["content"][0]["type"] == "tool_result"
+        content = messages[1]["content"]
+        assert isinstance(content, list)
+        assert content[0]["type"] == "tool_result"  # pyright: ignore[reportIndexIssue]
 
     def test_tool_message_after_user_not_merged(self) -> None:
         _, messages = map_messages(

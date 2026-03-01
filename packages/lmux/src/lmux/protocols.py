@@ -19,11 +19,11 @@ from lmux.types import (
 
 
 @runtime_checkable
-class AuthProvider[AuthT](Protocol):
+class AuthProvider[AuthT, AAuthT = AuthT](Protocol):
     """Protocol for providing authentication credentials to a provider."""
 
     def get_credentials(self) -> AuthT: ...
-    async def aget_credentials(self) -> AuthT: ...
+    async def aget_credentials(self) -> AAuthT: ...
 
 
 @runtime_checkable

@@ -23,6 +23,14 @@ Each package uses `src/` layout: `packages/<name>/src/<import_name>/` and `packa
 
 Core (`lmux`) depends only on `pydantic`. Provider packages depend on `lmux` + their SDK (e.g., `lmux-openai` depends on `lmux` + `openai`).
 
+## Installing dependencies
+
+For efficient local development, ALWAYS use `--all-packages` and `--all-extras` when running `uv sync`.
+
+Bad: `uv sync`
+
+Good: `uv sync --all-packages --all-extras`
+
 ## Architecture
 
 ### Protocols
@@ -67,7 +75,7 @@ Flattened responses — no `choices` array. Always take the first choice. Every 
 
 ### Python Version & Syntax
 
-- Python 3.12+ required
+- Python 3.13+ required
 - PEP 695 generics: `class Foo[T]:`, `type Alias = ...`
 - Union syntax: `X | Y`
 - Pydantic v2 `BaseModel` for all types, params, and responses
@@ -111,6 +119,8 @@ uv run basedpyright
 # Tests with 100% branch coverage
 uv run pytest
 ```
+
+If any dependencies are not present in the local .venv, use `uv sync --all-packages --all-extras`
 
 ### Coverage
 
