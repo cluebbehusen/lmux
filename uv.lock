@@ -7,7 +7,7 @@ members = [
     "lmux",
     "lmux-anthropic",
     "lmux-aws-bedrock",
-    "lmux-azure-openai",
+    "lmux-azure-foundry",
     "lmux-google",
     "lmux-groq",
     "lmux-openai",
@@ -843,21 +843,26 @@ requires-dist = [
 provides-extras = ["async"]
 
 [[package]]
-name = "lmux-azure-openai"
+name = "lmux-azure-foundry"
 version = "0.1.0"
-source = { editable = "packages/lmux-azure-openai" }
+source = { editable = "packages/lmux-azure-foundry" }
 dependencies = [
-    { name = "azure-identity" },
     { name = "lmux" },
     { name = "openai" },
 ]
 
+[package.optional-dependencies]
+identity = [
+    { name = "azure-identity" },
+]
+
 [package.metadata]
 requires-dist = [
-    { name = "azure-identity", specifier = "~=1.20" },
+    { name = "azure-identity", marker = "extra == 'identity'", specifier = "~=1.20" },
     { name = "lmux", editable = "packages/lmux" },
     { name = "openai", specifier = "~=2.20" },
 ]
+provides-extras = ["identity"]
 
 [[package]]
 name = "lmux-google"

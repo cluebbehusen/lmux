@@ -13,7 +13,7 @@ packages/
 ├── lmux/                  # Core: types, protocols, exceptions, cost utils, mock provider
 ├── lmux-openai/           # OpenAI provider (implemented)
 ├── lmux-anthropic/        # Anthropic provider (skeleton)
-├── lmux-azure-openai/     # Azure OpenAI provider (skeleton)
+├── lmux-azure-foundry/    # Azure AI Foundry provider (implemented)
 ├── lmux-bedrock/          # AWS Bedrock provider (skeleton)
 ├── lmux-google/           # Google Gemini/Vertex provider (skeleton)
 └── lmux-groq/             # Groq provider (skeleton)

@@ -66,7 +66,7 @@ class TestBedrockSessionAuthProvider:
     async def test_aget_returns_aioboto3_session_with_kwargs(self, mock_aioboto3_session_cls: MagicMock) -> None:
         provider = BedrockSessionAuthProvider(
             aws_access_key_id="AKIA...",
-            aws_secret_access_key="secret",  # noqa: S106
+            aws_secret_access_key="secret",
         )
         result = await provider.aget_credentials()
 
@@ -76,7 +76,7 @@ class TestBedrockSessionAuthProvider:
             profile_name=None,
             aws_account_id=None,
             aws_access_key_id="AKIA...",
-            aws_secret_access_key="secret",  # noqa: S106
+            aws_secret_access_key="secret",
             aws_session_token=None,
         )
 
