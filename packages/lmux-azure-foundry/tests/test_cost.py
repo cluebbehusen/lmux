@@ -2,8 +2,8 @@
 
 import pytest
 
-from lmux.types import Usage
-from lmux_azure_foundry.cost import calculate_azure_foundry_cost
+from lmux.types import Cost, Usage
+from lmux_azure_foundry.cost import apply_cost_multiplier, calculate_azure_foundry_cost
 
 
 class TestCalculateAzureFoundryCost:
@@ -56,3 +56,71 @@ class TestCalculateAzureFoundryCost:
         mini_cost = calculate_azure_foundry_cost("gpt-4o-mini", usage)
         assert mini_cost is not None
         assert cost.total_cost == pytest.approx(mini_cost.total_cost)
+
+    def test_gpt5_model(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("gpt-5", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1.25)
+        assert cost.output_cost == pytest.approx(10.00)
+
+    def test_deepseek_r1_model(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("deepseek-r1", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1.35)
+        assert cost.output_cost == pytest.approx(5.40)
+
+    def test_grok_model(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("grok-3", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(3.00)
+        assert cost.output_cost == pytest.approx(15.00)
+
+    def test_llama_model(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("llama-4-maverick", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(0.25)
+        assert cost.output_cost == pytest.approx(1.00)
+
+    def test_mistral_model(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("mistral-large-3", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(0.50)
+        assert cost.output_cost == pytest.approx(1.50)
+
+    def test_cohere_model(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("cohere-command-a", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(2.50)
+        assert cost.output_cost == pytest.approx(10.00)
+
+
+class TestApplyCostMultiplier:
+    def test_applies_multiplier_to_all_fields(self) -> None:
+        cost = Cost(
+            input_cost=1.0,
+            output_cost=2.0,
+            total_cost=3.0,
+            cache_read_cost=0.5,
+            cache_creation_cost=0.25,
+        )
+        result = apply_cost_multiplier(cost, 1.1)
+        assert result.input_cost == pytest.approx(1.1)
+        assert result.output_cost == pytest.approx(2.2)
+        assert result.total_cost == pytest.approx(3.3)
+        assert result.cache_read_cost == pytest.approx(0.55)
+        assert result.cache_creation_cost == pytest.approx(0.275)
+
+    def test_none_cache_fields_stay_none(self) -> None:
+        cost = Cost(input_cost=1.0, output_cost=2.0, total_cost=3.0)
+        result = apply_cost_multiplier(cost, 2.0)
+        assert result.input_cost == pytest.approx(2.0)
+        assert result.output_cost == pytest.approx(4.0)
+        assert result.total_cost == pytest.approx(6.0)
+        assert result.cache_read_cost is None
+        assert result.cache_creation_cost is None

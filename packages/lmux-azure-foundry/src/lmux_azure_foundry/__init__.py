@@ -6,17 +6,25 @@ from lmux_azure_foundry.auth import (
     AzureFoundryKeyAuthProvider,
     AzureFoundryTokenAuthProvider,
 )
-from lmux_azure_foundry.cost import calculate_azure_foundry_cost
+from lmux_azure_foundry.cost import (
+    DATA_ZONE_MULTIPLIER,
+    REGIONAL_MULTIPLIER,
+    apply_cost_multiplier,
+    calculate_azure_foundry_cost,
+)
 from lmux_azure_foundry.params import AzureFoundryParams
 from lmux_azure_foundry.provider import AzureFoundryProvider
 
 __all__ = [
+    "DATA_ZONE_MULTIPLIER",
+    "REGIONAL_MULTIPLIER",
     "AzureAdToken",
     "AzureFoundryCredential",
     "AzureFoundryKeyAuthProvider",
     "AzureFoundryParams",
     "AzureFoundryProvider",
     "AzureFoundryTokenAuthProvider",
+    "apply_cost_multiplier",
     "calculate_azure_foundry_cost",
     "preload",
 ]

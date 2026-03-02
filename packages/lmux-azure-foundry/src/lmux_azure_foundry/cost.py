@@ -1,17 +1,71 @@
 """Azure AI Foundry pricing data and cost calculation.
 
-Prices are for Global Standard (pay-as-you-go) deployments.
-Use ``register_pricing()`` on ``AzureFoundryProvider`` for provisioned
-deployments, regional overrides, or models not listed here.
+Prices are Global Standard (pay-as-you-go) pricing.  Data Zone and Regional
+deployments apply a multiplier on top of these base rates.
 
-Pricing as of Mar 2, 2026 (source: https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/)
+Use ``register_pricing()`` on ``AzureFoundryProvider`` for provisioned
+deployments or models not listed here.
+
+Pricing as of Mar 2, 2026 (source: Azure Retail Prices API, serviceName="Foundry Models")
 """
 
 from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
 from lmux.types import Cost, Usage
 
+# MARK: Deployment-type multipliers
+
+DATA_ZONE_MULTIPLIER = 1.1
+"""Data Zone deployments are consistently 1.1x global pricing across all models."""
+
+REGIONAL_MULTIPLIER = 1.1
+"""Regional deployments are approximately 1.1x global pricing.
+
+Note: actual regional pricing varies by model (1.1x-1.375x).  This constant
+uses the most common multiplier; for exact per-model regional rates, use
+``register_pricing()`` to override individual models.
+"""
+
+# MARK: Global Standard pricing (base rates)
+
 _PRICING: dict[str, ModelPricing] = {
-    # GPT-4.1 family
+    # --- OpenAI: GPT-5 family ---
+    "gpt-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.125),
+            )
+        ],
+    ),
+    "gpt-5-mini": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.25),
+                output_cost_per_token=per_million_tokens(2.00),
+                cache_read_cost_per_token=per_million_tokens(0.025),
+            )
+        ],
+    ),
+    "gpt-5-nano": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.05),
+                output_cost_per_token=per_million_tokens(0.40),
+                cache_read_cost_per_token=per_million_tokens(0.005),
+            )
+        ],
+    ),
+    # --- OpenAI: GPT-4.1 family ---
+    "gpt-4.1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(8.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
     "gpt-4.1-mini": ModelPricing(
         tiers=[
             PricingTier(
@@ -30,16 +84,7 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    "gpt-4.1": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(2.00),
-                output_cost_per_token=per_million_tokens(8.00),
-                cache_read_cost_per_token=per_million_tokens(0.50),
-            )
-        ],
-    ),
-    # GPT-4o family
+    # --- OpenAI: GPT-4o family ---
     "gpt-4o-mini": ModelPricing(
         tiers=[
             PricingTier(
@@ -58,7 +103,33 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # Reasoning models
+    # --- OpenAI: Reasoning models ---
+    "o1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(15.00),
+                output_cost_per_token=per_million_tokens(60.00),
+                cache_read_cost_per_token=per_million_tokens(7.50),
+            )
+        ],
+    ),
+    "o3-pro": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(20.00),
+                output_cost_per_token=per_million_tokens(80.00),
+            )
+        ],
+    ),
+    "o3-deep-research": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(40.00),
+                cache_read_cost_per_token=per_million_tokens(2.50),
+            )
+        ],
+    ),
     "o3-mini": ModelPricing(
         tiers=[
             PricingTier(
@@ -86,7 +157,16 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # Embedding models
+    "codex-mini": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.50),
+                output_cost_per_token=per_million_tokens(6.00),
+                cache_read_cost_per_token=per_million_tokens(0.375),
+            )
+        ],
+    ),
+    # --- OpenAI: Embedding models ---
     "text-embedding-3-small": ModelPricing(
         tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.02), output_cost_per_token=0.0)]
     ),
@@ -95,6 +175,107 @@ _PRICING: dict[str, ModelPricing] = {
     ),
     "text-embedding-ada-002": ModelPricing(
         tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.10), output_cost_per_token=0.0)]
+    ),
+    # --- DeepSeek ---
+    "deepseek-r1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.35),
+                output_cost_per_token=per_million_tokens(5.40),
+            )
+        ],
+    ),
+    "deepseek-v3": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.14),
+                output_cost_per_token=per_million_tokens(4.56),
+            )
+        ],
+    ),
+    "deepseek-v3.2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.58),
+                output_cost_per_token=per_million_tokens(1.68),
+            )
+        ],
+    ),
+    # --- xAI (Grok) ---
+    "grok-3": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.00),
+                output_cost_per_token=per_million_tokens(15.00),
+            )
+        ],
+    ),
+    "grok-3-mini": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.25),
+                output_cost_per_token=per_million_tokens(1.27),
+            )
+        ],
+    ),
+    "grok-4": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.00),
+                output_cost_per_token=per_million_tokens(15.00),
+            )
+        ],
+    ),
+    "grok-4.1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
+    # --- Meta (Llama) ---
+    "llama-3.3-70b": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.71),
+                output_cost_per_token=per_million_tokens(0.71),
+            )
+        ],
+    ),
+    "llama-4-maverick": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.25),
+                output_cost_per_token=per_million_tokens(1.00),
+            )
+        ],
+    ),
+    # --- Mistral ---
+    "mistral-large": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.50),
+                output_cost_per_token=per_million_tokens(1.50),
+            )
+        ],
+    ),
+    "codestral": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.30),
+                output_cost_per_token=per_million_tokens(0.90),
+            )
+        ],
+    ),
+    # --- Cohere ---
+    "cohere-command-a": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(10.00),
+            )
+        ],
     ),
 }
 
@@ -113,3 +294,14 @@ def calculate_azure_foundry_cost(model: str, usage: Usage) -> Cost | None:
     if pricing is None:
         return None
     return calculate_cost(usage, pricing)
+
+
+def apply_cost_multiplier(cost: Cost, multiplier: float) -> Cost:
+    """Apply a multiplier to all fields in a cost breakdown."""
+    return Cost(
+        input_cost=cost.input_cost * multiplier,
+        output_cost=cost.output_cost * multiplier,
+        total_cost=cost.total_cost * multiplier,
+        cache_read_cost=cost.cache_read_cost * multiplier if cost.cache_read_cost is not None else None,
+        cache_creation_cost=cost.cache_creation_cost * multiplier if cost.cache_creation_cost is not None else None,
+    )

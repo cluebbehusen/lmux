@@ -48,7 +48,7 @@ class FakeTokenAuth:
         return AzureAdToken(token="fake-ad-token")
 
     async def aget_credentials(self) -> AzureAdToken:
-        return AzureAdToken(token="fake-ad-token")
+        return AzureAdToken(token="fake-ad-token")  # pragma: no cover
 
 
 class FakeTokenProviderAuth:
@@ -62,7 +62,7 @@ class FakeTokenProviderAuth:
         return self._provider
 
     async def aget_credentials(self) -> Callable[[], str]:
-        return self._provider
+        return self._provider  # pragma: no cover
 
 
 @pytest.fixture
@@ -316,6 +316,81 @@ class TestChat:
         assert result.cost is not None
         assert result.cost.total_cost > 0
 
+    def test_chat_data_zone_multiplier(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
+
+        result_global = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        result_dz = sync_provider.chat(
+            "gpt-4o",
+            [UserMessage(content="Hi")],
+            provider_params=AzureFoundryParams(deployment_type="data_zone"),
+        )
+
+        assert result_global.cost is not None
+        assert result_dz.cost is not None
+        assert result_dz.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
+
+    def test_chat_regional_multiplier(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
+
+        result_global = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        result_regional = sync_provider.chat(
+            "gpt-4o",
+            [UserMessage(content="Hi")],
+            provider_params=AzureFoundryParams(deployment_type="regional"),
+        )
+
+        assert result_global.cost is not None
+        assert result_regional.cost is not None
+        assert result_regional.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
+
+    def test_chat_no_multiplier_without_params(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
+
+        result1 = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        result2 = sync_provider.chat(
+            "gpt-4o",
+            [UserMessage(content="Hi")],
+            provider_params=AzureFoundryParams(deployment_type="global"),
+        )
+
+        assert result1.cost is not None
+        assert result2.cost is not None
+        assert result1.cost.total_cost == pytest.approx(result2.cost.total_cost)
+
+    def test_chat_no_multiplier_with_none_cost(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock
+    ) -> None:
+        unknown_completion = ChatCompletion(
+            id="chatcmpl-123",
+            choices=[
+                Choice(
+                    finish_reason="stop",
+                    index=0,
+                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
+                )
+            ],
+            created=1234567890,
+            model="totally-unknown-model",
+            object="chat.completion",
+            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+        )
+        mock_sync_client.chat.completions.create.return_value = unknown_completion
+
+        result = sync_provider.chat(
+            "totally-unknown-model",
+            [UserMessage(content="Hi")],
+            provider_params=AzureFoundryParams(deployment_type="data_zone"),
+        )
+
+        assert result.cost is None
+
 
 # MARK: Achat
 
@@ -379,6 +454,30 @@ class TestChatStream:
         assert chunks[2].cost is not None
         assert chunks[2].cost.total_cost > 0
 
+    def test_stream_data_zone_multiplier(
+        self,
+        sync_provider: AzureFoundryProvider,
+        mock_sync_client: MagicMock,
+        stream_chunks: list[ChatCompletionChunk],
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = iter(stream_chunks)
+
+        chunks_global = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
+
+        mock_sync_client.chat.completions.create.return_value = iter(stream_chunks)
+
+        chunks_dz = list(
+            sync_provider.chat_stream(
+                "gpt-4o",
+                [UserMessage(content="Hi")],
+                provider_params=AzureFoundryParams(deployment_type="data_zone"),
+            )
+        )
+
+        assert chunks_global[2].cost is not None
+        assert chunks_dz[2].cost is not None
+        assert chunks_dz[2].cost.total_cost == pytest.approx(chunks_global[2].cost.total_cost * 1.1)
+
     def test_stream_exception_on_create(
         self,
         sync_provider: AzureFoundryProvider,
@@ -429,6 +528,37 @@ class TestAchatStream:
         assert chunks[0].delta == "Hel"
         assert chunks[2].finish_reason == "stop"
         assert chunks[2].cost is not None
+
+    async def test_achat_stream_data_zone_multiplier(
+        self,
+        async_provider: AzureFoundryProvider,
+        mock_async_client: MagicMock,
+        stream_chunks: list[ChatCompletionChunk],
+    ) -> None:
+        async def _async_iter_global() -> Any:  # noqa: ANN401
+            for chunk in stream_chunks:
+                yield chunk
+
+        async def _async_iter_dz() -> Any:  # noqa: ANN401
+            for chunk in stream_chunks:
+                yield chunk
+
+        mock_async_client.chat.completions.create.return_value = _async_iter_global()
+        chunks_global = [chunk async for chunk in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")])]
+
+        mock_async_client.chat.completions.create.return_value = _async_iter_dz()
+        chunks_dz = [
+            chunk
+            async for chunk in async_provider.achat_stream(
+                "gpt-4o",
+                [UserMessage(content="Hi")],
+                provider_params=AzureFoundryParams(deployment_type="data_zone"),
+            )
+        ]
+
+        assert chunks_global[2].cost is not None
+        assert chunks_dz[2].cost is not None
+        assert chunks_dz[2].cost.total_cost == pytest.approx(chunks_global[2].cost.total_cost * 1.1)
 
     async def test_exception_on_create(
         self,
@@ -767,6 +897,7 @@ class TestProviderParamsKwargs:
         assert "reasoning" not in call_kwargs
         assert "seed" not in call_kwargs
         assert "user" not in call_kwargs
+        assert "deployment_type" not in call_kwargs
 
     def test_all_params(
         self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
@@ -780,6 +911,21 @@ class TestProviderParamsKwargs:
         assert call_kwargs["reasoning"] == {"effort": "low"}
         assert call_kwargs["seed"] == 42
         assert call_kwargs["user"] == "u1"
+        assert "deployment_type" not in call_kwargs
+
+    def test_deployment_type_not_forwarded(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
+
+        sync_provider.chat(
+            "gpt-4o",
+            [UserMessage(content="Hi")],
+            provider_params=AzureFoundryParams(deployment_type="data_zone"),
+        )
+
+        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
+        assert "deployment_type" not in call_kwargs
 
 
 # MARK: Register Pricing

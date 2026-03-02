@@ -29,7 +29,12 @@ from lmux_azure_foundry._mappers import (
     map_tools,
 )
 from lmux_azure_foundry.auth import AzureFoundryCredential, AzureFoundryKeyAuthProvider
-from lmux_azure_foundry.cost import calculate_azure_foundry_cost
+from lmux_azure_foundry.cost import (
+    DATA_ZONE_MULTIPLIER,
+    REGIONAL_MULTIPLIER,
+    apply_cost_multiplier,
+    calculate_azure_foundry_cost,
+)
 from lmux_azure_foundry.params import AzureFoundryParams
 
 PROVIDER_NAME = "azure-foundry"
@@ -132,7 +137,8 @@ class AzureFoundryProvider(
             completion = client.chat.completions.create(**kwargs, stream=False)
         except Exception as e:
             raise map_azure_foundry_error(e) from e
-        return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
+        response = map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_multipliers(response, provider_params)
 
     async def achat(  # noqa: PLR0913
         self,
@@ -155,7 +161,8 @@ class AzureFoundryProvider(
             completion = await client.chat.completions.create(**kwargs, stream=False)
         except Exception as e:
             raise map_azure_foundry_error(e) from e
-        return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
+        response = map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_multipliers(response, provider_params)
 
     def chat_stream(  # noqa: PLR0913
         self,
@@ -184,7 +191,9 @@ class AzureFoundryProvider(
             for chunk in stream:
                 mapped = map_chat_chunk(chunk)
                 if mapped.usage is not None:
-                    mapped = mapped.model_copy(update={"cost": self._calculate_cost(chunk.model, mapped.usage)})
+                    cost = self._calculate_cost(chunk.model, mapped.usage)
+                    cost = self._apply_cost_multipliers(cost, provider_params)
+                    mapped = mapped.model_copy(update={"cost": cost})
                 yield mapped
         except Exception as e:
             raise map_azure_foundry_error(e) from e
@@ -216,7 +225,9 @@ class AzureFoundryProvider(
             async for chunk in stream:
                 mapped = map_chat_chunk(chunk)
                 if mapped.usage is not None:
-                    mapped = mapped.model_copy(update={"cost": self._calculate_cost(chunk.model, mapped.usage)})
+                    cost = self._calculate_cost(chunk.model, mapped.usage)
+                    cost = self._apply_cost_multipliers(cost, provider_params)
+                    mapped = mapped.model_copy(update={"cost": cost})
                 yield mapped
         except Exception as e:
             raise map_azure_foundry_error(e) from e
@@ -252,6 +263,36 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_azure_foundry_error(e) from e
         return map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
+
+    # MARK: Cost Multipliers
+
+    @staticmethod
+    def _cost_multiplier(provider_params: AzureFoundryParams | None) -> float:
+        """Compute the combined cost multiplier from provider params."""
+        multiplier = 1.0
+        if provider_params is None:
+            return multiplier
+        if provider_params.deployment_type == "data_zone":
+            multiplier *= DATA_ZONE_MULTIPLIER
+        elif provider_params.deployment_type == "regional":
+            multiplier *= REGIONAL_MULTIPLIER
+        return multiplier
+
+    @staticmethod
+    def _apply_cost_multipliers(cost: Cost | None, provider_params: AzureFoundryParams | None) -> Cost | None:
+        if cost is None:
+            return None
+        multiplier = AzureFoundryProvider._cost_multiplier(provider_params)
+        if multiplier == 1.0:
+            return cost
+        return apply_cost_multiplier(cost, multiplier)
+
+    def _apply_multipliers(self, response: ChatResponse, provider_params: AzureFoundryParams | None) -> ChatResponse:
+        """Apply deployment_type cost multipliers to a completed response."""
+        adjusted = self._apply_cost_multipliers(response.cost, provider_params)
+        if adjusted is response.cost:
+            return response
+        return response.model_copy(update={"cost": adjusted})
 
     # MARK: Internal Helpers
 
