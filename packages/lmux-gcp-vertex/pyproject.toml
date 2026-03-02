@@ -1,7 +1,7 @@
 [project]
-name = "lmux-google"
+name = "lmux-gcp-vertex"
 version = "0.1.0"
-description = "Google Vertex AI provider for lmux"
+description = "Google Cloud Vertex AI provider for lmux"
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [

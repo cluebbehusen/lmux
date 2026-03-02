@@ -1,4 +1,4 @@
-"""Google Vertex AI provider implementation."""
+"""GCP Vertex AI provider implementation."""
 
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any
@@ -19,9 +19,9 @@ from lmux.types import (
     Tool,
     Usage,
 )
-from lmux_google._exceptions import map_google_error
-from lmux_google._lazy import create_client
-from lmux_google._mappers import (
+from lmux_gcp_vertex._exceptions import map_gcp_vertex_error
+from lmux_gcp_vertex._lazy import create_client
+from lmux_gcp_vertex._mappers import (
     map_embed_content_response,
     map_generate_content_chunk,
     map_generate_content_response,
@@ -29,19 +29,19 @@ from lmux_google._mappers import (
     map_response_format,
     map_tools,
 )
-from lmux_google.auth import GoogleADCAuthProvider
-from lmux_google.cost import calculate_google_cost
-from lmux_google.params import GoogleParams
+from lmux_gcp_vertex.auth import GCPVertexADCAuthProvider
+from lmux_gcp_vertex.cost import calculate_gcp_vertex_cost
+from lmux_gcp_vertex.params import GCPVertexParams
 
-PROVIDER_NAME = "google"
+PROVIDER_NAME = "gcp-vertex"
 
 
-class GoogleProvider(
-    CompletionProvider[GoogleParams],
-    EmbeddingProvider[GoogleParams],
+class GCPVertexProvider(
+    CompletionProvider[GCPVertexParams],
+    EmbeddingProvider[GCPVertexParams],
     PricingProvider,
 ):
-    """Google Vertex AI API provider using the google-genai SDK."""
+    """GCP Vertex AI provider using the google-genai SDK."""
 
     def __init__(
         self,
@@ -52,7 +52,7 @@ class GoogleProvider(
         vertexai: bool = True,
         api_key: str | None = None,
     ) -> None:
-        self._auth: AuthProvider[Credentials, Credentials] = auth or GoogleADCAuthProvider()
+        self._auth: AuthProvider[Credentials, Credentials] = auth or GCPVertexADCAuthProvider()
         self._project = project
         self._location = location
         self._vertexai = vertexai
@@ -69,7 +69,7 @@ class GoogleProvider(
         pricing = self._custom_pricing.get(model)
         if pricing is not None:
             return calculate_cost(usage, pricing)
-        return calculate_google_cost(model, usage)
+        return calculate_gcp_vertex_cost(model, usage)
 
     # MARK: Client Management
 
@@ -110,7 +110,7 @@ class GoogleProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
-        provider_params: GoogleParams | None = None,
+        provider_params: GCPVertexParams | None = None,
     ) -> ChatResponse:
         client = self._get_client()
         system, contents = map_messages(messages)
@@ -124,7 +124,7 @@ class GoogleProvider(
                 config=config,  # pyright: ignore[reportArgumentType]
             )
         except Exception as e:
-            raise map_google_error(e) from e
+            raise map_gcp_vertex_error(e) from e
         return map_generate_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
     async def achat(  # noqa: PLR0913
@@ -138,7 +138,7 @@ class GoogleProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
-        provider_params: GoogleParams | None = None,
+        provider_params: GCPVertexParams | None = None,
     ) -> ChatResponse:
         client = await self._aget_client()
         system, contents = map_messages(messages)
@@ -152,7 +152,7 @@ class GoogleProvider(
                 config=config,  # pyright: ignore[reportArgumentType]
             )
         except Exception as e:
-            raise map_google_error(e) from e
+            raise map_gcp_vertex_error(e) from e
         return map_generate_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
     def chat_stream(  # noqa: PLR0913
@@ -166,7 +166,7 @@ class GoogleProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
-        provider_params: GoogleParams | None = None,
+        provider_params: GCPVertexParams | None = None,
     ) -> Iterator[ChatChunk]:
         client = self._get_client()
         system, contents = map_messages(messages)
@@ -180,7 +180,7 @@ class GoogleProvider(
                 config=config,  # pyright: ignore[reportArgumentType]
             )
         except Exception as e:
-            raise map_google_error(e) from e
+            raise map_gcp_vertex_error(e) from e
 
         try:
             for chunk in stream:
@@ -189,7 +189,7 @@ class GoogleProvider(
                     mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
                 yield mapped
         except Exception as e:
-            raise map_google_error(e) from e
+            raise map_gcp_vertex_error(e) from e
 
     async def achat_stream(  # noqa: PLR0913
         self,
@@ -202,7 +202,7 @@ class GoogleProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
-        provider_params: GoogleParams | None = None,
+        provider_params: GCPVertexParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
         client = await self._aget_client()
         system, contents = map_messages(messages)
@@ -221,7 +221,7 @@ class GoogleProvider(
                     mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
                 yield mapped
         except Exception as e:
-            raise map_google_error(e) from e
+            raise map_gcp_vertex_error(e) from e
 
     # MARK: Embeddings
 
@@ -230,14 +230,14 @@ class GoogleProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         *,
-        provider_params: GoogleParams | None = None,
+        provider_params: GCPVertexParams | None = None,
     ) -> EmbeddingResponse:
         client = self._get_client()
         contents = input if isinstance(input, list) else [input]
         try:
             response = client.models.embed_content(model=model, contents=contents)
         except Exception as e:
-            raise map_google_error(e) from e
+            raise map_gcp_vertex_error(e) from e
         return map_embed_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
     async def aembed(
@@ -245,14 +245,14 @@ class GoogleProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         *,
-        provider_params: GoogleParams | None = None,
+        provider_params: GCPVertexParams | None = None,
     ) -> EmbeddingResponse:
         client = await self._aget_client()
         contents = input if isinstance(input, list) else [input]
         try:
             response = await client.aio.models.embed_content(model=model, contents=contents)
         except Exception as e:
-            raise map_google_error(e) from e
+            raise map_gcp_vertex_error(e) from e
         return map_embed_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
     # MARK: Internal Helpers
@@ -266,7 +266,7 @@ class GoogleProvider(
         stop: str | list[str] | None,
         tools: list[Tool] | None,
         response_format: ResponseFormat | None,
-        provider_params: GoogleParams | None,
+        provider_params: GCPVertexParams | None,
     ) -> dict[str, Any]:
         config: dict[str, Any] = {}
         if system_instruction is not None:
@@ -288,12 +288,12 @@ class GoogleProvider(
             if schema is not None:
                 config["response_schema"] = schema
         if provider_params is not None:
-            config.update(GoogleProvider._provider_params_kwargs(provider_params))
+            config.update(GCPVertexProvider._provider_params_kwargs(provider_params))
         return config
 
     @staticmethod
-    def _provider_params_kwargs(params: GoogleParams) -> dict[str, Any]:
-        """Convert GoogleParams to kwargs for GenerateContentConfig."""
+    def _provider_params_kwargs(params: GCPVertexParams) -> dict[str, Any]:
+        """Convert GCPVertexParams to kwargs for GenerateContentConfig."""
         kwargs: dict[str, Any] = {}
         if params.safety_settings is not None:
             kwargs["safety_settings"] = [

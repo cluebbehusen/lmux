@@ -30,7 +30,7 @@ from lmux.types import (
     Usage,
     UserMessage,
 )
-from lmux_google._mappers import (
+from lmux_gcp_vertex._mappers import (
     map_embed_content_response,
     map_generate_content_chunk,
     map_generate_content_response,
@@ -150,19 +150,27 @@ class TestMapMessages:
         system, contents = map_messages([UserMessage(content=parts)])
 
         assert system is None
-        assert len(contents) == 1
-        content_parts = contents[0]["parts"]
-        assert content_parts[0] == {"text": "What is this?"}
-        assert content_parts[1] == {"inline_data": {"data": raw_bytes, "mime_type": "image/png"}}
+        assert contents == [
+            {
+                "role": "user",
+                "parts": [
+                    {"text": "What is this?"},
+                    {"inline_data": {"data": raw_bytes, "mime_type": "image/png"}},
+                ],
+            }
+        ]
 
     def test_user_message_multimodal_url(self) -> None:
         parts: list[ContentPart] = [ImageContent(url="https://example.com/image.png")]
         system, contents = map_messages([UserMessage(content=parts)])
 
         assert system is None
-        assert contents[0]["parts"][0] == {
-            "file_data": {"file_uri": "https://example.com/image.png", "mime_type": "image/*"}
-        }
+        assert contents == [
+            {
+                "role": "user",
+                "parts": [{"file_data": {"file_uri": "https://example.com/image.png", "mime_type": "image/*"}}],
+            }
+        ]
 
     def test_assistant_message_text(self) -> None:
         system, contents = map_messages([AssistantMessage(content="Hi!")])
@@ -174,12 +182,14 @@ class TestMapMessages:
         system, contents = map_messages([AssistantMessage(content="Let me check.", tool_calls=[tc])])
 
         assert system is None
-        assert len(contents) == 1
-        msg = contents[0]
-        assert msg["role"] == "model"
-        assert msg["parts"] == [
-            {"text": "Let me check."},
-            {"function_call": {"id": "tc1", "name": "get_weather", "args": {"city": "NYC"}}},
+        assert contents == [
+            {
+                "role": "model",
+                "parts": [
+                    {"text": "Let me check."},
+                    {"function_call": {"id": "tc1", "name": "get_weather", "args": {"city": "NYC"}}},
+                ],
+            }
         ]
 
     def test_assistant_message_tool_calls_no_content(self) -> None:
@@ -187,10 +197,13 @@ class TestMapMessages:
         system, contents = map_messages([AssistantMessage(content=None, tool_calls=[tc])])
 
         assert system is None
-        msg = contents[0]
-        assert msg["role"] == "model"
-        assert msg["parts"] == [
-            {"function_call": {"id": "tc1", "name": "f", "args": {}}},
+        assert contents == [
+            {
+                "role": "model",
+                "parts": [
+                    {"function_call": {"id": "tc1", "name": "f", "args": {}}},
+                ],
+            }
         ]
 
     def test_tool_message_json_content(self) -> None:
@@ -204,11 +217,18 @@ class TestMapMessages:
 
         assert system is None
         assert len(contents) == 2
-        tool_msg = contents[1]
-        assert tool_msg["role"] == "user"
-        assert tool_msg["parts"][0]["function_response"]["name"] == "get_weather"
-        assert tool_msg["parts"][0]["function_response"]["response"] == {"temperature": "72F"}
-        assert tool_msg["parts"][0]["function_response"]["id"] == "tc1"
+        assert contents[1] == {
+            "role": "user",
+            "parts": [
+                {
+                    "function_response": {
+                        "id": "tc1",
+                        "name": "get_weather",
+                        "response": {"temperature": "72F"},
+                    }
+                }
+            ],
+        }
 
     def test_tool_message_plain_text_content(self) -> None:
         tc = ToolCall(id="tc1", function=FunctionCallResult(name="search", arguments="{}"))
@@ -219,8 +239,18 @@ class TestMapMessages:
             ]
         )
 
-        tool_msg = contents[1]
-        assert tool_msg["parts"][0]["function_response"]["response"] == {"result": "not json"}
+        assert contents[1] == {
+            "role": "user",
+            "parts": [
+                {
+                    "function_response": {
+                        "id": "tc1",
+                        "name": "search",
+                        "response": {"result": "not json"},
+                    }
+                }
+            ],
+        }
 
     def test_tool_message_unknown_id_uses_id_as_name(self) -> None:
         _system, contents = map_messages(
@@ -229,8 +259,18 @@ class TestMapMessages:
             ]
         )
 
-        tool_msg = contents[0]
-        assert tool_msg["parts"][0]["function_response"]["name"] == "unknown_id"
+        assert contents[0] == {
+            "role": "user",
+            "parts": [
+                {
+                    "function_response": {
+                        "id": "unknown_id",
+                        "name": "unknown_id",
+                        "response": {"result": "ok"},
+                    }
+                }
+            ],
+        }
 
     def test_no_system_returns_none(self) -> None:
         system, _contents = map_messages([UserMessage(content="hi")])
@@ -244,9 +284,10 @@ class TestMapMessages:
         ]
         system, contents = map_messages(msgs)
         assert system == "sys"
-        assert len(contents) == 2
-        assert contents[0]["role"] == "user"
-        assert contents[1]["role"] == "model"
+        assert contents == [
+            {"role": "user", "parts": [{"text": "hi"}]},
+            {"role": "model", "parts": [{"text": "hello"}]},
+        ]
 
 
 # MARK: map_tools
@@ -270,7 +311,10 @@ class TestMapTools:
                     {
                         "name": "get_weather",
                         "description": "Get weather",
-                        "parameters": {"type": "object", "properties": {"city": {"type": "string"}}},
+                        "parameters_json_schema": {
+                            "type": "object",
+                            "properties": {"city": {"type": "string"}},
+                        },
                     }
                 ]
             }
@@ -309,14 +353,14 @@ class TestMapResponseFormat:
 class TestMapGenerateContentResponse:
     def test_text_response(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hello!")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result == ChatResponse(
             content="Hello!",
             tool_calls=None,
             usage=Usage(input_tokens=10, output_tokens=5),
             cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
             model="gemini-2.0-flash",
-            provider="google",
+            provider="gcp-vertex",
             finish_reason="stop",
         )
 
@@ -325,7 +369,7 @@ class TestMapGenerateContentResponse:
             function_calls=[{"id": "call_0", "name": "get_weather", "args": {"city": "NYC"}}],
             finish_reason="STOP",
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result == ChatResponse(
             content=None,
             tool_calls=[
@@ -337,7 +381,7 @@ class TestMapGenerateContentResponse:
             usage=Usage(input_tokens=10, output_tokens=5),
             cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
             model="gemini-2.0-flash",
-            provider="google",
+            provider="gcp-vertex",
             finish_reason="tool_calls",
         )
 
@@ -345,7 +389,7 @@ class TestMapGenerateContentResponse:
         response = _make_response(
             function_calls=[{"id": None, "name": "search", "args": {}}],
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.tool_calls is not None
         # ID should be auto-generated as call_{index}
         assert result.tool_calls[0].id.startswith("call_")
@@ -354,7 +398,7 @@ class TestMapGenerateContentResponse:
         response = _make_response(
             function_calls=[{"id": "c1", "name": "ping", "args": None}],
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.tool_calls is not None
         assert result.tool_calls[0].function.arguments == "{}"
 
@@ -367,7 +411,7 @@ class TestMapGenerateContentResponse:
         usage.cached_content_token_count = None
         response.usage_metadata = usage
 
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.content is None
         assert result.tool_calls is None
 
@@ -376,58 +420,58 @@ class TestMapGenerateContentResponse:
         response.candidates = []
         response.usage_metadata = None
 
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.content is None
         assert result.usage is None
         assert result.cost is None
 
     def test_cache_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="cached", cached_tokens=50)
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
 
     def test_no_usage(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hi")
         response.usage_metadata = None
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.usage is None
         assert result.cost is None
 
     def test_cost_none_for_unknown_model(self, none_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hi")
-        result = map_generate_content_response(response, "unknown-model", "google", none_cost_fn)
+        result = map_generate_content_response(response, "unknown-model", "gcp-vertex", none_cost_fn)
         assert result.cost is None
 
     def test_safety_finish_reason(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text=None, finish_reason="SAFETY")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.finish_reason == "content_filter"
 
     def test_max_tokens_finish_reason(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="truncated", finish_reason="MAX_TOKENS")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.finish_reason == "length"
 
     def test_none_finish_reason(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hi", finish_reason=None)
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.finish_reason is None
 
     def test_unknown_finish_reason_passthrough(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hi", finish_reason="SOME_NEW_REASON")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.finish_reason == "SOME_NEW_REASON"
 
     def test_thought_parts_skipped(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Answer", thoughts=["Thinking..."])
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.content == "Answer"
 
     def test_no_content_on_candidate(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hi")
         response.candidates[0].content = None
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.content is None
         assert result.tool_calls is None
 
@@ -515,13 +559,13 @@ class TestMapEmbedContentResponse:
         emb.values = [0.1, 0.2, 0.3]
         response.embeddings = [emb]
 
-        result = map_embed_content_response(response, "text-embedding-005", "google", noop_cost_fn)
+        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
         assert result == EmbeddingResponse(
             embeddings=[[0.1, 0.2, 0.3]],
             usage=Usage(input_tokens=0, output_tokens=0),
             cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
             model="text-embedding-005",
-            provider="google",
+            provider="gcp-vertex",
         )
 
     def test_multiple_embeddings(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
@@ -532,14 +576,14 @@ class TestMapEmbedContentResponse:
         emb2.values = [0.3, 0.4]
         response.embeddings = [emb1, emb2]
 
-        result = map_embed_content_response(response, "text-embedding-005", "google", noop_cost_fn)
+        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
         assert result.embeddings == [[0.1, 0.2], [0.3, 0.4]]
 
     def test_empty_embeddings(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = MagicMock()
         response.embeddings = None
 
-        result = map_embed_content_response(response, "text-embedding-005", "google", noop_cost_fn)
+        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
         assert result.embeddings == []
 
     def test_embedding_with_none_values(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
@@ -548,12 +592,12 @@ class TestMapEmbedContentResponse:
         emb.values = None
         response.embeddings = [emb]
 
-        result = map_embed_content_response(response, "text-embedding-005", "google", noop_cost_fn)
+        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
         assert result.embeddings == [[]]
 
     def test_cost_none_for_unknown(self, none_cost_fn: Any) -> None:  # noqa: ANN401
         response = MagicMock()
         response.embeddings = [MagicMock(values=[0.1])]
 
-        result = map_embed_content_response(response, "unknown-model", "google", none_cost_fn)
+        result = map_embed_content_response(response, "unknown-model", "gcp-vertex", none_cost_fn)
         assert result.cost is None

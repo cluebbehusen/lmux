@@ -1,6 +1,6 @@
-"""Tests for Google Vertex AI provider-specific parameters."""
+"""Tests for GCP Vertex AI provider-specific parameters."""
 
-from lmux_google.params import GoogleParams, SafetySetting
+from lmux_gcp_vertex.params import GCPVertexParams, SafetySetting
 
 
 class TestSafetySetting:
@@ -10,9 +10,9 @@ class TestSafetySetting:
         assert setting.threshold == "BLOCK_LOW_AND_ABOVE"
 
 
-class TestGoogleParams:
+class TestGCPVertexParams:
     def test_defaults(self) -> None:
-        params = GoogleParams()
+        params = GCPVertexParams()
         assert params.safety_settings is None
         assert params.presence_penalty is None
         assert params.frequency_penalty is None
@@ -21,7 +21,7 @@ class TestGoogleParams:
         assert params.thinking_config is None
 
     def test_all_fields(self) -> None:
-        params = GoogleParams(
+        params = GCPVertexParams(
             safety_settings=[SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE")],
             presence_penalty=0.5,
             frequency_penalty=0.3,

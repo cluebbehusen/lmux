@@ -88,7 +88,7 @@ known-first-party = [
   "lmux_anthropic",
   "lmux_azure_openai",
   "lmux_aws_bedrock",
-  "lmux_google",
+  "lmux_gcp_vertex",
   "lmux_groq",
 ]
 
@@ -127,7 +127,7 @@ addopts = "--import-mode=importlib --cov"
 
 # ── Coverage ──────────────────────────────────────────────────
 [tool.coverage.run]
-source = ["lmux", "lmux_openai", "lmux_anthropic", "lmux_groq", "lmux_aws_bedrock", "lmux_google"]
+source = ["lmux", "lmux_openai", "lmux_anthropic", "lmux_groq", "lmux_aws_bedrock", "lmux_gcp_vertex"]
 branch = true
 omit = ["**/_lazy.py"]
 

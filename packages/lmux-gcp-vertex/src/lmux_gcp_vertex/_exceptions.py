@@ -22,7 +22,7 @@ _STATUS_CODE_MAP: dict[int, type[LmuxError]] = {
 }
 
 
-def map_google_error(error: Exception) -> LmuxError:
+def map_gcp_vertex_error(error: Exception) -> LmuxError:
     """Convert a google-genai SDK exception to the corresponding lmux exception."""
     from google.genai import errors as genai_errors  # noqa: PLC0415
 

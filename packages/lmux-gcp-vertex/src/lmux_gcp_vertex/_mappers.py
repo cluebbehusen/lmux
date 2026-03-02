@@ -4,14 +4,19 @@ import base64
 import json
 import re
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from google.genai.types import (
         Candidate,
+        ContentDict,
         EmbedContentResponse,
+        FinishReason,
+        FunctionDeclarationDict,
         GenerateContentResponse,
         GenerateContentResponseUsageMetadata,
+        PartDict,
+        ToolDict,
     )
 
 from lmux.types import (
@@ -41,8 +46,6 @@ from lmux.types import (
 
 type CostCalculator = Callable[[str, Usage], Cost | None]
 
-PROVIDER_NAME = "google"
-
 _DATA_URI_PATTERN = re.compile(r"^data:image/([^;]+);base64,(.+)$", re.DOTALL)
 
 _FINISH_REASON_MAP: dict[str, str] = {
@@ -63,7 +66,7 @@ _FINISH_REASON_MAP: dict[str, str] = {
 # MARK: Input Mappers (lmux -> google-genai)
 
 
-def map_messages(messages: Sequence[Message]) -> tuple[str | None, list[dict[str, Any]]]:
+def map_messages(messages: Sequence[Message]) -> tuple[str | None, list["ContentDict"]]:
     """Convert lmux Messages to google-genai format.
 
     Returns ``(system_instruction, contents)`` where ``system_instruction``
@@ -71,7 +74,7 @@ def map_messages(messages: Sequence[Message]) -> tuple[str | None, list[dict[str
     the conversation history in google-genai Content dict format.
     """
     system_parts: list[str] = []
-    contents: list[dict[str, Any]] = []
+    contents: list[ContentDict] = []
 
     # Build tool_call_id -> function_name mapping for ToolMessage translation
     tool_call_names: dict[str, str] = {}
@@ -95,19 +98,19 @@ def map_messages(messages: Sequence[Message]) -> tuple[str | None, list[dict[str
     return system, contents
 
 
-def _map_user_content(content: str | list[ContentPart]) -> list[dict[str, Any]]:
+def _map_user_content(content: str | list[ContentPart]) -> list["PartDict"]:
     if isinstance(content, str):
         return [{"text": content}]
     return [_map_content_part(part) for part in content]
 
 
-def _map_content_part(part: ContentPart) -> dict[str, Any]:
+def _map_content_part(part: ContentPart) -> "PartDict":
     if isinstance(part, TextContent):
         return {"text": part.text}
     return _map_image_content(part)
 
 
-def _map_image_content(img: ImageContent) -> dict[str, Any]:
+def _map_image_content(img: ImageContent) -> "PartDict":
     match = _DATA_URI_PATTERN.match(img.url)
     if match:
         mime_type = f"image/{match.group(1)}"
@@ -117,8 +120,8 @@ def _map_image_content(img: ImageContent) -> dict[str, Any]:
     return {"file_data": {"file_uri": img.url, "mime_type": "image/*"}}
 
 
-def _map_assistant_message(msg: AssistantMessage) -> dict[str, Any]:
-    parts: list[dict[str, Any]] = []
+def _map_assistant_message(msg: AssistantMessage) -> "ContentDict":
+    parts: list[PartDict] = []
     if msg.content is not None:
         parts.append({"text": msg.content})
     if msg.tool_calls:
@@ -135,7 +138,7 @@ def _map_assistant_message(msg: AssistantMessage) -> dict[str, Any]:
     return {"role": "model", "parts": parts}
 
 
-def _map_tool_message(msg: ToolMessage, tool_call_names: dict[str, str]) -> dict[str, Any]:
+def _map_tool_message(msg: ToolMessage, tool_call_names: dict[str, str]) -> "ContentDict":
     name = tool_call_names.get(msg.tool_call_id, msg.tool_call_id)
     try:
         response_data = json.loads(msg.content)
@@ -155,20 +158,20 @@ def _map_tool_message(msg: ToolMessage, tool_call_names: dict[str, str]) -> dict
     }
 
 
-def map_tools(tools: list[Tool]) -> list[dict[str, Any]]:
+def map_tools(tools: list[Tool]) -> list["ToolDict"]:
     """Convert lmux Tools to google-genai tool dicts."""
-    declarations: list[dict[str, Any]] = []
+    declarations: list[FunctionDeclarationDict] = []
     for tool in tools:
-        decl: dict[str, Any] = {"name": tool.function.name}
+        decl: FunctionDeclarationDict = {"name": tool.function.name}
         if tool.function.description is not None:
             decl["description"] = tool.function.description
         if tool.function.parameters is not None:
-            decl["parameters"] = tool.function.parameters
+            decl["parameters_json_schema"] = tool.function.parameters
         declarations.append(decl)
     return [{"function_declarations": declarations}]
 
 
-def map_response_format(rf: ResponseFormat) -> tuple[str | None, dict[str, Any] | None]:
+def map_response_format(rf: ResponseFormat) -> tuple[str | None, dict[str, object] | None]:
     """Convert lmux ResponseFormat to google-genai config fields.
 
     Returns ``(response_mime_type, response_schema)`` to be merged into
@@ -319,7 +322,7 @@ def _get_candidate(response: "GenerateContentResponse") -> "Candidate | None":
     return None
 
 
-def _map_finish_reason(reason: Any, has_tool_calls: bool) -> str | None:  # noqa: ANN401
+def _map_finish_reason(reason: "FinishReason | None", has_tool_calls: bool) -> str | None:
     if has_tool_calls:
         return "tool_calls"
     if reason is None:

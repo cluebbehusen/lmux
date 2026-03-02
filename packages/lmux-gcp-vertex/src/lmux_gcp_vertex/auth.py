@@ -1,7 +1,7 @@
-"""Authentication for Google Vertex AI provider.
+"""Authentication for Google Cloud Vertex AI provider.
 
 The simplest way to authenticate is to use Application Default Credentials (ADC)
-via ``GoogleADCAuthProvider`` (the default).  ADC searches for credentials in:
+via ``GCPVertexADCAuthProvider`` (the default).  ADC searches for credentials in:
 
 1. ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable (path to a service
    account JSON key file)
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from google.auth.credentials import Credentials
 
 
-class GoogleADCAuthProvider:
+class GCPVertexADCAuthProvider:
     """Default auth provider — uses Application Default Credentials.
 
     Credentials are resolved by ``google.auth.default()`` which searches
@@ -37,7 +37,7 @@ class GoogleADCAuthProvider:
         return cast("Credentials", credentials)
 
 
-class GoogleServiceAccountAuthProvider:
+class GCPVertexServiceAccountAuthProvider:
     """Auth provider that loads credentials from a service account JSON key file.
 
     Accepts the file path to the JSON key file (the same value you would set
