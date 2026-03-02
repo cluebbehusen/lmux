@@ -10,7 +10,7 @@ from lmux.exceptions import (
     TimeoutError,  # noqa: A004
 )
 
-PROVIDER = "google"
+PROVIDER = "gcp-vertex"
 
 _STATUS_CODE_MAP: dict[int, type[LmuxError]] = {
     400: InvalidRequestError,

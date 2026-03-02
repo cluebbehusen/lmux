@@ -27,14 +27,13 @@ class GCPVertexADCAuthProvider:
     def get_credentials(self) -> "Credentials":
         import google.auth  # noqa: PLC0415
 
-        credentials, _ = google.auth.default()  # pyright: ignore[reportUnknownVariableType]
-        return cast("Credentials", credentials)
+        # google.auth has unresolvable string forward-ref annotations; cast is required
+        return cast("Credentials", google.auth.default()[0])
 
     async def aget_credentials(self) -> "Credentials":
         import google.auth  # noqa: PLC0415
 
-        credentials, _ = google.auth.default()  # pyright: ignore[reportUnknownVariableType]
-        return cast("Credentials", credentials)
+        return cast("Credentials", google.auth.default()[0])
 
 
 class GCPVertexServiceAccountAuthProvider:

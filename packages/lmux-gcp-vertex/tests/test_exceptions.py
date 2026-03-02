@@ -80,72 +80,72 @@ class TestMapGCPVertexError:
     def test_client_error_400(self, client_error_400: ClientError) -> None:
         result = map_gcp_vertex_error(client_error_400)
         assert isinstance(result, InvalidRequestError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
         assert result.status_code == 400
 
     def test_client_error_401(self, client_error_401: ClientError) -> None:
         result = map_gcp_vertex_error(client_error_401)
         assert isinstance(result, AuthenticationError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
         assert result.status_code == 401
 
     def test_client_error_403(self, client_error_403: ClientError) -> None:
         result = map_gcp_vertex_error(client_error_403)
         assert isinstance(result, AuthenticationError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
         assert result.status_code == 403
 
     def test_client_error_404(self, client_error_404: ClientError) -> None:
         result = map_gcp_vertex_error(client_error_404)
         assert isinstance(result, NotFoundError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
         assert result.status_code == 404
 
     def test_client_error_408(self, client_error_408: ClientError) -> None:
         result = map_gcp_vertex_error(client_error_408)
         assert isinstance(result, TimeoutError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
         assert result.status_code == 408
 
     def test_client_error_429(self, client_error_429: ClientError) -> None:
         result = map_gcp_vertex_error(client_error_429)
         assert isinstance(result, RateLimitError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
         assert result.status_code == 429
 
     def test_client_error_unknown_code(self, client_error_unknown: ClientError) -> None:
         result = map_gcp_vertex_error(client_error_unknown)
         assert isinstance(result, ProviderError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
         assert result.status_code == 418
 
     def test_server_error(self, server_error_500: ServerError) -> None:
         result = map_gcp_vertex_error(server_error_500)
         assert isinstance(result, ProviderError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
         assert result.status_code == 500
 
     def test_api_error(self, api_error_502: APIError) -> None:
         result = map_gcp_vertex_error(api_error_502)
         assert isinstance(result, ProviderError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
         assert result.status_code == 502
 
     def test_default_credentials_error(self, default_credentials_error: DefaultCredentialsError) -> None:
         result = map_gcp_vertex_error(default_credentials_error)
         assert isinstance(result, AuthenticationError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
 
     def test_refresh_error(self, refresh_error: RefreshError) -> None:
         result = map_gcp_vertex_error(refresh_error)
         assert isinstance(result, AuthenticationError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
 
     def test_generic_exception(self) -> None:
         error = RuntimeError("something broke")
         result = map_gcp_vertex_error(error)
         assert isinstance(result, ProviderError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
 
     @pytest.mark.parametrize(
         "error",
@@ -166,4 +166,4 @@ class TestMapGCPVertexError:
     def test_all_errors_are_lmux_errors(self, error: Exception) -> None:
         result = map_gcp_vertex_error(error)
         assert isinstance(result, LmuxError)
-        assert result.provider == "google"
+        assert result.provider == "gcp-vertex"
