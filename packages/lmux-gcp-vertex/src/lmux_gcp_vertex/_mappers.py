@@ -299,9 +299,13 @@ def map_embed_content_response(
         [list(emb.values) if emb.values else [] for emb in response.embeddings] if response.embeddings else []
     )
 
-    # The embedding API does not return token counts in the response.
-    # We report zero tokens; pricing is per-character but we approximate with token cost.
-    usage = Usage(input_tokens=0, output_tokens=0)
+    # The embedding API does not return token counts — only billable_character_count
+    # in metadata (Vertex AI only). We approximate tokens as chars / 4, consistent
+    # with how litellm handles this. This is an approximation, not exact token usage.
+    input_tokens = 0
+    if response.metadata is not None and response.metadata.billable_character_count is not None:
+        input_tokens = response.metadata.billable_character_count // 4
+    usage = Usage(input_tokens=input_tokens, output_tokens=0)
     cost = cost_fn(model, usage)
 
     return EmbeddingResponse(

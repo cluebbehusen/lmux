@@ -290,6 +290,14 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # ── Embedding models ───────────────────────────────────────
+    "gemini-embedding-001": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.15),
+                output_cost_per_token=0.0,
+            ),
+        ],
+    ),
     "text-embedding-005": ModelPricing(
         tiers=[
             PricingTier(

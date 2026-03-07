@@ -88,7 +88,9 @@ def _make_response_mock(
     return response
 
 
-def _make_embed_response_mock(embeddings: list[list[float]]) -> MagicMock:
+def _make_embed_response_mock(
+    embeddings: list[list[float]], billable_character_count: int | None = None
+) -> MagicMock:
     """Create a mock EmbedContentResponse."""
     response = MagicMock()
     emb_mocks = []
@@ -97,6 +99,9 @@ def _make_embed_response_mock(embeddings: list[list[float]]) -> MagicMock:
         emb.values = values
         emb_mocks.append(emb)
     response.embeddings = emb_mocks
+    metadata = MagicMock()
+    metadata.billable_character_count = billable_character_count
+    response.metadata = metadata
     return response
 
 

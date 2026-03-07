@@ -558,6 +558,7 @@ class TestMapEmbedContentResponse:
         emb = MagicMock()
         emb.values = [0.1, 0.2, 0.3]
         response.embeddings = [emb]
+        response.metadata = None
 
         result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
         assert result == EmbeddingResponse(
@@ -575,6 +576,7 @@ class TestMapEmbedContentResponse:
         emb2 = MagicMock()
         emb2.values = [0.3, 0.4]
         response.embeddings = [emb1, emb2]
+        response.metadata = None
 
         result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
         assert result.embeddings == [[0.1, 0.2], [0.3, 0.4]]
@@ -582,6 +584,7 @@ class TestMapEmbedContentResponse:
     def test_empty_embeddings(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = MagicMock()
         response.embeddings = None
+        response.metadata = None
 
         result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
         assert result.embeddings == []
@@ -591,6 +594,7 @@ class TestMapEmbedContentResponse:
         emb = MagicMock()
         emb.values = None
         response.embeddings = [emb]
+        response.metadata = None
 
         result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
         assert result.embeddings == [[]]
@@ -598,6 +602,31 @@ class TestMapEmbedContentResponse:
     def test_cost_none_for_unknown(self, none_cost_fn: Any) -> None:  # noqa: ANN401
         response = MagicMock()
         response.embeddings = [MagicMock(values=[0.1])]
+        response.metadata = None
 
         result = map_embed_content_response(response, "unknown-model", "gcp-vertex", none_cost_fn)
         assert result.cost is None
+
+    def test_approximates_tokens_from_billable_characters(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = MagicMock()
+        emb = MagicMock()
+        emb.values = [0.1]
+        response.embeddings = [emb]
+        metadata = MagicMock()
+        metadata.billable_character_count = 400
+        response.metadata = metadata
+
+        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
+        assert result.usage == Usage(input_tokens=100, output_tokens=0)
+
+    def test_billable_character_count_none_falls_back_to_zero(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = MagicMock()
+        emb = MagicMock()
+        emb.values = [0.1]
+        response.embeddings = [emb]
+        metadata = MagicMock()
+        metadata.billable_character_count = None
+        response.metadata = metadata
+
+        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
+        assert result.usage == Usage(input_tokens=0, output_tokens=0)
