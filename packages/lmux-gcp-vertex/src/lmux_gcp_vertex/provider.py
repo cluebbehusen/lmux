@@ -75,7 +75,7 @@ class GCPVertexProvider(
 
     def _get_client(self) -> "Client":
         if self._client is None:
-            credentials = self._auth.get_credentials()
+            credentials = self._auth.get_credentials() if self._api_key is None else None
             self._client = create_client(
                 vertexai=self._vertexai,
                 project=self._project,
@@ -87,7 +87,7 @@ class GCPVertexProvider(
 
     async def _aget_client(self) -> "Client":
         if self._client is None:
-            credentials = await self._auth.aget_credentials()
+            credentials = await self._auth.aget_credentials() if self._api_key is None else None
             self._client = create_client(
                 vertexai=self._vertexai,
                 project=self._project,

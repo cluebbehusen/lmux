@@ -538,19 +538,34 @@ class TestClientManagement:
 
     def test_api_key_passed(
         self,
-        fake_auth: FakeAuth,
         mock_create: MagicMock,
         mock_client: MagicMock,
         generate_response: MagicMock,
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
-        provider = GCPVertexProvider(auth=fake_auth, vertexai=False, api_key="test-key")
+        provider = GCPVertexProvider(vertexai=False, api_key="test-key")
         provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
         assert call_kwargs["api_key"] == "test-key"
         assert call_kwargs["vertexai"] is False
+        assert call_kwargs["credentials"] is None
+
+    async def test_api_key_skips_auth_async(
+        self,
+        mock_create: MagicMock,
+        mock_client: MagicMock,
+        generate_response: MagicMock,
+    ) -> None:
+        mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
+        provider = GCPVertexProvider(vertexai=False, api_key="test-key")
+        await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
+
+        mock_create.assert_called_once()
+        call_kwargs = mock_create.call_args.kwargs
+        assert call_kwargs["api_key"] == "test-key"
+        assert call_kwargs["credentials"] is None
 
     async def test_async_client_reused(
         self,
