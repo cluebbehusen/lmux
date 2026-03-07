@@ -45,10 +45,10 @@ class FakeTokenAuth:
     """Fake auth provider that returns an AzureAdToken."""
 
     def get_credentials(self) -> AzureAdToken:
-        return AzureAdToken(token="fake-ad-token")
+        return AzureAdToken(token="fake-ad-token")  # noqa: S106
 
     async def aget_credentials(self) -> AzureAdToken:
-        return AzureAdToken(token="fake-ad-token")  # pragma: no cover
+        return AzureAdToken(token="fake-ad-token")  # pragma: no cover  # noqa: S106
 
 
 class FakeTokenProviderAuth:
@@ -835,7 +835,7 @@ class TestClientManagement:
         provider.chat("gpt-4o", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once_with(
-            credential=AzureAdToken(token="fake-ad-token"),
+            credential=AzureAdToken(token="fake-ad-token"),  # noqa: S106
             azure_endpoint="https://test.openai.azure.com/",
             api_version="2024-12-01-preview",
             timeout=None,

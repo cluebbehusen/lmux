@@ -17,17 +17,17 @@ from lmux_azure_foundry.auth import (
 
 class TestAzureAdToken:
     def test_stores_token(self) -> None:
-        token = AzureAdToken(token="eyJhbGciOiJ...")
-        assert token.token == "eyJhbGciOiJ..."
+        token = AzureAdToken(token="eyJhbGciOiJ...")  # noqa: S106
+        assert token.token == "eyJhbGciOiJ..."  # noqa: S105
 
     def test_frozen(self) -> None:
-        token = AzureAdToken(token="abc")
+        token = AzureAdToken(token="abc")  # noqa: S106
         with pytest.raises(AttributeError):
-            token.token = "xyz"  # pyright: ignore[reportAttributeAccessIssue]
+            token.token = "xyz"  # pyright: ignore[reportAttributeAccessIssue]  # noqa: S105
 
     def test_equality(self) -> None:
-        assert AzureAdToken(token="abc") == AzureAdToken(token="abc")
-        assert AzureAdToken(token="abc") != AzureAdToken(token="xyz")
+        assert AzureAdToken(token="abc") == AzureAdToken(token="abc")  # noqa: S106
+        assert AzureAdToken(token="abc") != AzureAdToken(token="xyz")  # noqa: S106
 
 
 # MARK: AzureFoundryKeyAuthProvider

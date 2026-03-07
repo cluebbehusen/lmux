@@ -72,8 +72,6 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**/*.py" = [
   "S101",     # assert is fine in tests
-  "S105",     # hardcoded password strings are fine in tests
-  "S106",     # hardcoded password arguments are fine in tests
   "PLR2004",  # magic values are fine in tests
 ]
 "scripts/**/*.py" = [
