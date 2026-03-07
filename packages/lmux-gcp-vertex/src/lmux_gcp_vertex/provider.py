@@ -114,12 +114,12 @@ class GCPVertexProvider(
         response_format: ResponseFormat | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> ChatResponse:
-        client = self._get_client()
         system, contents = map_messages(messages)
         config = self._build_config(
             system, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = self._get_client()
             response = client.models.generate_content(
                 model=model,
                 contents=contents,
@@ -142,12 +142,12 @@ class GCPVertexProvider(
         response_format: ResponseFormat | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> ChatResponse:
-        client = await self._aget_client()
         system, contents = map_messages(messages)
         config = self._build_config(
             system, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = await self._aget_client()
             response = await client.aio.models.generate_content(
                 model=model,
                 contents=contents,
@@ -170,12 +170,12 @@ class GCPVertexProvider(
         response_format: ResponseFormat | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> Iterator[ChatChunk]:
-        client = self._get_client()
         system, contents = map_messages(messages)
         config = self._build_config(
             system, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = self._get_client()
             stream = client.models.generate_content_stream(
                 model=model,
                 contents=contents,
@@ -206,12 +206,12 @@ class GCPVertexProvider(
         response_format: ResponseFormat | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
-        client = await self._aget_client()
         system, contents = map_messages(messages)
         config = self._build_config(
             system, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = await self._aget_client()
             stream = client.aio.models.generate_content_stream(
                 model=model,
                 contents=contents,
@@ -234,9 +234,9 @@ class GCPVertexProvider(
         *,
         provider_params: GCPVertexParams | None = None,
     ) -> EmbeddingResponse:
-        client = self._get_client()
         contents = input if isinstance(input, list) else [input]
         try:
+            client = self._get_client()
             response = client.models.embed_content(model=model, contents=contents)
         except Exception as e:
             raise map_gcp_vertex_error(e) from e
@@ -249,9 +249,9 @@ class GCPVertexProvider(
         *,
         provider_params: GCPVertexParams | None = None,
     ) -> EmbeddingResponse:
-        client = await self._aget_client()
         contents = input if isinstance(input, list) else [input]
         try:
+            client = await self._aget_client()
             response = await client.aio.models.embed_content(model=model, contents=contents)
         except Exception as e:
             raise map_gcp_vertex_error(e) from e

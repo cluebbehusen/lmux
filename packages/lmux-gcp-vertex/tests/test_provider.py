@@ -88,9 +88,7 @@ def _make_response_mock(
     return response
 
 
-def _make_embed_response_mock(
-    embeddings: list[list[float]], billable_character_count: int | None = None
-) -> MagicMock:
+def _make_embed_response_mock(embeddings: list[list[float]], billable_character_count: int | None = None) -> MagicMock:
     """Create a mock EmbedContentResponse."""
     response = MagicMock()
     emb_mocks = []
@@ -621,6 +619,28 @@ class TestClientManagement:
         assert call_kwargs["location"] is None
         assert call_kwargs["credentials"] is not None
         assert call_kwargs["api_key"] is None
+
+    def test_client_init_failure_mapped(
+        self,
+        fake_auth: FakeAuth,
+        mock_create: MagicMock,
+    ) -> None:
+        mock_create.side_effect = Exception("connection refused")
+        provider = GCPVertexProvider(auth=fake_auth)
+
+        with pytest.raises(ProviderError, match="connection refused"):
+            provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
+
+    async def test_async_client_init_failure_mapped(
+        self,
+        fake_auth: FakeAuth,
+        mock_create: MagicMock,
+    ) -> None:
+        mock_create.side_effect = Exception("connection refused")
+        provider = GCPVertexProvider(auth=fake_auth)
+
+        with pytest.raises(ProviderError, match="connection refused"):
+            await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
 
 # MARK: Register Pricing
