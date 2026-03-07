@@ -33,6 +33,8 @@ from lmux_gcp_vertex.auth import GCPVertexADCAuthProvider
 from lmux_gcp_vertex.cost import calculate_gcp_vertex_cost
 from lmux_gcp_vertex.params import GCPVertexParams
 
+type GCPVertexAuth = AuthProvider["Credentials | str", "Credentials | str"]
+
 PROVIDER_NAME = "gcp-vertex"
 
 
@@ -46,17 +48,15 @@ class GCPVertexProvider(
     def __init__(
         self,
         *,
-        auth: AuthProvider["Credentials", "Credentials"] | None = None,
+        auth: GCPVertexAuth | None = None,
         project: str | None = None,
         location: str | None = None,
         vertexai: bool = True,
-        api_key: str | None = None,
     ) -> None:
-        self._auth: AuthProvider[Credentials, Credentials] = auth or GCPVertexADCAuthProvider()
+        self._auth: GCPVertexAuth = auth or GCPVertexADCAuthProvider()
         self._project = project
         self._location = location
         self._vertexai = vertexai
-        self._api_key = api_key
         self._client: Client | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
@@ -75,25 +75,27 @@ class GCPVertexProvider(
 
     def _get_client(self) -> "Client":
         if self._client is None:
-            credentials = self._auth.get_credentials() if self._api_key is None else None
+            auth_result = self._auth.get_credentials()
+            credentials, api_key = (None, auth_result) if isinstance(auth_result, str) else (auth_result, None)
             self._client = create_client(
                 vertexai=self._vertexai,
                 project=self._project,
                 location=self._location,
                 credentials=credentials,
-                api_key=self._api_key,
+                api_key=api_key,
             )
         return self._client
 
     async def _aget_client(self) -> "Client":
         if self._client is None:
-            credentials = await self._auth.aget_credentials() if self._api_key is None else None
+            auth_result = await self._auth.aget_credentials()
+            credentials, api_key = (None, auth_result) if isinstance(auth_result, str) else (auth_result, None)
             self._client = create_client(
                 vertexai=self._vertexai,
                 project=self._project,
                 location=self._location,
                 credentials=credentials,
-                api_key=self._api_key,
+                api_key=api_key,
             )
         return self._client
 

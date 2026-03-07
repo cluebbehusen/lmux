@@ -28,7 +28,7 @@ from lmux_gcp_vertex.provider import GCPVertexProvider
 
 
 class FakeAuth:
-    """Fake auth provider for testing."""
+    """Fake auth provider for testing — returns mock Credentials."""
 
     def get_credentials(self) -> MagicMock:
         return MagicMock()
@@ -37,9 +37,24 @@ class FakeAuth:
         return MagicMock()
 
 
+class FakeAPIKeyAuth:
+    """Fake auth provider for testing — returns an API key string."""
+
+    def get_credentials(self) -> str:
+        return "test-api-key"
+
+    async def aget_credentials(self) -> str:
+        return "test-api-key"
+
+
 @pytest.fixture
 def fake_auth() -> FakeAuth:
     return FakeAuth()
+
+
+@pytest.fixture
+def fake_api_key_auth() -> FakeAPIKeyAuth:
+    return FakeAPIKeyAuth()
 
 
 def _make_response_mock(
@@ -536,35 +551,37 @@ class TestClientManagement:
         assert call_kwargs["location"] == "us-central1"
         assert call_kwargs["vertexai"] is True
 
-    def test_api_key_passed(
+    def test_api_key_auth_passes_api_key(
         self,
+        fake_api_key_auth: FakeAPIKeyAuth,
         mock_create: MagicMock,
         mock_client: MagicMock,
         generate_response: MagicMock,
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
-        provider = GCPVertexProvider(vertexai=False, api_key="test-key")
+        provider = GCPVertexProvider(auth=fake_api_key_auth, vertexai=False)
         provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["api_key"] == "test-key"
-        assert call_kwargs["vertexai"] is False
+        assert call_kwargs["api_key"] == "test-api-key"
         assert call_kwargs["credentials"] is None
+        assert call_kwargs["vertexai"] is False
 
-    async def test_api_key_skips_auth_async(
+    async def test_api_key_auth_passes_api_key_async(
         self,
+        fake_api_key_auth: FakeAPIKeyAuth,
         mock_create: MagicMock,
         mock_client: MagicMock,
         generate_response: MagicMock,
     ) -> None:
         mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
-        provider = GCPVertexProvider(vertexai=False, api_key="test-key")
+        provider = GCPVertexProvider(auth=fake_api_key_auth, vertexai=False)
         await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["api_key"] == "test-key"
+        assert call_kwargs["api_key"] == "test-api-key"
         assert call_kwargs["credentials"] is None
 
     async def test_async_client_reused(
@@ -597,6 +614,7 @@ class TestClientManagement:
         assert call_kwargs["vertexai"] is True
         assert call_kwargs["project"] is None
         assert call_kwargs["location"] is None
+        assert call_kwargs["credentials"] is not None
         assert call_kwargs["api_key"] is None
 
 
