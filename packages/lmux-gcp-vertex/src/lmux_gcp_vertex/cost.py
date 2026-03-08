@@ -1,7 +1,7 @@
 """GCP Vertex AI pricing data and cost calculation.
 
 Prices are for standard on-demand (global endpoint) pricing.
-Source: https://cloud.google.com/vertex-ai/generative-ai/pricing
+Pricing source: https://cloud.google.com/vertex-ai/generative-ai/pricing
 """
 
 from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
@@ -138,6 +138,12 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(25.0),
                 cache_read_cost_per_token=per_million_tokens(0.5),
             ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.0),
+                output_cost_per_token=per_million_tokens(37.5),
+                cache_read_cost_per_token=per_million_tokens(1.0),
+                min_input_tokens=200_000,
+            ),
         ],
     ),
     "claude-sonnet-4-6": ModelPricing(
@@ -146,6 +152,12 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(3.0),
                 output_cost_per_token=per_million_tokens(15.0),
                 cache_read_cost_per_token=per_million_tokens(0.3),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                min_input_tokens=200_000,
             ),
         ],
     ),
@@ -164,6 +176,12 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(3.0),
                 output_cost_per_token=per_million_tokens(15.0),
                 cache_read_cost_per_token=per_million_tokens(0.3),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                min_input_tokens=200_000,
             ),
         ],
     ),
@@ -191,6 +209,12 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(3.0),
                 output_cost_per_token=per_million_tokens(15.0),
                 cache_read_cost_per_token=per_million_tokens(0.3),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                min_input_tokens=200_000,
             ),
         ],
     ),
@@ -243,24 +267,24 @@ _PRICING: dict[str, ModelPricing] = {
     "mistral-medium-3": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(1.0),
-                output_cost_per_token=per_million_tokens(3.0),
+                input_cost_per_token=per_million_tokens(0.40),
+                output_cost_per_token=per_million_tokens(2.00),
             ),
         ],
     ),
-    "mistral-small-2503": ModelPricing(
+    "mistral-small-3.1": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(0.2),
-                output_cost_per_token=per_million_tokens(0.6),
+                input_cost_per_token=per_million_tokens(0.10),
+                output_cost_per_token=per_million_tokens(0.30),
             ),
         ],
     ),
     "codestral-2": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(0.5),
-                output_cost_per_token=per_million_tokens(1.5),
+                input_cost_per_token=per_million_tokens(0.30),
+                output_cost_per_token=per_million_tokens(0.90),
             ),
         ],
     ),
@@ -268,24 +292,24 @@ _PRICING: dict[str, ModelPricing] = {
     "llama-4-maverick-17b-128e-instruct-maas": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(0.5),
-                output_cost_per_token=per_million_tokens(0.77),
+                input_cost_per_token=per_million_tokens(0.35),
+                output_cost_per_token=per_million_tokens(1.15),
             ),
         ],
     ),
     "llama-4-scout-17b-16e-instruct-maas": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(0.11),
-                output_cost_per_token=per_million_tokens(0.34),
+                input_cost_per_token=per_million_tokens(0.25),
+                output_cost_per_token=per_million_tokens(0.70),
             ),
         ],
     ),
     "llama-3.3-70b-instruct-maas": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(0.2),
-                output_cost_per_token=per_million_tokens(0.2),
+                input_cost_per_token=per_million_tokens(0.72),
+                output_cost_per_token=per_million_tokens(0.72),
             ),
         ],
     ),

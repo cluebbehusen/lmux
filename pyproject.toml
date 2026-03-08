@@ -74,12 +74,6 @@ ignore = [
   "S101",    # assert is fine in tests
   "PLR2004", # magic values are fine in tests
 ]
-"scripts/**/*.py" = [
-  "T20",     # print is expected in CLI scripts
-  "S603",    # subprocess calls are intentional
-  "S607",    # partial executable paths are fine for known CLIs
-  "PLR0911", # many returns are fine in mapping functions
-]
 
 [tool.ruff.lint.isort]
 known-first-party = [

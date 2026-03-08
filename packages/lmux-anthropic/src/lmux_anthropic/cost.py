@@ -1,4 +1,7 @@
-"""Anthropic pricing data and cost calculation."""
+"""Anthropic pricing data and cost calculation.
+
+Pricing source: https://platform.claude.com/docs/en/about-claude/pricing
+"""
 
 from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
 from lmux.types import Cost, Usage
@@ -19,8 +22,8 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(10.00),
                 output_cost_per_token=per_million_tokens(37.50),
-                cache_read_cost_per_token=per_million_tokens(0.50),
-                cache_creation_cost_per_token=per_million_tokens(6.25),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
                 min_input_tokens=200_000,
             ),
         ],
@@ -36,8 +39,8 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(6.00),
                 output_cost_per_token=per_million_tokens(22.50),
-                cache_read_cost_per_token=per_million_tokens(0.30),
-                cache_creation_cost_per_token=per_million_tokens(3.75),
+                cache_read_cost_per_token=per_million_tokens(0.60),
+                cache_creation_cost_per_token=per_million_tokens(7.50),
                 min_input_tokens=200_000,
             ),
         ],
@@ -64,8 +67,8 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(6.00),
                 output_cost_per_token=per_million_tokens(22.50),
-                cache_read_cost_per_token=per_million_tokens(0.30),
-                cache_creation_cost_per_token=per_million_tokens(3.75),
+                cache_read_cost_per_token=per_million_tokens(0.60),
+                cache_creation_cost_per_token=per_million_tokens(7.50),
                 min_input_tokens=200_000,
             ),
         ],
@@ -113,8 +116,8 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(6.00),
                 output_cost_per_token=per_million_tokens(22.50),
-                cache_read_cost_per_token=per_million_tokens(0.30),
-                cache_creation_cost_per_token=per_million_tokens(3.75),
+                cache_read_cost_per_token=per_million_tokens(0.60),
+                cache_creation_cost_per_token=per_million_tokens(7.50),
                 min_input_tokens=200_000,
             ),
         ],
@@ -128,13 +131,6 @@ _PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.30),
                 cache_creation_cost_per_token=per_million_tokens(3.75),
             ),
-            PricingTier(
-                input_cost_per_token=per_million_tokens(6.00),
-                output_cost_per_token=per_million_tokens(22.50),
-                cache_read_cost_per_token=per_million_tokens(0.30),
-                cache_creation_cost_per_token=per_million_tokens(3.75),
-                min_input_tokens=200_000,
-            ),
         ],
     ),
     # Claude 3.5 family
@@ -145,13 +141,6 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(15.00),
                 cache_read_cost_per_token=per_million_tokens(0.30),
                 cache_creation_cost_per_token=per_million_tokens(3.75),
-            ),
-            PricingTier(
-                input_cost_per_token=per_million_tokens(6.00),
-                output_cost_per_token=per_million_tokens(22.50),
-                cache_read_cost_per_token=per_million_tokens(0.30),
-                cache_creation_cost_per_token=per_million_tokens(3.75),
-                min_input_tokens=200_000,
             ),
         ],
     ),

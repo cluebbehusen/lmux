@@ -86,5 +86,5 @@ class TestCalculateGCPVertexCost:
         usage = Usage(input_tokens=1000, output_tokens=500)
         cost = calculate_gcp_vertex_cost("mistral-medium-3", usage)
         assert cost is not None
-        assert cost.input_cost == pytest.approx(1000 * 1.00 / 1_000_000)
-        assert cost.output_cost == pytest.approx(500 * 3.00 / 1_000_000)
+        assert cost.input_cost == pytest.approx(1000 * 0.40 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 2.00 / 1_000_000)
