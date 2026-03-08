@@ -28,57 +28,57 @@ src = ["packages/*/src"]
 
 [tool.ruff.lint]
 select = [
-  "F",      # pyflakes
-  "E",      # pycodestyle errors
-  "W",      # pycodestyle warnings
-  "I",      # isort
-  "N",      # pep8-naming
-  "UP",     # pyupgrade
-  "ANN",    # flake8-annotations
-  "ASYNC",  # flake8-async
-  "S",      # flake8-bandit (security)
-  "BLE",    # flake8-blind-except
-  "B",      # flake8-bugbear
-  "A",      # flake8-builtins
-  "C4",     # flake8-comprehensions
-  "T10",    # flake8-debugger
-  "ISC",    # flake8-implicit-str-concat
-  "ICN",    # flake8-import-conventions
-  "LOG",    # flake8-logging
-  "G",      # flake8-logging-format
-  "PIE",    # flake8-pie
-  "T20",    # flake8-print
-  "PYI",    # flake8-pyi
-  "PT",     # flake8-pytest-style
-  "Q",      # flake8-quotes
-  "RSE",    # flake8-raise
-  "RET",    # flake8-return
-  "SLOT",   # flake8-slots
-  "SIM",    # flake8-simplify
-  "TID",    # flake8-tidy-imports
-  "TC",     # flake8-type-checking
-  "PGH",    # pygrep-hooks
-  "PL",     # pylint
-  "TRY",    # tryceratops
-  "FLY",    # flynt
-  "PERF",   # perflint
-  "FURB",   # refurb
-  "RUF",    # ruff-specific rules
+  "F",     # pyflakes
+  "E",     # pycodestyle errors
+  "W",     # pycodestyle warnings
+  "I",     # isort
+  "N",     # pep8-naming
+  "UP",    # pyupgrade
+  "ANN",   # flake8-annotations
+  "ASYNC", # flake8-async
+  "S",     # flake8-bandit (security)
+  "BLE",   # flake8-blind-except
+  "B",     # flake8-bugbear
+  "A",     # flake8-builtins
+  "C4",    # flake8-comprehensions
+  "T10",   # flake8-debugger
+  "ISC",   # flake8-implicit-str-concat
+  "ICN",   # flake8-import-conventions
+  "LOG",   # flake8-logging
+  "G",     # flake8-logging-format
+  "PIE",   # flake8-pie
+  "T20",   # flake8-print
+  "PYI",   # flake8-pyi
+  "PT",    # flake8-pytest-style
+  "Q",     # flake8-quotes
+  "RSE",   # flake8-raise
+  "RET",   # flake8-return
+  "SLOT",  # flake8-slots
+  "SIM",   # flake8-simplify
+  "TID",   # flake8-tidy-imports
+  "TC",    # flake8-type-checking
+  "PGH",   # pygrep-hooks
+  "PL",    # pylint
+  "TRY",   # tryceratops
+  "FLY",   # flynt
+  "PERF",  # perflint
+  "FURB",  # refurb
+  "RUF",   # ruff-specific rules
 ]
 ignore = [
-  "ISC001",   # single-line-implicit-string-concatenation (conflicts with ruff formatter)
+  "ISC001", # single-line-implicit-string-concatenation (conflicts with ruff formatter)
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**/*.py" = [
-  "S101",     # assert is fine in tests
-  "PLR2004",  # magic values are fine in tests
+  "S101",    # assert is fine in tests
+  "PLR2004", # magic values are fine in tests
 ]
 "scripts/**/*.py" = [
-  "T20",      # print is expected in CLI scripts
-  "S603",     # subprocess calls are intentional
-  "S607",     # partial executable paths are fine for known CLIs
-  "PLR0911",  # many returns are fine in mapping functions
+  "T20",     # print is expected in CLI scripts
+  "S603",    # subprocess calls are intentional
+  "S607",    # partial executable paths are fine for known CLIs
+  "PLR0911", # many returns are fine in mapping functions
 ]
 
 [tool.ruff.lint.isort]
@@ -86,7 +86,7 @@ known-first-party = [
   "lmux",
   "lmux_openai",
   "lmux_anthropic",
-  "lmux_azure_openai",
+  "lmux_azure_foundry",
   "lmux_aws_bedrock",
   "lmux_gcp_vertex",
   "lmux_groq",
@@ -104,15 +104,8 @@ docstring-code-line-length = 80
 pythonVersion = "3.13"
 pythonPlatform = "All"
 typeCheckingMode = "strict"
-include = [
-  "packages/*/src/**",
-  "packages/*/tests/**",
-  "scripts/**"
-]
-exclude = [
-  "**/__pycache__",
-  "**/.venv",
-]
+include = ["packages/*/src/**", "packages/*/tests/**", "scripts/**"]
+exclude = ["**/__pycache__", "**/.venv"]
 reportMissingTypeStubs = false
 reportUnknownMemberType = false
 reportUnusedImport = "error"
@@ -127,7 +120,15 @@ addopts = "--import-mode=importlib --cov"
 
 # ── Coverage ──────────────────────────────────────────────────
 [tool.coverage.run]
-source = ["lmux", "lmux_openai", "lmux_anthropic", "lmux_groq", "lmux_aws_bedrock", "lmux_gcp_vertex"]
+source = [
+  "lmux",
+  "lmux_openai",
+  "lmux_anthropic",
+  "lmux_azure_foundry",
+  "lmux_groq",
+  "lmux_aws_bedrock",
+  "lmux_gcp_vertex",
+]
 branch = true
 omit = ["**/_lazy.py"]
 
