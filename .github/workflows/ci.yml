@@ -49,4 +49,4 @@ jobs:
 
       - run: uv sync --all-packages --all-extras --python ${{ matrix.python-version }}
 
-      - run: uv run pytest
+      - run: uv run --python ${{ matrix.python-version }} pytest
