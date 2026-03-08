@@ -185,6 +185,42 @@ def server_error() -> openai.InternalServerError:
     return openai.InternalServerError(message="test error", response=response, body=None)
 
 
+@pytest.fixture
+def failing_sync_create(auth_error: openai.AuthenticationError) -> Iterator[MagicMock]:
+    with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=auth_error) as mock_create:
+        yield mock_create
+
+
+@pytest.fixture
+def failing_async_create(auth_error: openai.AuthenticationError) -> Iterator[MagicMock]:
+    with patch("lmux_azure_foundry.provider.create_async_client", side_effect=auth_error) as mock_create:
+        yield mock_create
+
+
+@pytest.fixture
+def failing_sync_create_server(server_error: openai.InternalServerError) -> Iterator[MagicMock]:
+    with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=server_error) as mock_create:
+        yield mock_create
+
+
+@pytest.fixture
+def failing_async_create_server(server_error: openai.InternalServerError) -> Iterator[MagicMock]:
+    with patch("lmux_azure_foundry.provider.create_async_client", side_effect=server_error) as mock_create:
+        yield mock_create
+
+
+@pytest.fixture
+def failing_sync_create_bad_request(bad_request_error: openai.BadRequestError) -> Iterator[MagicMock]:
+    with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=bad_request_error) as mock_create:
+        yield mock_create
+
+
+@pytest.fixture
+def failing_async_create_bad_request(bad_request_error: openai.BadRequestError) -> Iterator[MagicMock]:
+    with patch("lmux_azure_foundry.provider.create_async_client", side_effect=bad_request_error) as mock_create:
+        yield mock_create
+
+
 # MARK: Chat
 
 
@@ -309,12 +345,11 @@ class TestChat:
     def test_chat_client_creation_error_mapped(
         self,
         fake_auth: FakeAuth,
-        auth_error: openai.AuthenticationError,
+        failing_sync_create: MagicMock,
     ) -> None:
-        with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=auth_error):
-            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-            with pytest.raises(AuthenticationError):
-                provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+        with pytest.raises(AuthenticationError):
+            provider.chat("gpt-4o", [UserMessage(content="Hi")])
 
     def test_chat_cost_calculated(
         self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
@@ -421,12 +456,11 @@ class TestAchat:
     async def test_achat_client_creation_error_mapped(
         self,
         fake_auth: FakeAuth,
-        auth_error: openai.AuthenticationError,
+        failing_async_create: MagicMock,
     ) -> None:
-        with patch("lmux_azure_foundry.provider.create_async_client", side_effect=auth_error):
-            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-            with pytest.raises(AuthenticationError):
-                await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+        with pytest.raises(AuthenticationError):
+            await provider.achat("gpt-4o", [UserMessage(content="Hi")])
 
     async def test_achat_exception_mapping(
         self,
@@ -501,12 +535,11 @@ class TestChatStream:
     def test_stream_client_creation_error_mapped(
         self,
         fake_auth: FakeAuth,
-        server_error: openai.InternalServerError,
+        failing_sync_create_server: MagicMock,
     ) -> None:
-        with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=server_error):
-            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-            with pytest.raises(ProviderError):
-                list(provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
+        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+        with pytest.raises(ProviderError):
+            list(provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
 
     def test_stream_exception_on_create(
         self,
@@ -593,13 +626,12 @@ class TestAchatStream:
     async def test_achat_stream_client_creation_error_mapped(
         self,
         fake_auth: FakeAuth,
-        server_error: openai.InternalServerError,
+        failing_async_create_server: MagicMock,
     ) -> None:
-        with patch("lmux_azure_foundry.provider.create_async_client", side_effect=server_error):
-            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-            with pytest.raises(ProviderError):
-                async for _ in provider.achat_stream("gpt-4o", [UserMessage(content="Hi")]):
-                    pass  # pragma: no cover
+        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+        with pytest.raises(ProviderError):
+            async for _ in provider.achat_stream("gpt-4o", [UserMessage(content="Hi")]):
+                pass  # pragma: no cover
 
     async def test_exception_on_create(
         self,
@@ -667,22 +699,20 @@ class TestEmbed:
     def test_embed_client_creation_error_mapped(
         self,
         fake_auth: FakeAuth,
-        bad_request_error: openai.BadRequestError,
+        failing_sync_create_bad_request: MagicMock,
     ) -> None:
-        with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=bad_request_error):
-            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-            with pytest.raises(InvalidRequestError):
-                provider.embed("text-embedding-3-small", "hello")
+        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+        with pytest.raises(InvalidRequestError):
+            provider.embed("text-embedding-3-small", "hello")
 
     async def test_aembed_client_creation_error_mapped(
         self,
         fake_auth: FakeAuth,
-        bad_request_error: openai.BadRequestError,
+        failing_async_create_bad_request: MagicMock,
     ) -> None:
-        with patch("lmux_azure_foundry.provider.create_async_client", side_effect=bad_request_error):
-            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-            with pytest.raises(InvalidRequestError):
-                await provider.aembed("text-embedding-3-small", "hello")
+        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+        with pytest.raises(InvalidRequestError):
+            await provider.aembed("text-embedding-3-small", "hello")
 
     def test_embed_exception_mapping(
         self,
