@@ -327,10 +327,10 @@ def _get_candidate(response: "GenerateContentResponse") -> "Candidate | None":
 
 
 def _map_finish_reason(reason: "FinishReason | None", has_tool_calls: bool) -> str | None:
-    if has_tool_calls:
-        return "tool_calls"
     if reason is None:
         return None
+    if has_tool_calls:
+        return "tool_calls"
     reason_str: str = reason.value if hasattr(reason, "value") else str(reason)
     return _FINISH_REASON_MAP.get(reason_str, reason_str)
 

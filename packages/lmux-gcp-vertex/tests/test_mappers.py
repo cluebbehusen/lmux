@@ -548,6 +548,15 @@ class TestMapGenerateContentChunk:
         result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
         assert result.finish_reason == "tool_calls"
 
+    def test_nonterminal_tool_call_chunk_preserves_null_finish_reason(self) -> None:
+        chunk = _make_response(
+            function_calls=[{"id": "c1", "name": "f", "args": {}}],
+            finish_reason=None,
+        )
+        chunk.usage_metadata = None
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        assert result.finish_reason is None
+
 
 # MARK: map_embed_content_response
 
