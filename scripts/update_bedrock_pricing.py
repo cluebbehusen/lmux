@@ -522,20 +522,22 @@ def compute_regional_diffs(default: dict[str, ModelPrices], regional: dict[str, 
     diffs: dict[str, ModelPrices] = {}
     for model_id, reg_prices in regional.items():
         def_prices = default.get(model_id)
-        if def_prices is None:
-            continue
-        if _prices_differ(def_prices, reg_prices):
+        if def_prices is None or _prices_differ(def_prices, reg_prices):
             diffs[model_id] = reg_prices
     return diffs
 
 
 def _prices_differ(a: ModelPrices, b: ModelPrices) -> bool:
-    """Whether two ModelPrices differ in any standard-tier field."""
+    """Whether two ModelPrices differ in any field (standard or long-context tier)."""
     return (
         a.input_cost != b.input_cost
         or a.output_cost != b.output_cost
         or a.cache_read_cost != b.cache_read_cost
         or a.cache_write_cost != b.cache_write_cost
+        or a.lctx_input_cost != b.lctx_input_cost
+        or a.lctx_output_cost != b.lctx_output_cost
+        or a.lctx_cache_read_cost != b.lctx_cache_read_cost
+        or a.lctx_cache_write_cost != b.lctx_cache_write_cost
     )
 
 
