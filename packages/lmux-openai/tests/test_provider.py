@@ -710,6 +710,28 @@ class TestClientManagement:
 
         mock_async_create.assert_called_once_with(api_key="sk-fake-key", base_url=None, timeout=30.0, max_retries=5)
 
+    def test_sync_client_init_failure_mapped(
+        self,
+        fake_auth: FakeAuth,
+        mock_sync_create: MagicMock,
+    ) -> None:
+        mock_sync_create.side_effect = Exception("connection refused")
+        provider = OpenAIProvider(auth=fake_auth)
+
+        with pytest.raises(ProviderError, match="connection refused"):
+            provider.chat("gpt-4o", [UserMessage(content="Hi")])
+
+    async def test_async_client_init_failure_mapped(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+    ) -> None:
+        mock_async_create.side_effect = Exception("connection refused")
+        provider = OpenAIProvider(auth=fake_auth)
+
+        with pytest.raises(ProviderError, match="connection refused"):
+            await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+
 
 # MARK: Provider Params Kwargs
 

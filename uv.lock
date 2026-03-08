@@ -8,7 +8,7 @@ members = [
     "lmux-anthropic",
     "lmux-aws-bedrock",
     "lmux-azure-openai",
-    "lmux-google",
+    "lmux-gcp-vertex",
     "lmux-groq",
     "lmux-openai",
     "lmux-workspace",
@@ -860,9 +860,9 @@ requires-dist = [
 ]
 
 [[package]]
-name = "lmux-google"
+name = "lmux-gcp-vertex"
 version = "0.1.0"
-source = { editable = "packages/lmux-google" }
+source = { editable = "packages/lmux-gcp-vertex" }
 dependencies = [
     { name = "google-genai" },
     { name = "lmux" },

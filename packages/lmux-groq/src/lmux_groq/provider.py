@@ -93,11 +93,11 @@ class GroqProvider(
         response_format: ResponseFormat | None = None,
         provider_params: GroqParams | None = None,
     ) -> ChatResponse:
-        client = self._get_sync_client()
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = self._get_sync_client()
             completion = client.chat.completions.create(**kwargs, stream=False)
         except Exception as e:
             raise map_groq_error(e) from e
@@ -116,11 +116,11 @@ class GroqProvider(
         response_format: ResponseFormat | None = None,
         provider_params: GroqParams | None = None,
     ) -> ChatResponse:
-        client = await self._get_async_client()
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = await self._get_async_client()
             completion = await client.chat.completions.create(**kwargs, stream=False)
         except Exception as e:
             raise map_groq_error(e) from e
@@ -139,12 +139,12 @@ class GroqProvider(
         response_format: ResponseFormat | None = None,
         provider_params: GroqParams | None = None,
     ) -> Iterator[ChatChunk]:
-        client = self._get_sync_client()
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         kwargs["stream_options"] = {"include_usage": True}
         try:
+            client = self._get_sync_client()
             stream = client.chat.completions.create(**kwargs, stream=True)
         except Exception as e:
             raise map_groq_error(e) from e
@@ -171,12 +171,12 @@ class GroqProvider(
         response_format: ResponseFormat | None = None,
         provider_params: GroqParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
-        client = await self._get_async_client()
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         kwargs["stream_options"] = {"include_usage": True}
         try:
+            client = await self._get_async_client()
             stream = await client.chat.completions.create(**kwargs, stream=True)
         except Exception as e:
             raise map_groq_error(e) from e

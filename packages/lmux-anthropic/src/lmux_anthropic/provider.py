@@ -103,11 +103,11 @@ class AnthropicProvider(
         response_format: ResponseFormat | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> ChatResponse:
-        client = self._get_sync_client()
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = self._get_sync_client()
             message = client.messages.create(**kwargs, stream=False)
         except Exception as e:
             raise map_anthropic_error(e) from e
@@ -127,11 +127,11 @@ class AnthropicProvider(
         response_format: ResponseFormat | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> ChatResponse:
-        client = await self._get_async_client()
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = await self._get_async_client()
             message = await client.messages.create(**kwargs, stream=False)
         except Exception as e:
             raise map_anthropic_error(e) from e
@@ -151,11 +151,11 @@ class AnthropicProvider(
         response_format: ResponseFormat | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> Iterator[ChatChunk]:
-        client = self._get_sync_client()
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = self._get_sync_client()
             stream = client.messages.create(**kwargs, stream=True)
         except Exception as e:
             raise map_anthropic_error(e) from e
@@ -198,11 +198,11 @@ class AnthropicProvider(
         response_format: ResponseFormat | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
-        client = await self._get_async_client()
         kwargs = self._build_chat_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = await self._get_async_client()
             stream = await client.messages.create(**kwargs, stream=True)
         except Exception as e:
             raise map_anthropic_error(e) from e
