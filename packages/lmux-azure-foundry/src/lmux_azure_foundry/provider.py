@@ -247,7 +247,8 @@ class AzureFoundryProvider(
             response = client.embeddings.create(model=model, input=input, **extra)
         except Exception as e:
             raise map_azure_foundry_error(e) from e
-        return map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
+        result = map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_embedding_multipliers(result, provider_params)
 
     async def aembed(
         self,
@@ -262,7 +263,8 @@ class AzureFoundryProvider(
             response = await client.embeddings.create(model=model, input=input, **extra)
         except Exception as e:
             raise map_azure_foundry_error(e) from e
-        return map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
+        result = map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_embedding_multipliers(result, provider_params)
 
     # MARK: Cost Multipliers
 
@@ -288,7 +290,16 @@ class AzureFoundryProvider(
         return apply_cost_multiplier(cost, multiplier)
 
     def _apply_multipliers(self, response: ChatResponse, provider_params: AzureFoundryParams | None) -> ChatResponse:
-        """Apply deployment_type cost multipliers to a completed response."""
+        """Apply deployment_type cost multipliers to a completed chat response."""
+        adjusted = self._apply_cost_multipliers(response.cost, provider_params)
+        if adjusted is response.cost:
+            return response
+        return response.model_copy(update={"cost": adjusted})
+
+    def _apply_embedding_multipliers(
+        self, response: EmbeddingResponse, provider_params: AzureFoundryParams | None
+    ) -> EmbeddingResponse:
+        """Apply deployment_type cost multipliers to an embedding response."""
         adjusted = self._apply_cost_multipliers(response.cost, provider_params)
         if adjusted is response.cost:
             return response

@@ -687,6 +687,63 @@ class TestEmbed:
         with pytest.raises(InvalidRequestError):
             await async_provider.aembed("text-embedding-3-small", "hello")
 
+    def test_embed_data_zone_multiplier(
+        self,
+        sync_provider: AzureFoundryProvider,
+        mock_sync_client: MagicMock,
+        embedding_response: CreateEmbeddingResponse,
+    ) -> None:
+        mock_sync_client.embeddings.create.return_value = embedding_response
+
+        result_global = sync_provider.embed("text-embedding-3-small", "hello")
+        result_dz = sync_provider.embed(
+            "text-embedding-3-small",
+            "hello",
+            provider_params=AzureFoundryParams(deployment_type="data_zone"),
+        )
+
+        assert result_global.cost is not None
+        assert result_dz.cost is not None
+        assert result_dz.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
+
+    async def test_aembed_data_zone_multiplier(
+        self,
+        async_provider: AzureFoundryProvider,
+        mock_async_client: MagicMock,
+        embedding_response: CreateEmbeddingResponse,
+    ) -> None:
+        mock_async_client.embeddings.create.return_value = embedding_response
+
+        result_global = await async_provider.aembed("text-embedding-3-small", "hello")
+        result_dz = await async_provider.aembed(
+            "text-embedding-3-small",
+            "hello",
+            provider_params=AzureFoundryParams(deployment_type="data_zone"),
+        )
+
+        assert result_global.cost is not None
+        assert result_dz.cost is not None
+        assert result_dz.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
+
+    def test_embed_no_multiplier_without_params(
+        self,
+        sync_provider: AzureFoundryProvider,
+        mock_sync_client: MagicMock,
+        embedding_response: CreateEmbeddingResponse,
+    ) -> None:
+        mock_sync_client.embeddings.create.return_value = embedding_response
+
+        result1 = sync_provider.embed("text-embedding-3-small", "hello")
+        result2 = sync_provider.embed(
+            "text-embedding-3-small",
+            "hello",
+            provider_params=AzureFoundryParams(deployment_type="global"),
+        )
+
+        assert result1.cost is not None
+        assert result2.cost is not None
+        assert result1.cost.total_cost == pytest.approx(result2.cost.total_cost)
+
 
 # MARK: Client Management
 
