@@ -75,9 +75,9 @@ def _extract_model_name(meter_name: str) -> str | None:
     # Remove common suffixes
     for suffix in [
         "cached input tokens",
-        "input tokens",
-        "output tokens",
         "cache read input tokens",
+        "output tokens",
+        "input tokens",
     ]:
         if lower.endswith(suffix):
             return meter_name[: -len(suffix)].strip()

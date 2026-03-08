@@ -306,6 +306,16 @@ class TestChat:
         with pytest.raises(InvalidRequestError):
             sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
 
+    def test_chat_client_creation_error_mapped(
+        self,
+        fake_auth: FakeAuth,
+        auth_error: openai.AuthenticationError,
+    ) -> None:
+        with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=auth_error):
+            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+            with pytest.raises(AuthenticationError):
+                provider.chat("gpt-4o", [UserMessage(content="Hi")])
+
     def test_chat_cost_calculated(
         self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
     ) -> None:
@@ -408,6 +418,16 @@ class TestAchat:
         mock_async_client.chat.completions.create.assert_awaited_once()
         mock_async_client.embeddings.create.assert_not_called()
 
+    async def test_achat_client_creation_error_mapped(
+        self,
+        fake_auth: FakeAuth,
+        auth_error: openai.AuthenticationError,
+    ) -> None:
+        with patch("lmux_azure_foundry.provider.create_async_client", side_effect=auth_error):
+            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+            with pytest.raises(AuthenticationError):
+                await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+
     async def test_achat_exception_mapping(
         self,
         async_provider: AzureFoundryProvider,
@@ -477,6 +497,16 @@ class TestChatStream:
         assert chunks_global[2].cost is not None
         assert chunks_dz[2].cost is not None
         assert chunks_dz[2].cost.total_cost == pytest.approx(chunks_global[2].cost.total_cost * 1.1)
+
+    def test_stream_client_creation_error_mapped(
+        self,
+        fake_auth: FakeAuth,
+        server_error: openai.InternalServerError,
+    ) -> None:
+        with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=server_error):
+            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+            with pytest.raises(ProviderError):
+                list(provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
 
     def test_stream_exception_on_create(
         self,
@@ -560,6 +590,17 @@ class TestAchatStream:
         assert chunks_dz[2].cost is not None
         assert chunks_dz[2].cost.total_cost == pytest.approx(chunks_global[2].cost.total_cost * 1.1)
 
+    async def test_achat_stream_client_creation_error_mapped(
+        self,
+        fake_auth: FakeAuth,
+        server_error: openai.InternalServerError,
+    ) -> None:
+        with patch("lmux_azure_foundry.provider.create_async_client", side_effect=server_error):
+            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+            with pytest.raises(ProviderError):
+                async for _ in provider.achat_stream("gpt-4o", [UserMessage(content="Hi")]):
+                    pass  # pragma: no cover
+
     async def test_exception_on_create(
         self,
         async_provider: AzureFoundryProvider,
@@ -622,6 +663,26 @@ class TestEmbed:
         mock_sync_client.embeddings.create.assert_called_once_with(
             model="text-embedding-3-small", input=["hello", "world"]
         )
+
+    def test_embed_client_creation_error_mapped(
+        self,
+        fake_auth: FakeAuth,
+        bad_request_error: openai.BadRequestError,
+    ) -> None:
+        with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=bad_request_error):
+            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+            with pytest.raises(InvalidRequestError):
+                provider.embed("text-embedding-3-small", "hello")
+
+    async def test_aembed_client_creation_error_mapped(
+        self,
+        fake_auth: FakeAuth,
+        bad_request_error: openai.BadRequestError,
+    ) -> None:
+        with patch("lmux_azure_foundry.provider.create_async_client", side_effect=bad_request_error):
+            provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+            with pytest.raises(InvalidRequestError):
+                await provider.aembed("text-embedding-3-small", "hello")
 
     def test_embed_exception_mapping(
         self,
