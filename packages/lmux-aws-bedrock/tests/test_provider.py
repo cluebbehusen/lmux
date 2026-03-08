@@ -471,6 +471,17 @@ class TestEmbed:
         with pytest.raises(ProviderError):
             sync_provider.embed("amazon.titan-embed-text-v2", "hello")
 
+    def test_embed_client_init_failure_mapped(
+        self,
+        fake_auth: FakeAuth,
+        mock_sync_create: MagicMock,
+    ) -> None:
+        mock_sync_create.side_effect = Exception("connection refused")
+        provider = BedrockProvider(auth=fake_auth)
+
+        with pytest.raises(ProviderError, match="connection refused"):
+            provider.embed("amazon.titan-embed-text-v2", "hello")
+
 
 # MARK: Aembed
 
@@ -632,6 +643,17 @@ class TestClientManagement:
         mock_session.client.assert_called_with(
             "bedrock-runtime", region_name=None, endpoint_url="https://custom.endpoint"
         )
+
+    def test_sync_client_init_failure_mapped(
+        self,
+        fake_auth: FakeAuth,
+        mock_sync_create: MagicMock,
+    ) -> None:
+        mock_sync_create.side_effect = Exception("connection refused")
+        provider = BedrockProvider(auth=fake_auth)
+
+        with pytest.raises(ProviderError, match="connection refused"):
+            provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
 
     def test_no_region_no_endpoint_defaults_to_none(
         self,

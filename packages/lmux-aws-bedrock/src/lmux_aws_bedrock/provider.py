@@ -102,11 +102,11 @@ class BedrockProvider(
         response_format: ResponseFormat | None = None,
         provider_params: BedrockParams | None = None,
     ) -> ChatResponse:
-        client = self._get_sync_client()
         kwargs = self._build_converse_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = self._get_sync_client()
             response = client.converse(**kwargs)
         except Exception as e:
             raise map_bedrock_error(e) from e
@@ -148,11 +148,11 @@ class BedrockProvider(
         response_format: ResponseFormat | None = None,
         provider_params: BedrockParams | None = None,
     ) -> Iterator[ChatChunk]:
-        client = self._get_sync_client()
         kwargs = self._build_converse_kwargs(
             model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
         )
         try:
+            client = self._get_sync_client()
             response = client.converse_stream(**kwargs)
         except Exception as e:
             raise map_bedrock_error(e) from e
@@ -206,11 +206,15 @@ class BedrockProvider(
         *,
         provider_params: BedrockParams | None = None,
     ) -> EmbeddingResponse:
-        client = self._get_sync_client()
         texts = [input] if isinstance(input, str) else input
 
         all_embeddings: list[list[float]] = []
         total_input_tokens = 0
+
+        try:
+            client = self._get_sync_client()
+        except Exception as e:
+            raise map_bedrock_error(e) from e
 
         for text in texts:
             body = build_embedding_request_body(text)
