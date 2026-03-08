@@ -69,7 +69,7 @@ class BedrockProvider(
         pricing = self._custom_pricing.get(model)
         if pricing is not None:
             return calculate_cost(usage, pricing)
-        return calculate_bedrock_cost(model, usage)
+        return calculate_bedrock_cost(model, usage, region=self._region)
 
     # MARK: Client Management
 

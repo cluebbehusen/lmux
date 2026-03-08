@@ -1,11 +1,41 @@
-"""OpenAI pricing data and cost calculation."""
+"""OpenAI pricing data and cost calculation.
+
+Pricing source: https://openai.com/api/pricing/
+"""
 
 from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
 from lmux.types import Cost, Usage
 
-# Pricing as of Feb 28, 2026 (source: https://openai.com/api/pricing/)
 _PRICING: dict[str, ModelPricing] = {
     # GPT-5 family
+    "gpt-5.4-pro": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(30.00),
+                output_cost_per_token=per_million_tokens(180.00),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(60.00),
+                output_cost_per_token=per_million_tokens(270.00),
+                min_input_tokens=272_000,
+            ),
+        ]
+    ),
+    "gpt-5.4": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.25),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(22.50),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
     "gpt-5.2-pro": ModelPricing(
         tiers=[
             PricingTier(
@@ -147,6 +177,68 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(1.10),
                 output_cost_per_token=per_million_tokens(4.40),
                 cache_read_cost_per_token=per_million_tokens(0.275),
+            )
+        ],
+    ),
+    "o3-deep-research": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(40.00),
+                cache_read_cost_per_token=per_million_tokens(2.50),
+            )
+        ],
+    ),
+    "o4-mini-deep-research": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(8.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
+    "codex-mini-latest": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.50),
+                output_cost_per_token=per_million_tokens(6.00),
+                cache_read_cost_per_token=per_million_tokens(0.375),
+            )
+        ],
+    ),
+    "computer-use-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.00),
+                output_cost_per_token=per_million_tokens(12.00),
+            )
+        ],
+    ),
+    # Legacy reasoning models
+    "o1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(15.00),
+                output_cost_per_token=per_million_tokens(60.00),
+                cache_read_cost_per_token=per_million_tokens(7.50),
+            )
+        ],
+    ),
+    "o1-pro": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(150.00),
+                output_cost_per_token=per_million_tokens(600.00),
+            )
+        ]
+    ),
+    "o1-mini": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.10),
+                output_cost_per_token=per_million_tokens(4.40),
+                cache_read_cost_per_token=per_million_tokens(0.55),
             )
         ],
     ),

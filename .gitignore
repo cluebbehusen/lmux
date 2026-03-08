@@ -28,4 +28,7 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Skill scratch output
+tmp/
+
 PLANNING.md

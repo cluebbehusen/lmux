@@ -6,7 +6,7 @@ deployments apply a multiplier on top of these base rates.
 Use ``register_pricing()`` on ``AzureFoundryProvider`` for provisioned
 deployments or models not listed here.
 
-Pricing as of Mar 2, 2026 (source: Azure Retail Prices API, serviceName="Foundry Models")
+Pricing source: https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/
 """
 
 from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
@@ -221,8 +221,8 @@ _PRICING: dict[str, ModelPricing] = {
     "grok-4": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(3.00),
-                output_cost_per_token=per_million_tokens(15.00),
+                input_cost_per_token=per_million_tokens(5.50),
+                output_cost_per_token=per_million_tokens(27.50),
             )
         ],
     ),

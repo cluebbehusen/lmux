@@ -1,11 +1,14 @@
-"""Groq pricing data and cost calculation."""
+"""Groq pricing data and cost calculation.
+
+Pricing source: https://groq.com/pricing/
+"""
 
 from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
 from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
-    # GPT OSS family (prompt caching: 50% discount on cached input tokens)
-    "gpt-oss-20b-128k": ModelPricing(
+    # OpenAI GPT OSS family (prompt caching: 50% discount on cached input tokens)
+    "openai/gpt-oss-20b": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.075),
@@ -14,16 +17,15 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    "gpt-oss-safeguard-20b": ModelPricing(
+    "openai/gpt-oss-safeguard-20b": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.075),
                 output_cost_per_token=per_million_tokens(0.30),
-                cache_read_cost_per_token=per_million_tokens(0.0375),
             )
         ],
     ),
-    "gpt-oss-120b-128k": ModelPricing(
+    "openai/gpt-oss-120b": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.15),
@@ -32,8 +34,8 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # Kimi family (prompt caching: 50% discount on cached input tokens)
-    "kimi-k2": ModelPricing(
+    # Moonshot Kimi family (prompt caching: 50% discount on cached input tokens)
+    "moonshotai/kimi-k2-instruct": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(1.00),
@@ -42,24 +44,24 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # Llama 4 family
-    "llama-4-scout": ModelPricing(
+    # Meta Llama 4 family
+    "meta-llama/llama-4-scout-17b-16e-instruct": ModelPricing(
         tiers=[
             PricingTier(input_cost_per_token=per_million_tokens(0.11), output_cost_per_token=per_million_tokens(0.34))
         ],
     ),
-    "llama-4-maverick": ModelPricing(
+    "meta-llama/llama-4-maverick-17b-128e-instruct": ModelPricing(
         tiers=[
             PricingTier(input_cost_per_token=per_million_tokens(0.20), output_cost_per_token=per_million_tokens(0.60))
         ],
     ),
     # Qwen family
-    "qwen-qwq-32b": ModelPricing(
+    "qwen/qwen3-32b": ModelPricing(
         tiers=[
             PricingTier(input_cost_per_token=per_million_tokens(0.29), output_cost_per_token=per_million_tokens(0.59))
         ],
     ),
-    # Llama 3.x family
+    # Meta Llama 3.x family
     "llama-3.3-70b-versatile": ModelPricing(
         tiers=[
             PricingTier(input_cost_per_token=per_million_tokens(0.59), output_cost_per_token=per_million_tokens(0.79))
