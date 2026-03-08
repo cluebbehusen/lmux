@@ -11,8 +11,6 @@ Usage:
     python3 scripts/update_bedrock_pricing.py --regions eu-west-1 ap-northeast-1
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import sys
@@ -21,6 +19,7 @@ import urllib.request
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+from typing import Any
 
 API_BASE = "https://pricing.us-east-1.amazonaws.com"
 DEFAULT_REGION = "us-east-1"
@@ -165,7 +164,7 @@ class ModelPrices:
 # ── Fetching ─────────────────────────────────────────────────────────────────
 
 
-def _fetch_json(url: str) -> dict:
+def _fetch_json(url: str) -> dict[str, Any]:
     """Fetch JSON from a URL."""
     with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
         return json.loads(resp.read())
@@ -177,7 +176,7 @@ def fetch_region_index(service: str) -> dict[str, str]:
     return {code: info["currentVersionUrl"] for code, info in data.get("regions", {}).items()}
 
 
-def fetch_pricing(service: str, region: str) -> dict:
+def fetch_pricing(service: str, region: str) -> dict[str, Any]:
     """Fetch full pricing data for a service+region."""
     index = fetch_region_index(service)
     if region not in index:
@@ -190,7 +189,7 @@ def fetch_pricing(service: str, region: str) -> dict:
 # ── Parsing: AmazonBedrock mantle models ─────────────────────────────────────
 
 
-def parse_mantle_models(data: dict) -> dict[str, ModelPrices]:
+def parse_mantle_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
     """Parse mantle entries from AmazonBedrock API. Prices are per 1K tokens."""
     products = data.get("products", {})
     terms = data.get("terms", {}).get("OnDemand", {})
@@ -305,7 +304,7 @@ def _set_dimension(mp: ModelPrices, dim_name: str, price: Decimal) -> None:
         mp.cache_write_cost = price
 
 
-def parse_amazon_models(data: dict) -> dict[str, ModelPrices]:
+def parse_amazon_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
     """Parse non-mantle entries from AmazonBedrock API for Amazon + legacy models."""
     products = data.get("products", {})
     terms = data.get("terms", {}).get("OnDemand", {})
@@ -414,7 +413,7 @@ def _is_global_fm(usagetype: str) -> bool:
     return "_Global" in dim_part and "_Batch" not in dim_part
 
 
-def parse_foundation_models(data: dict) -> dict[str, ModelPrices]:
+def parse_foundation_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
     """Parse AmazonBedrockFoundationModels API. Prices are per million tokens."""
     products = data.get("products", {})
     terms = data.get("terms", {}).get("OnDemand", {})
@@ -739,7 +738,7 @@ def _emit_tier(lines: list[str], mp: ModelPrices, is_emb: bool, indent: int, *, 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _get_price(sku: str, terms: dict) -> Decimal | None:
+def _get_price(sku: str, terms: dict[str, Any]) -> Decimal | None:
     """Extract the USD price from OnDemand terms for a SKU."""
     if sku not in terms:
         return None
