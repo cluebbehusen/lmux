@@ -1,6 +1,6 @@
 """Tests for Azure AI Foundry auth providers."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -68,8 +68,16 @@ class TestAzureFoundryKeyAuthProvider:
 
 
 class TestAzureFoundryTokenAuthProvider:
-    @patch("azure.identity.get_bearer_token_provider")
-    @patch("azure.identity.DefaultAzureCredential")
+    @pytest.fixture
+    def mock_credential_cls(self) -> Generator[MagicMock]:
+        with patch("azure.identity.DefaultAzureCredential") as mock:
+            yield mock
+
+    @pytest.fixture
+    def mock_get_provider(self) -> Generator[MagicMock]:
+        with patch("azure.identity.get_bearer_token_provider") as mock:
+            yield mock
+
     def test_get_credentials_returns_callable(
         self, mock_credential_cls: MagicMock, mock_get_provider: MagicMock
     ) -> None:
@@ -85,16 +93,12 @@ class TestAzureFoundryTokenAuthProvider:
             mock_credential_cls.return_value, "https://cognitiveservices.azure.com/.default"
         )
 
-    @patch("azure.identity.get_bearer_token_provider")
-    @patch("azure.identity.DefaultAzureCredential")
     def test_custom_scopes(self, mock_credential_cls: MagicMock, mock_get_provider: MagicMock) -> None:
         provider = AzureFoundryTokenAuthProvider(scopes=("https://custom.scope/.default",))
         provider.get_credentials()
 
         mock_get_provider.assert_called_once_with(mock_credential_cls.return_value, "https://custom.scope/.default")
 
-    @patch("azure.identity.get_bearer_token_provider")
-    @patch("azure.identity.DefaultAzureCredential")
     def test_caches_token_provider(self, mock_credential_cls: MagicMock, mock_get_provider: MagicMock) -> None:
         provider = AzureFoundryTokenAuthProvider()
         result1 = provider.get_credentials()
@@ -104,8 +108,6 @@ class TestAzureFoundryTokenAuthProvider:
         mock_credential_cls.assert_called_once()
         mock_get_provider.assert_called_once()
 
-    @patch("azure.identity.get_bearer_token_provider")
-    @patch("azure.identity.DefaultAzureCredential")
     async def test_aget_credentials(self, mock_credential_cls: MagicMock, mock_get_provider: MagicMock) -> None:
         mock_token_fn = MagicMock(spec=Callable[[], str])
         mock_get_provider.return_value = mock_token_fn
