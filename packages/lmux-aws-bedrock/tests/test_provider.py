@@ -1,11 +1,11 @@
 """Tests for AWS Bedrock provider."""
 
 import json
-from collections.abc import Iterator
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import ProviderError, UnsupportedFeatureError
@@ -83,9 +83,8 @@ def mock_sync_client() -> MagicMock:
 
 
 @pytest.fixture
-def mock_sync_create(mock_sync_client: MagicMock) -> Iterator[MagicMock]:
-    with patch("lmux_aws_bedrock.provider.create_sync_client", return_value=mock_sync_client) as mock_create:
-        yield mock_create
+def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_aws_bedrock.provider.create_sync_client", return_value=mock_sync_client)
 
 
 @pytest.fixture
@@ -773,9 +772,12 @@ class TestProviderParamsKwargs:
 
 
 class TestPreload:
+    @pytest.fixture
+    def mock_missing_aioboto3(self, mocker: MockerFixture) -> None:
+        mocker.patch.dict("sys.modules", {"aioboto3": None})
+
     def test_preload_imports_boto3_and_aioboto3(self) -> None:
         preload()  # should not raise; aioboto3 is installed in dev
 
-    def test_preload_without_aioboto3(self) -> None:
-        with patch.dict("sys.modules", {"aioboto3": None}):
-            preload()  # should not raise when aioboto3 is missing
+    def test_preload_without_aioboto3(self, mock_missing_aioboto3: None) -> None:
+        preload()  # should not raise when aioboto3 is missing

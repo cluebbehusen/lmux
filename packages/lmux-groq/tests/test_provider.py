@@ -1,8 +1,7 @@
 """Tests for Groq provider."""
 
-from collections.abc import Iterator
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import groq
 import pytest
@@ -11,6 +10,7 @@ from groq.types.chat.chat_completion import Choice
 from groq.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from groq.types.chat.chat_completion_chunk import ChoiceDelta
 from groq.types.completion_usage import CompletionUsage
+from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError
@@ -94,9 +94,8 @@ def mock_sync_client() -> MagicMock:
 
 
 @pytest.fixture
-def mock_sync_create(mock_sync_client: MagicMock) -> Iterator[MagicMock]:
-    with patch("lmux_groq.provider.create_sync_client", return_value=mock_sync_client) as mock_create:
-        yield mock_create
+def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_groq.provider.create_sync_client", return_value=mock_sync_client)
 
 
 @pytest.fixture
@@ -112,9 +111,8 @@ def mock_async_client() -> MagicMock:
 
 
 @pytest.fixture
-def mock_async_create(mock_async_client: MagicMock) -> Iterator[MagicMock]:
-    with patch("lmux_groq.provider.create_async_client", return_value=mock_async_client) as mock_create:
-        yield mock_create
+def mock_async_create(mock_async_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_groq.provider.create_async_client", return_value=mock_async_client)
 
 
 @pytest.fixture

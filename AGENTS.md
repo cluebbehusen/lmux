@@ -133,7 +133,7 @@ If any dependencies are not present in the local .venv, use `uv sync --all-packa
 ### General
 
 - All tests are mocked unit tests — **no network calls**
-- `unittest.mock`: `MagicMock`, `AsyncMock`, `patch`
+- `pytest-mock` for patching via `mocker: MockerFixture` fixture; `MagicMock`/`AsyncMock` from `unittest.mock` for type annotations and direct construction
 - `pytest-asyncio` with `asyncio_mode = "auto"` — async test methods just work
 - `--import-mode=importlib` to avoid namespace collisions between packages
 - **No `tests/__init__.py` files** (required for importlib mode)
@@ -186,7 +186,25 @@ Use **pytest fixtures** for all mocking and shared test data — not module-leve
 - Fake auth providers
 - Common test data (e.g., `api_error` factories)
 
-Mock fixtures that use `patch()` are **path-dependent** (e.g., `patch("lmux_openai.provider.create_sync_client")`) — keep these in the individual test file, not `conftest.py`. Only truly shared, non-path-dependent data (e.g., reusable model instances, constants) belongs in `conftest.py`.
+Mock fixtures that use `mocker.patch()` are **path-dependent** (e.g., `mocker.patch("lmux_openai.provider.create_sync_client")`) — keep these in the individual test file, not `conftest.py`. Only truly shared, non-path-dependent data (e.g., reusable model instances, constants) belongs in `conftest.py`.
+
+`mocker.patch()` must only appear inside `@pytest.fixture` functions — **never** directly in test methods. Tests receive already-patched mocks via fixture parameters:
+
+```python
+# Good — patching in a fixture, test receives the mock
+@pytest.fixture
+def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_openai.provider.create_sync_client", return_value=mock_sync_client)
+
+def test_client_created(self, mock_sync_create: MagicMock) -> None:
+    ...
+
+# Bad — patching directly in a test method
+def test_client_created(self, mocker: MockerFixture) -> None:
+    mocker.patch("lmux_openai.provider.create_sync_client", ...)
+```
+
+For non-mock value replacements (e.g., swapping module-level data), use `monkeypatch.setattr()` directly in test methods — `monkeypatch` is not subject to the fixtures-only rule.
 
 ### Mocking Principles
 

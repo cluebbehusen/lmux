@@ -1,7 +1,5 @@
 """Tests for AWS Bedrock pricing and cost calculation."""
 
-from unittest.mock import patch
-
 import pytest
 
 from lmux.cost import ModelPricing, PricingTier, per_million_tokens
@@ -106,7 +104,7 @@ class TestCalculateBedrockCost:
         assert cost_default is not None
         assert cost.total_cost == pytest.approx(cost_default.total_cost)
 
-    def test_regional_pricing_exact_match(self) -> None:
+    def test_regional_pricing_exact_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Regional pricing returns different cost when region has overrides."""
         regional = {
             "eu-west-1": {
@@ -121,13 +119,13 @@ class TestCalculateBedrockCost:
             },
         }
         usage = Usage(input_tokens=1000, output_tokens=500)
-        with patch("lmux_aws_bedrock.cost._REGIONAL_PRICING", regional):
-            cost = calculate_bedrock_cost("meta.llama3-1-70b-instruct-v1", usage, region="eu-west-1")
+        monkeypatch.setattr("lmux_aws_bedrock.cost._REGIONAL_PRICING", regional)
+        cost = calculate_bedrock_cost("meta.llama3-1-70b-instruct-v1", usage, region="eu-west-1")
         assert cost is not None
         assert cost.input_cost == pytest.approx(1000 * 1.0 / 1_000_000)
         assert cost.output_cost == pytest.approx(500 * 1.0 / 1_000_000)
 
-    def test_regional_pricing_prefix_match(self) -> None:
+    def test_regional_pricing_prefix_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Regional pricing uses prefix matching for versioned model IDs."""
         regional = {
             "eu-west-1": {
@@ -142,13 +140,13 @@ class TestCalculateBedrockCost:
             },
         }
         usage = Usage(input_tokens=1000, output_tokens=500)
-        with patch("lmux_aws_bedrock.cost._REGIONAL_PRICING", regional):
-            cost = calculate_bedrock_cost("meta.llama3-1-70b-instruct-v1:0", usage, region="eu-west-1")
+        monkeypatch.setattr("lmux_aws_bedrock.cost._REGIONAL_PRICING", regional)
+        cost = calculate_bedrock_cost("meta.llama3-1-70b-instruct-v1:0", usage, region="eu-west-1")
         assert cost is not None
         assert cost.input_cost == pytest.approx(1000 * 2.0 / 1_000_000)
         assert cost.output_cost == pytest.approx(500 * 2.0 / 1_000_000)
 
-    def test_regional_pricing_falls_back_to_default_for_unlisted_model(self) -> None:
+    def test_regional_pricing_falls_back_to_default_for_unlisted_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A model not in regional overrides falls back to us-east-1 default."""
         regional = {
             "eu-west-1": {
@@ -163,8 +161,8 @@ class TestCalculateBedrockCost:
             },
         }
         usage = Usage(input_tokens=1000, output_tokens=500)
-        with patch("lmux_aws_bedrock.cost._REGIONAL_PRICING", regional):
-            cost = calculate_bedrock_cost("meta.llama3-1-70b-instruct-v1", usage, region="eu-west-1")
+        monkeypatch.setattr("lmux_aws_bedrock.cost._REGIONAL_PRICING", regional)
+        cost = calculate_bedrock_cost("meta.llama3-1-70b-instruct-v1", usage, region="eu-west-1")
         cost_default = calculate_bedrock_cost("meta.llama3-1-70b-instruct-v1", usage)
         assert cost is not None
         assert cost_default is not None

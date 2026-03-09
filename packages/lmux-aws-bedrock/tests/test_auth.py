@@ -1,23 +1,26 @@
 """Tests for AWS Bedrock auth providers."""
 
-from collections.abc import Iterator
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
+from pytest_mock import MockerFixture
 
 from lmux_aws_bedrock.auth import BedrockEnvAuthProvider, BedrockSessionAuthProvider
 
 
 @pytest.fixture
-def mock_boto3_session_cls() -> Iterator[MagicMock]:
-    with patch("boto3.Session") as mock_cls:
-        yield mock_cls
+def mock_boto3_session_cls(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("boto3.Session")
 
 
 @pytest.fixture
-def mock_aioboto3_session_cls() -> Iterator[MagicMock]:
-    with patch("aioboto3.Session") as mock_cls:
-        yield mock_cls
+def mock_aioboto3_session_cls(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("aioboto3.Session")
+
+
+@pytest.fixture
+def mock_missing_aioboto3(mocker: MockerFixture) -> None:
+    mocker.patch.dict("sys.modules", {"aioboto3": None})
 
 
 class TestBedrockEnvAuthProvider:
@@ -35,13 +38,10 @@ class TestBedrockEnvAuthProvider:
         assert result is mock_aioboto3_session_cls.return_value
         mock_aioboto3_session_cls.assert_called_once_with()
 
-    async def test_aget_raises_import_error(self) -> None:
+    async def test_aget_raises_import_error(self, mock_missing_aioboto3: None) -> None:
         provider = BedrockEnvAuthProvider()
 
-        with (
-            patch.dict("sys.modules", {"aioboto3": None}),
-            pytest.raises(ImportError, match=r"\[async\] extra group is required for async operations.*"),
-        ):
+        with pytest.raises(ImportError, match=r"\[async\] extra group is required for async operations.*"):
             await provider.aget_credentials()
 
 
@@ -80,13 +80,10 @@ class TestBedrockSessionAuthProvider:
             aws_session_token=None,
         )
 
-    async def test_aget_raises_import_error(self) -> None:
+    async def test_aget_raises_import_error(self, mock_missing_aioboto3: None) -> None:
         provider = BedrockSessionAuthProvider()
 
-        with (
-            patch.dict("sys.modules", {"aioboto3": None}),
-            pytest.raises(ImportError, match=r"\[async\] extra group is required for async operations.*"),
-        ):
+        with pytest.raises(ImportError, match=r"\[async\] extra group is required for async operations.*"):
             await provider.aget_credentials()
 
     def test_default_kwargs_all_none(self, mock_boto3_session_cls: MagicMock) -> None:

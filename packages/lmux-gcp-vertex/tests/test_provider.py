@@ -1,10 +1,10 @@
 """Tests for Google Vertex AI provider."""
 
-from collections.abc import Iterator
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import ProviderError
@@ -119,9 +119,8 @@ def mock_client() -> MagicMock:
 
 
 @pytest.fixture
-def mock_create(mock_client: MagicMock) -> Iterator[MagicMock]:
-    with patch("lmux_gcp_vertex.provider.create_client", return_value=mock_client) as mock_create:
-        yield mock_create
+def mock_create(mock_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_gcp_vertex.provider.create_client", return_value=mock_client)
 
 
 @pytest.fixture

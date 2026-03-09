@@ -1,9 +1,10 @@
 """Tests for Azure AI Foundry auth providers."""
 
-from collections.abc import Callable, Generator
-from unittest.mock import MagicMock, patch
+from collections.abc import Callable
+from unittest.mock import MagicMock
 
 import pytest
+from pytest_mock import MockerFixture
 
 from lmux.exceptions import AuthenticationError
 from lmux_azure_foundry.auth import (
@@ -69,14 +70,12 @@ class TestAzureFoundryKeyAuthProvider:
 
 class TestAzureFoundryTokenAuthProvider:
     @pytest.fixture
-    def mock_credential_cls(self) -> Generator[MagicMock]:
-        with patch("azure.identity.DefaultAzureCredential") as mock:
-            yield mock
+    def mock_credential_cls(self, mocker: MockerFixture) -> MagicMock:
+        return mocker.patch("azure.identity.DefaultAzureCredential")
 
     @pytest.fixture
-    def mock_get_provider(self) -> Generator[MagicMock]:
-        with patch("azure.identity.get_bearer_token_provider") as mock:
-            yield mock
+    def mock_get_provider(self, mocker: MockerFixture) -> MagicMock:
+        return mocker.patch("azure.identity.get_bearer_token_provider")
 
     def test_get_credentials_returns_callable(
         self, mock_credential_cls: MagicMock, mock_get_provider: MagicMock

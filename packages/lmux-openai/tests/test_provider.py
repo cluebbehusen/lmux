@@ -1,8 +1,7 @@
 """Tests for OpenAI provider."""
 
-from collections.abc import Iterator
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import openai
 import pytest
@@ -14,6 +13,7 @@ from openai.types.completion_usage import CompletionUsage
 from openai.types.create_embedding_response import CreateEmbeddingResponse
 from openai.types.create_embedding_response import Usage as EmbUsage
 from openai.types.embedding import Embedding
+from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, NotFoundError, ProviderError
@@ -120,9 +120,8 @@ def mock_sync_client() -> MagicMock:
 
 
 @pytest.fixture
-def mock_sync_create(mock_sync_client: MagicMock) -> Iterator[MagicMock]:
-    with patch("lmux_openai.provider.create_sync_client", return_value=mock_sync_client) as mock_create:
-        yield mock_create
+def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_openai.provider.create_sync_client", return_value=mock_sync_client)
 
 
 @pytest.fixture
@@ -140,9 +139,8 @@ def mock_async_client() -> MagicMock:
 
 
 @pytest.fixture
-def mock_async_create(mock_async_client: MagicMock) -> Iterator[MagicMock]:
-    with patch("lmux_openai.provider.create_async_client", return_value=mock_async_client) as mock_create:
-        yield mock_create
+def mock_async_create(mock_async_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_openai.provider.create_async_client", return_value=mock_async_client)
 
 
 @pytest.fixture

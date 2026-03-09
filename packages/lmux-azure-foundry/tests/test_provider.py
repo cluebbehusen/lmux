@@ -1,8 +1,8 @@
 """Tests for Azure AI Foundry provider."""
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import openai
 import pytest
@@ -14,6 +14,7 @@ from openai.types.completion_usage import CompletionUsage
 from openai.types.create_embedding_response import CreateEmbeddingResponse
 from openai.types.create_embedding_response import Usage as EmbUsage
 from openai.types.embedding import Embedding
+from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError
@@ -132,9 +133,8 @@ def mock_sync_client() -> MagicMock:
 
 
 @pytest.fixture
-def mock_sync_create(mock_sync_client: MagicMock) -> Iterator[MagicMock]:
-    with patch("lmux_azure_foundry.provider.create_sync_client", return_value=mock_sync_client) as mock_create:
-        yield mock_create
+def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_azure_foundry.provider.create_sync_client", return_value=mock_sync_client)
 
 
 @pytest.fixture
@@ -151,9 +151,8 @@ def mock_async_client() -> MagicMock:
 
 
 @pytest.fixture
-def mock_async_create(mock_async_client: MagicMock) -> Iterator[MagicMock]:
-    with patch("lmux_azure_foundry.provider.create_async_client", return_value=mock_async_client) as mock_create:
-        yield mock_create
+def mock_async_create(mock_async_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_azure_foundry.provider.create_async_client", return_value=mock_async_client)
 
 
 @pytest.fixture
@@ -186,39 +185,33 @@ def server_error() -> openai.InternalServerError:
 
 
 @pytest.fixture
-def failing_sync_create(auth_error: openai.AuthenticationError) -> Iterator[MagicMock]:
-    with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=auth_error) as mock_create:
-        yield mock_create
+def failing_sync_create(auth_error: openai.AuthenticationError, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_azure_foundry.provider.create_sync_client", side_effect=auth_error)
 
 
 @pytest.fixture
-def failing_async_create(auth_error: openai.AuthenticationError) -> Iterator[MagicMock]:
-    with patch("lmux_azure_foundry.provider.create_async_client", side_effect=auth_error) as mock_create:
-        yield mock_create
+def failing_async_create(auth_error: openai.AuthenticationError, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=auth_error)
 
 
 @pytest.fixture
-def failing_sync_create_server(server_error: openai.InternalServerError) -> Iterator[MagicMock]:
-    with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=server_error) as mock_create:
-        yield mock_create
+def failing_sync_create_server(server_error: openai.InternalServerError, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_azure_foundry.provider.create_sync_client", side_effect=server_error)
 
 
 @pytest.fixture
-def failing_async_create_server(server_error: openai.InternalServerError) -> Iterator[MagicMock]:
-    with patch("lmux_azure_foundry.provider.create_async_client", side_effect=server_error) as mock_create:
-        yield mock_create
+def failing_async_create_server(server_error: openai.InternalServerError, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=server_error)
 
 
 @pytest.fixture
-def failing_sync_create_bad_request(bad_request_error: openai.BadRequestError) -> Iterator[MagicMock]:
-    with patch("lmux_azure_foundry.provider.create_sync_client", side_effect=bad_request_error) as mock_create:
-        yield mock_create
+def failing_sync_create_bad_request(bad_request_error: openai.BadRequestError, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_azure_foundry.provider.create_sync_client", side_effect=bad_request_error)
 
 
 @pytest.fixture
-def failing_async_create_bad_request(bad_request_error: openai.BadRequestError) -> Iterator[MagicMock]:
-    with patch("lmux_azure_foundry.provider.create_async_client", side_effect=bad_request_error) as mock_create:
-        yield mock_create
+def failing_async_create_bad_request(bad_request_error: openai.BadRequestError, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=bad_request_error)
 
 
 # MARK: Chat
