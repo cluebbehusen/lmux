@@ -1,8 +1,9 @@
 """Tests for GCP Vertex AI auth providers."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
+from pytest_mock import MockerFixture
 
 from lmux.exceptions import AuthenticationError
 from lmux_gcp_vertex.auth import (
@@ -13,67 +14,65 @@ from lmux_gcp_vertex.auth import (
 
 
 class TestGCPVertexADCAuthProvider:
-    def test_get_credentials(self) -> None:
-        mock_creds = MagicMock()
-        with patch("google.auth.default", return_value=(mock_creds, "my-project")) as mock_default:
-            provider = GCPVertexADCAuthProvider()
-            result = provider.get_credentials()
+    @pytest.fixture
+    def mock_creds(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_google_auth_default(self, mock_creds: MagicMock, mocker: MockerFixture) -> MagicMock:
+        return mocker.patch("google.auth.default", return_value=(mock_creds, "my-project"))
+
+    def test_get_credentials(self, mock_creds: MagicMock, mock_google_auth_default: MagicMock) -> None:
+        provider = GCPVertexADCAuthProvider()
+        result = provider.get_credentials()
 
         assert result is mock_creds
-        mock_default.assert_called_once()
+        mock_google_auth_default.assert_called_once()
 
-    async def test_aget_credentials(self) -> None:
-        mock_creds = MagicMock()
-        with patch("google.auth.default", return_value=(mock_creds, "my-project")) as mock_default:
-            provider = GCPVertexADCAuthProvider()
-            result = await provider.aget_credentials()
+    async def test_aget_credentials(self, mock_creds: MagicMock, mock_google_auth_default: MagicMock) -> None:
+        provider = GCPVertexADCAuthProvider()
+        result = await provider.aget_credentials()
 
         assert result is mock_creds
-        mock_default.assert_called_once()
+        mock_google_auth_default.assert_called_once()
 
 
 class TestGCPVertexServiceAccountAuthProvider:
-    def test_get_credentials(self) -> None:
-        mock_creds = MagicMock()
-        with patch(
+    @pytest.fixture
+    def mock_creds(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_from_service_account_file(self, mock_creds: MagicMock, mocker: MockerFixture) -> MagicMock:
+        return mocker.patch(
             "google.oauth2.service_account.Credentials.from_service_account_file",
             return_value=mock_creds,
-        ) as mock_from_file:
-            provider = GCPVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json")
-            result = provider.get_credentials()
+        )
+
+    def test_get_credentials(self, mock_creds: MagicMock, mock_from_service_account_file: MagicMock) -> None:
+        provider = GCPVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json")
+        result = provider.get_credentials()
 
         assert result is mock_creds
-        mock_from_file.assert_called_once_with(
+        mock_from_service_account_file.assert_called_once_with(
             "/path/to/key.json", scopes=["https://www.googleapis.com/auth/cloud-platform"]
         )
 
-    async def test_aget_credentials(self) -> None:
-        mock_creds = MagicMock()
-        with patch(
-            "google.oauth2.service_account.Credentials.from_service_account_file",
-            return_value=mock_creds,
-        ) as mock_from_file:
-            provider = GCPVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json")
-            result = await provider.aget_credentials()
+    async def test_aget_credentials(self, mock_creds: MagicMock, mock_from_service_account_file: MagicMock) -> None:
+        provider = GCPVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json")
+        result = await provider.aget_credentials()
 
         assert result is mock_creds
-        mock_from_file.assert_called_once_with(
+        mock_from_service_account_file.assert_called_once_with(
             "/path/to/key.json", scopes=["https://www.googleapis.com/auth/cloud-platform"]
         )
 
-    def test_custom_scopes(self) -> None:
-        mock_creds = MagicMock()
+    def test_custom_scopes(self, mock_from_service_account_file: MagicMock) -> None:
         custom_scopes = ["https://www.googleapis.com/auth/bigquery"]
-        with patch(
-            "google.oauth2.service_account.Credentials.from_service_account_file",
-            return_value=mock_creds,
-        ) as mock_from_file:
-            provider = GCPVertexServiceAccountAuthProvider(
-                service_account_file="/path/to/key.json", scopes=custom_scopes
-            )
-            provider.get_credentials()
+        provider = GCPVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json", scopes=custom_scopes)
+        provider.get_credentials()
 
-        mock_from_file.assert_called_once_with("/path/to/key.json", scopes=custom_scopes)
+        mock_from_service_account_file.assert_called_once_with("/path/to/key.json", scopes=custom_scopes)
 
 
 class TestGCPVertexAPIKeyAuthProvider:
@@ -85,23 +84,23 @@ class TestGCPVertexAPIKeyAuthProvider:
         provider = GCPVertexAPIKeyAuthProvider(api_key="test-key")
         assert await provider.aget_credentials() == "test-key"
 
-    def test_get_credentials_from_env_var(self) -> None:
-        with patch.dict("os.environ", {"GOOGLE_API_KEY": "env-key"}):
-            provider = GCPVertexAPIKeyAuthProvider()
-            assert provider.get_credentials() == "env-key"
+    def test_get_credentials_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GOOGLE_API_KEY", "env-key")
+        provider = GCPVertexAPIKeyAuthProvider()
+        assert provider.get_credentials() == "env-key"
 
-    def test_get_credentials_custom_env_var(self) -> None:
-        with patch.dict("os.environ", {"MY_KEY": "custom-key"}):
-            provider = GCPVertexAPIKeyAuthProvider(env_var="MY_KEY")
-            assert provider.get_credentials() == "custom-key"
+    def test_get_credentials_custom_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MY_KEY", "custom-key")
+        provider = GCPVertexAPIKeyAuthProvider(env_var="MY_KEY")
+        assert provider.get_credentials() == "custom-key"
 
-    def test_get_credentials_missing_env_var_raises(self) -> None:
-        with patch.dict("os.environ", {}, clear=True):
-            provider = GCPVertexAPIKeyAuthProvider()
-            with pytest.raises(AuthenticationError, match="GOOGLE_API_KEY environment variable is not set"):
-                provider.get_credentials()
+    def test_get_credentials_missing_env_var_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        provider = GCPVertexAPIKeyAuthProvider()
+        with pytest.raises(AuthenticationError, match="GOOGLE_API_KEY environment variable is not set"):
+            provider.get_credentials()
 
-    def test_explicit_key_takes_precedence_over_env(self) -> None:
-        with patch.dict("os.environ", {"GOOGLE_API_KEY": "env-key"}):
-            provider = GCPVertexAPIKeyAuthProvider(api_key="explicit-key")
-            assert provider.get_credentials() == "explicit-key"
+    def test_explicit_key_takes_precedence_over_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GOOGLE_API_KEY", "env-key")
+        provider = GCPVertexAPIKeyAuthProvider(api_key="explicit-key")
+        assert provider.get_credentials() == "explicit-key"
