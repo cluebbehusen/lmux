@@ -56,6 +56,15 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # --- OpenAI: GPT-4.5 ---
+    "gpt-4.5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(60.00),
+                output_cost_per_token=per_million_tokens(150.00),
+            )
+        ],
+    ),
     # --- OpenAI: GPT-4.1 family ---
     "gpt-4.1": ModelPricing(
         tiers=[
@@ -193,6 +202,14 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "deepseek-v3.1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.23),
+                output_cost_per_token=per_million_tokens(4.94),
+            )
+        ],
+    ),
     "deepseek-v3.2": ModelPricing(
         tiers=[
             PricingTier(
@@ -218,11 +235,35 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "grok-4.2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(6.00),
+            )
+        ],
+    ),
+    "grok-4-fast": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
     "grok-4": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(5.50),
-                output_cost_per_token=per_million_tokens(27.50),
+                input_cost_per_token=per_million_tokens(3.00),
+                output_cost_per_token=per_million_tokens(15.00),
+            )
+        ],
+    ),
+    "grok-code-fast-1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(1.50),
             )
         ],
     ),
@@ -240,6 +281,14 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.71),
                 output_cost_per_token=per_million_tokens(0.71),
+            )
+        ],
+    ),
+    "llama-4-scout": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.16),
+                output_cost_per_token=per_million_tokens(0.64),
             )
         ],
     ),

@@ -39,6 +39,31 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "gemini-3.1-flash-lite-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.25),
+                output_cost_per_token=per_million_tokens(1.50),
+                cache_read_cost_per_token=per_million_tokens(0.03),
+            ),
+        ],
+    ),
+    "gemini-3.1-flash-image-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.50),
+                output_cost_per_token=per_million_tokens(3.00),
+            ),
+        ],
+    ),
+    "gemini-3-pro-image-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(12.0),
+            ),
+        ],
+    ),
     "gemini-3-flash-preview": ModelPricing(
         tiers=[
             PricingTier(
@@ -138,12 +163,6 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(25.0),
                 cache_read_cost_per_token=per_million_tokens(0.5),
             ),
-            PricingTier(
-                input_cost_per_token=per_million_tokens(10.0),
-                output_cost_per_token=per_million_tokens(37.5),
-                cache_read_cost_per_token=per_million_tokens(1.0),
-                min_input_tokens=200_000,
-            ),
         ],
     ),
     "claude-sonnet-4-6": ModelPricing(
@@ -152,12 +171,6 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(3.0),
                 output_cost_per_token=per_million_tokens(15.0),
                 cache_read_cost_per_token=per_million_tokens(0.3),
-            ),
-            PricingTier(
-                input_cost_per_token=per_million_tokens(6.0),
-                output_cost_per_token=per_million_tokens(22.5),
-                cache_read_cost_per_token=per_million_tokens(0.6),
-                min_input_tokens=200_000,
             ),
         ],
     ),
@@ -314,6 +327,14 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # ── Embedding models ───────────────────────────────────────
+    "gemini-embedding-2-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=0.0,
+            ),
+        ],
+    ),
     "gemini-embedding-001": ModelPricing(
         tiers=[
             PricingTier(
