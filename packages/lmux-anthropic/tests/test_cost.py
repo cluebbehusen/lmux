@@ -81,18 +81,26 @@ class TestCalculateAnthropicCost:
     def test_long_context_pricing(self) -> None:
         """Models with long context pricing should use premium rates for large inputs."""
         usage = Usage(input_tokens=250_000, output_tokens=1000)
-        cost = calculate_anthropic_cost("claude-opus-4-6", usage)
+        cost = calculate_anthropic_cost("claude-sonnet-4", usage)
         assert cost is not None
-        # Long context: $10/MTok input, $37.50/MTok output
-        assert cost.input_cost == pytest.approx(250_000 * 10.0 / 1_000_000)
-        assert cost.output_cost == pytest.approx(1000 * 37.50 / 1_000_000)
+        # Long context: $6/MTok input, $22.50/MTok output
+        assert cost.input_cost == pytest.approx(250_000 * 6.0 / 1_000_000)
+        assert cost.output_cost == pytest.approx(1000 * 22.50 / 1_000_000)
 
     def test_standard_context_uses_standard_pricing(self) -> None:
         """Below threshold, standard rates apply even for models with long context pricing."""
         usage = Usage(input_tokens=100_000, output_tokens=1000)
+        cost = calculate_anthropic_cost("claude-sonnet-4", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(100_000 * 3.0 / 1_000_000)
+        assert cost.output_cost == pytest.approx(1000 * 15.0 / 1_000_000)
+
+    def test_opus_4_6_flat_pricing_at_high_token_count(self) -> None:
+        """Claude Opus 4.6 uses flat pricing across the full 1M context window."""
+        usage = Usage(input_tokens=500_000, output_tokens=1000)
         cost = calculate_anthropic_cost("claude-opus-4-6", usage)
         assert cost is not None
-        assert cost.input_cost == pytest.approx(100_000 * 5.0 / 1_000_000)
+        assert cost.input_cost == pytest.approx(500_000 * 5.0 / 1_000_000)
         assert cost.output_cost == pytest.approx(1000 * 25.0 / 1_000_000)
 
 

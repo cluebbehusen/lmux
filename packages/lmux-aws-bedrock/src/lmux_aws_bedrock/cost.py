@@ -273,10 +273,10 @@ _PRICING: dict[str, ModelPricing] = {
                 cache_creation_cost_per_token=per_million_tokens(6.25),
             ),
             PricingTier(
-                input_cost_per_token=per_million_tokens(10.0),
-                output_cost_per_token=per_million_tokens(37.5),
-                cache_read_cost_per_token=per_million_tokens(1.0),
-                cache_creation_cost_per_token=per_million_tokens(12.5),
+                input_cost_per_token=per_million_tokens(5.0),
+                output_cost_per_token=per_million_tokens(25.0),
+                cache_read_cost_per_token=per_million_tokens(0.5),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
                 min_input_tokens=200000,
             ),
         ],
@@ -317,10 +317,10 @@ _PRICING: dict[str, ModelPricing] = {
                 cache_creation_cost_per_token=per_million_tokens(3.75),
             ),
             PricingTier(
-                input_cost_per_token=per_million_tokens(6.0),
-                output_cost_per_token=per_million_tokens(22.5),
-                cache_read_cost_per_token=per_million_tokens(0.6),
-                cache_creation_cost_per_token=per_million_tokens(7.5),
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
                 min_input_tokens=200000,
             ),
         ],
@@ -579,6 +579,14 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "minimax.minimax-m2.5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.3),
+                output_cost_per_token=per_million_tokens(1.2),
+            ),
+        ],
+    ),
     # -- Mistral (via Bedrock) -----------------------------------
     "mistral.devstral-2-123b": ModelPricing(
         tiers=[
@@ -718,6 +726,14 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "nvidia.nemotron-super-3-120b": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.15),
+                output_cost_per_token=per_million_tokens(0.65),
+            ),
+        ],
+    ),
     # -- OpenAI (via Bedrock) ------------------------------------
     "openai.gpt-oss-120b": ModelPricing(
         tiers=[
@@ -809,6 +825,14 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # -- Writer (via Bedrock) ------------------------------------
+    "writer.palmyra-vision-7b": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.15),
+                output_cost_per_token=per_million_tokens(0.6),
+            ),
+        ],
+    ),
     "writer.palmyra-x4-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -839,6 +863,14 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.07),
                 output_cost_per_token=per_million_tokens(0.4),
+            ),
+        ],
+    ),
+    "zai.glm5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.0),
+                output_cost_per_token=per_million_tokens(3.2),
             ),
         ],
     ),
