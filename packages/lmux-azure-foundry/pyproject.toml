@@ -4,6 +4,15 @@ version = "0.1.0"
 description = "Azure AI Foundry provider for lmux"
 requires-python = ">=3.13"
 license = "MIT"
+readme = "README.md"
+authors = [{ name = "Connor Luebbehusen", email = "connor@luebbehusen.dev" }]
+keywords = ["llm", "ai", "azure", "openai", "language-model"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
+]
 dependencies = [
   "lmux",
   "openai~=2.20",
@@ -13,6 +22,11 @@ dependencies = [
 identity = [
   "azure-identity~=1.20",
 ]
+
+[project.urls]
+Homepage = "https://github.com/cluebbehusen/lmux"
+Source = "https://github.com/cluebbehusen/lmux/tree/main/packages/lmux-azure-foundry"
+Issues = "https://github.com/cluebbehusen/lmux/issues"
 
 [tool.uv.sources]
 lmux = { workspace = true }

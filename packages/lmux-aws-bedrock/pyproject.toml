@@ -4,6 +4,15 @@ version = "0.1.0"
 description = "AWS Bedrock provider for lmux"
 requires-python = ">=3.13"
 license = "MIT"
+readme = "README.md"
+authors = [{ name = "Connor Luebbehusen", email = "connor@luebbehusen.dev" }]
+keywords = ["llm", "ai", "aws", "bedrock", "language-model"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
+]
 dependencies = [
   "lmux",
   "boto3~=1.35",
@@ -11,6 +20,11 @@ dependencies = [
 
 [project.optional-dependencies]
 async = ["aioboto3~=15.0"]
+
+[project.urls]
+Homepage = "https://github.com/cluebbehusen/lmux"
+Source = "https://github.com/cluebbehusen/lmux/tree/main/packages/lmux-aws-bedrock"
+Issues = "https://github.com/cluebbehusen/lmux/issues"
 
 [tool.uv.sources]
 lmux = { workspace = true }

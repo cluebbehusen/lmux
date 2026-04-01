@@ -4,10 +4,24 @@ version = "0.1.0"
 description = "Anthropic provider for lmux"
 requires-python = ">=3.13"
 license = "MIT"
+readme = "README.md"
+authors = [{ name = "Connor Luebbehusen", email = "connor@luebbehusen.dev" }]
+keywords = ["llm", "ai", "anthropic", "claude", "language-model"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
+]
 dependencies = [
   "lmux",
   "anthropic~=0.80",
 ]
+
+[project.urls]
+Homepage = "https://github.com/cluebbehusen/lmux"
+Source = "https://github.com/cluebbehusen/lmux/tree/main/packages/lmux-anthropic"
+Issues = "https://github.com/cluebbehusen/lmux/issues"
 
 [tool.uv.sources]
 lmux = { workspace = true }
