@@ -2,7 +2,7 @@
 
 Groq provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [groq](https://pypi.org/project/groq/) SDK.
 
-Supports chat completions and streaming.
+Supports chat completions and streaming. Standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Auth
 
@@ -37,6 +37,18 @@ for chunk in provider.chat_stream("llama-3.3-70b-versatile", [UserMessage(conten
 ### Async
 
 All methods have async variants: `achat`, `achat_stream`.
+
+### Registry
+
+Use with the lmux registry to route across multiple providers:
+
+```python
+from lmux import Registry
+
+registry = Registry()
+registry.register("groq", provider)
+response = registry.chat("groq/llama-3.3-70b-versatile", messages)
+```
 
 ## Provider Params
 

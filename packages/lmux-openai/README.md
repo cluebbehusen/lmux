@@ -2,7 +2,7 @@
 
 OpenAI provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [openai](https://pypi.org/project/openai/) SDK.
 
-Supports chat completions, streaming, embeddings, and the Responses API.
+Supports chat completions, streaming, embeddings, and the Responses API. Standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Auth
 
@@ -57,6 +57,18 @@ print(response.output_text)
 ### Async
 
 All methods have async variants: `achat`, `achat_stream`, `aembed`, `acreate_response`.
+
+### Registry
+
+Use with the lmux registry to route across multiple providers:
+
+```python
+from lmux import Registry
+
+registry = Registry()
+registry.register("openai", provider)
+response = registry.chat("openai/gpt-4o", messages)
+```
 
 ## Provider Params
 
