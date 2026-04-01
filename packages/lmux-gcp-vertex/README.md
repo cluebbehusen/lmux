@@ -26,7 +26,7 @@ from lmux_gcp_vertex import GCPVertexServiceAccountAuthProvider
 provider = GCPVertexProvider(
     project="my-project",
     location="us-central1",
-    auth=GCPVertexServiceAccountAuthProvider(key_path="/path/to/key.json"),
+    auth=GCPVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json"),
 )
 ```
 
