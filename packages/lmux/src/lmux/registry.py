@@ -108,6 +108,7 @@ class Registry:
         response_format: ResponseFormat | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> ChatResponse:
+        """Route a chat completion to the provider registered under *model*'s prefix."""
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, CompletionProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
@@ -137,6 +138,7 @@ class Registry:
         response_format: ResponseFormat | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> ChatResponse:
+        """Async variant of :meth:`chat`."""
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, CompletionProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
@@ -166,6 +168,7 @@ class Registry:
         response_format: ResponseFormat | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> Iterator[ChatChunk]:
+        """Streaming variant of :meth:`chat`. Yields :class:`ChatChunk` instances."""
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, CompletionProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
@@ -195,6 +198,7 @@ class Registry:
         response_format: ResponseFormat | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> AsyncIterator[ChatChunk]:
+        """Async streaming variant of :meth:`chat`. Yields :class:`ChatChunk` instances."""
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, CompletionProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
@@ -221,6 +225,7 @@ class Registry:
         *,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> EmbeddingResponse:
+        """Route an embedding request to the provider registered under *model*'s prefix."""
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, EmbeddingProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support embeddings (model: {bare_model!r})"
@@ -234,6 +239,7 @@ class Registry:
         *,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> EmbeddingResponse:
+        """Async variant of :meth:`embed`."""
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, EmbeddingProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support embeddings (model: {bare_model!r})"
@@ -249,6 +255,7 @@ class Registry:
         *,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> ResponseResponse:
+        """Route a Responses API request to the provider registered under *model*'s prefix."""
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, ResponsesProvider):
             provider_name = type(provider).__name__
@@ -265,6 +272,7 @@ class Registry:
         *,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> ResponseResponse:
+        """Async variant of :meth:`create_response`."""
         provider, prefix, bare_model = self._resolve(model)
         if not isinstance(provider, ResponsesProvider):
             provider_name = type(provider).__name__

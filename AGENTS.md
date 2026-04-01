@@ -11,12 +11,12 @@ uv workspace with a virtual root (`package = false`). All packages live under `p
 ```text
 packages/
 ├── lmux/                  # Core: types, protocols, exceptions, cost utils, mock provider
-├── lmux-openai/           # OpenAI provider (implemented)
-├── lmux-anthropic/        # Anthropic provider (skeleton)
-├── lmux-azure-foundry/    # Azure AI Foundry provider (implemented)
-├── lmux-bedrock/          # AWS Bedrock provider (skeleton)
-├── lmux-google/           # Google Gemini/Vertex provider (skeleton)
-└── lmux-groq/             # Groq provider (skeleton)
+├── lmux-openai/           # OpenAI provider
+├── lmux-anthropic/        # Anthropic provider
+├── lmux-azure-foundry/    # Azure AI Foundry provider
+├── lmux-aws-bedrock/      # AWS Bedrock provider
+├── lmux-gcp-vertex/       # Google Cloud Vertex AI provider
+└── lmux-groq/             # Groq provider
 ```
 
 Each package uses `src/` layout: `packages/<name>/src/<import_name>/` and `packages/<name>/tests/`.
@@ -70,6 +70,10 @@ Each provider owns its pricing data and cost calculation. Core provides `ModelPr
 ### Response Design
 
 Flattened responses — no `choices` array. Always take the first choice. Every response carries `.cost` if the provider knows the pricing.
+
+## Documentation
+
+README files (root and per-package) must be kept up to date when changes affect the public API, supported providers, configuration options, or usage patterns. If a change would make existing documentation inaccurate, update the relevant README as part of the same change.
 
 ## Code Conventions
 
