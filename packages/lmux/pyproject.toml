@@ -1,12 +1,26 @@
 [project]
 name = "lmux"
 version = "0.1.0"
-description = "Core types and protocols for lmux — a modular language model multiplexer"
+description = "Core types, protocols, and utilities for the lmux language model multiplexer"
 requires-python = ">=3.13"
 license = "MIT"
+readme = "README.md"
+authors = [{ name = "Connor Luebbehusen", email = "connor@luebbehusen.dev" }]
+keywords = ["llm", "ai", "language-model", "multiplexer"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
+]
 dependencies = [
   "pydantic~=2.10",
 ]
+
+[project.urls]
+Homepage = "https://github.com/cluebbehusen/lmux"
+Source = "https://github.com/cluebbehusen/lmux/tree/main/packages/lmux"
+Issues = "https://github.com/cluebbehusen/lmux/issues"
 
 [build-system]
 requires = ["uv_build>=0.11.0,<0.12.0"]
