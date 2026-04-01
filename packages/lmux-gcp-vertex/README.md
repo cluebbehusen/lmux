@@ -2,7 +2,7 @@
 
 Google Cloud Vertex AI provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [google-genai](https://pypi.org/project/google-genai/) SDK.
 
-Supports chat completions, streaming, and embeddings.
+Supports chat completions, streaming, and embeddings. Standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Auth
 
@@ -70,6 +70,18 @@ print(response.embeddings)
 ### Async
 
 All methods have async variants: `achat`, `achat_stream`, `aembed`.
+
+### Registry
+
+Use with the lmux registry to route across multiple providers:
+
+```python
+from lmux import Registry
+
+registry = Registry()
+registry.register("gcp", provider)
+response = registry.chat("gcp/gemini-2.5-pro", messages)
+```
 
 ## Provider Params
 

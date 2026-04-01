@@ -2,7 +2,7 @@
 
 Anthropic provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [anthropic](https://pypi.org/project/anthropic/) SDK.
 
-Supports chat completions and streaming.
+Supports chat completions and streaming. Standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Auth
 
@@ -37,6 +37,18 @@ for chunk in provider.chat_stream("claude-sonnet-4-20250514", [UserMessage(conte
 ### Async
 
 All methods have async variants: `achat`, `achat_stream`.
+
+### Registry
+
+Use with the lmux registry to route across multiple providers:
+
+```python
+from lmux import Registry
+
+registry = Registry()
+registry.register("anthropic", provider)
+response = registry.chat("anthropic/claude-sonnet-4-20250514", messages)
+```
 
 ## Provider Params
 

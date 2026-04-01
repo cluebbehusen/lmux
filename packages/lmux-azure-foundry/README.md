@@ -2,7 +2,7 @@
 
 Azure AI Foundry provider for [lmux](https://github.com/cluebbehusen/lmux). Uses the [openai](https://pypi.org/project/openai/) SDK's `AzureOpenAI` client.
 
-Supports chat completions, streaming, and embeddings.
+Supports chat completions, streaming, and embeddings. Standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Optional Extras
 
@@ -74,6 +74,18 @@ print(response.embeddings)
 ### Async
 
 All methods have async variants: `achat`, `achat_stream`, `aembed`.
+
+### Registry
+
+Use with the lmux registry to route across multiple providers:
+
+```python
+from lmux import Registry
+
+registry = Registry()
+registry.register("azure", provider)
+response = registry.chat("azure/gpt-4o", messages)
+```
 
 ## Provider Params
 

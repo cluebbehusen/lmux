@@ -2,7 +2,7 @@
 
 AWS Bedrock provider for [lmux](https://github.com/cluebbehusen/lmux). Uses [boto3](https://pypi.org/project/boto3/) and the Converse API.
 
-Supports chat completions, streaming, and embeddings.
+Supports chat completions, streaming, and embeddings. Standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Optional Extras
 
@@ -59,6 +59,18 @@ print(response.embeddings)
 ### Async
 
 Requires the `[async]` extra. All methods have async variants: `achat`, `achat_stream`, `aembed`.
+
+### Registry
+
+Use with the lmux registry to route across multiple providers:
+
+```python
+from lmux import Registry
+
+registry = Registry()
+registry.register("bedrock", provider)
+response = registry.chat("bedrock/anthropic.claude-sonnet-4-20250514-v1:0", messages)
+```
 
 ## Provider Params
 
