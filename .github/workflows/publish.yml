@@ -1,0 +1,122 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "lmux-v*"
+      - "lmux-openai-v*"
+      - "lmux-anthropic-v*"
+      - "lmux-azure-foundry-v*"
+      - "lmux-aws-bedrock-v*"
+      - "lmux-gcp-vertex-v*"
+      - "lmux-groq-v*"
+
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to publish"
+        required: true
+        type: choice
+        options:
+          - lmux
+          - lmux-openai
+          - lmux-anthropic
+          - lmux-azure-foundry
+          - lmux-aws-bedrock
+          - lmux-gcp-vertex
+          - lmux-groq
+      target:
+        description: "Publish target"
+        required: true
+        type: choice
+        default: testpypi
+        options:
+          - testpypi
+          - pypi
+
+jobs:
+  resolve:
+    name: Resolve package
+    runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.resolve.outputs.package }}
+      version: ${{ steps.resolve.outputs.version }}
+      environment: ${{ steps.resolve.outputs.environment }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - id: resolve
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PACKAGE="${{ inputs.package }}"
+            ENVIRONMENT="${{ inputs.target }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+            # Strip the version suffix to get the package name: lmux-openai-v0.1.0 -> lmux-openai
+            PACKAGE="${TAG%-v*}"
+            ENVIRONMENT="pypi"
+          fi
+
+          # Read version from the package's pyproject.toml
+          PACKAGE_DIR="packages/${PACKAGE}"
+          if [[ ! -d "$PACKAGE_DIR" ]]; then
+            echo "::error::Package directory not found: ${PACKAGE_DIR}"
+            exit 1
+          fi
+
+          VERSION=$(python3 -c "
+          import re, pathlib
+          text = pathlib.Path('${PACKAGE_DIR}/pyproject.toml').read_text()
+          match = re.search(r'^version\s*=\s*\"(.+?)\"', text, re.MULTILINE)
+          print(match.group(1))
+          ")
+
+          # If tag-triggered, verify the tag version matches pyproject.toml
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]]; then
+            TAG_VERSION="${TAG##*-v}"
+            if [[ "$TAG_VERSION" != "$VERSION" ]]; then
+              echo "::error::Tag version (${TAG_VERSION}) does not match pyproject.toml version (${VERSION})"
+              exit 1
+            fi
+          fi
+
+          echo "package=${PACKAGE}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "environment=${ENVIRONMENT}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${PACKAGE} v${VERSION} to ${ENVIRONMENT}"
+
+  build:
+    name: Build ${{ needs.resolve.outputs.package }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
+
+      - run: uv build --package ${{ needs.resolve.outputs.package }} --out-dir dist/
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to ${{ needs.resolve.outputs.environment }}
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.environment }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@106e0b0b7c337fa67ed433972f777c6357f78598 # v1.13.0
+        with:
+          repository-url: ${{ needs.resolve.outputs.environment == 'testpypi' && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
