@@ -225,6 +225,7 @@ class Registry:
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> EmbeddingResponse:
         """Route an embedding request to the provider registered under *model*'s prefix."""
@@ -232,13 +233,17 @@ class Registry:
         if not isinstance(provider, EmbeddingProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support embeddings (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
-        return provider.embed(bare_model, input, provider_params=self._resolve_params(prefix, provider_params))
+        kwargs: dict[str, Any] = {"provider_params": self._resolve_params(prefix, provider_params)}
+        if dimensions is not None:
+            kwargs["dimensions"] = dimensions
+        return provider.embed(bare_model, input, **kwargs)
 
     async def aembed(
         self,
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> EmbeddingResponse:
         """Async variant of :meth:`embed`."""
@@ -246,7 +251,10 @@ class Registry:
         if not isinstance(provider, EmbeddingProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support embeddings (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
-        return await provider.aembed(bare_model, input, provider_params=self._resolve_params(prefix, provider_params))
+        kwargs: dict[str, Any] = {"provider_params": self._resolve_params(prefix, provider_params)}
+        if dimensions is not None:
+            kwargs["dimensions"] = dimensions
+        return await provider.aembed(bare_model, input, **kwargs)
 
     # MARK: Responses
 

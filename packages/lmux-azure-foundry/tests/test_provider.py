@@ -707,6 +707,34 @@ class TestEmbed:
             model="text-embedding-3-small", input=["hello", "world"]
         )
 
+    def test_embed_with_dimensions(
+        self,
+        sync_provider: AzureFoundryProvider,
+        mock_sync_client: MagicMock,
+        embedding_response: CreateEmbeddingResponse,
+    ) -> None:
+        mock_sync_client.embeddings.create.return_value = embedding_response
+
+        sync_provider.embed("text-embedding-3-small", "hello", dimensions=256)
+
+        mock_sync_client.embeddings.create.assert_called_once_with(
+            model="text-embedding-3-small", input="hello", dimensions=256
+        )
+
+    async def test_aembed_with_dimensions(
+        self,
+        async_provider: AzureFoundryProvider,
+        mock_async_client: MagicMock,
+        embedding_response: CreateEmbeddingResponse,
+    ) -> None:
+        mock_async_client.embeddings.create.return_value = embedding_response
+
+        await async_provider.aembed("text-embedding-3-small", "hello", dimensions=256)
+
+        mock_async_client.embeddings.create.assert_awaited_once_with(
+            model="text-embedding-3-small", input="hello", dimensions=256
+        )
+
     def test_embed_client_creation_error_mapped(
         self,
         fake_auth: FakeAuth,

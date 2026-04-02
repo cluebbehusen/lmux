@@ -342,9 +342,12 @@ def _map_metadata_event(metadata: "ConverseStreamMetadataEventTypeDef") -> ChatC
 # MARK: Embedding Mappers
 
 
-def build_embedding_request_body(text: str) -> str:
+def build_embedding_request_body(text: str, *, dimensions: int | None = None) -> str:
     """Build the JSON request body for a Titan embedding model."""
-    return json.dumps({"inputText": text})
+    body: dict[str, Any] = {"inputText": text}
+    if dimensions is not None:
+        body["dimensions"] = dimensions
+    return json.dumps(body)
 
 
 def map_embedding_response(

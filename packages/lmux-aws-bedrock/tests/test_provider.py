@@ -587,6 +587,22 @@ class TestEmbed:
         )
         assert mock_sync_client.invoke_model.call_count == 2
 
+    def test_embed_with_dimensions(
+        self,
+        sync_provider: BedrockProvider,
+        mock_sync_client: MagicMock,
+        embedding_invoke_response: dict[str, Any],
+    ) -> None:
+        mock_sync_client.invoke_model.return_value = embedding_invoke_response
+
+        sync_provider.embed("amazon.titan-embed-text-v2", "hello", dimensions=256)
+
+        mock_sync_client.invoke_model.assert_called_once_with(
+            modelId="amazon.titan-embed-text-v2",
+            contentType="application/json",
+            body=json.dumps({"inputText": "hello", "dimensions": 256}),
+        )
+
     def test_embed_exception_mapping(
         self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, server_error: Exception
     ) -> None:
@@ -648,6 +664,23 @@ class TestAembed:
         assert result.embeddings == [[0.1, 0.2], [0.3, 0.4]]
         assert result.usage == Usage(input_tokens=7, output_tokens=0)
         assert mock_async_client.invoke_model.call_count == 2
+
+    async def test_aembed_with_dimensions(
+        self,
+        async_provider: BedrockProvider,
+        mock_async_client: AsyncMock,
+    ) -> None:
+        mock_body = AsyncMock()
+        mock_body.read.return_value = json.dumps({"embedding": [0.1, 0.2, 0.3], "inputTextTokenCount": 5}).encode()
+        mock_async_client.invoke_model.return_value = {"body": mock_body}
+
+        await async_provider.aembed("amazon.titan-embed-text-v2", "hello", dimensions=256)
+
+        mock_async_client.invoke_model.assert_awaited_once_with(
+            modelId="amazon.titan-embed-text-v2",
+            contentType="application/json",
+            body=json.dumps({"inputText": "hello", "dimensions": 256}),
+        )
 
     async def test_aembed_exception_mapping(
         self, async_provider: BedrockProvider, mock_async_client: AsyncMock, server_error: Exception

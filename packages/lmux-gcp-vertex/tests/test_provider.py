@@ -470,7 +470,9 @@ class TestEmbed:
             model="text-embedding-005",
             provider="gcp-vertex",
         )
-        mock_client.models.embed_content.assert_called_once_with(model="text-embedding-005", contents=["hello"])
+        mock_client.models.embed_content.assert_called_once_with(
+            model="text-embedding-005", contents=["hello"], config=None
+        )
         mock_client.models.generate_content.assert_not_called()
 
     def test_embed_list_input(
@@ -484,7 +486,56 @@ class TestEmbed:
 
         assert result.embeddings == [[0.1, 0.2], [0.3, 0.4]]
         mock_client.models.embed_content.assert_called_once_with(
-            model="text-embedding-005", contents=["hello", "world"]
+            model="text-embedding-005", contents=["hello", "world"], config=None
+        )
+
+    def test_embed_with_dimensions(
+        self,
+        sync_provider: GCPVertexProvider,
+        mock_client: MagicMock,
+        embed_response: MagicMock,
+    ) -> None:
+        mock_client.models.embed_content.return_value = embed_response
+
+        sync_provider.embed("text-embedding-005", "hello", dimensions=256)
+
+        mock_client.models.embed_content.assert_called_once_with(
+            model="text-embedding-005", contents=["hello"], config={"output_dimensionality": 256}
+        )
+
+    def test_embed_with_task_type(
+        self,
+        sync_provider: GCPVertexProvider,
+        mock_client: MagicMock,
+        embed_response: MagicMock,
+    ) -> None:
+        mock_client.models.embed_content.return_value = embed_response
+
+        sync_provider.embed("text-embedding-005", "hello", provider_params=GCPVertexParams(task_type="RETRIEVAL_QUERY"))
+
+        mock_client.models.embed_content.assert_called_once_with(
+            model="text-embedding-005", contents=["hello"], config={"task_type": "RETRIEVAL_QUERY"}
+        )
+
+    def test_embed_with_dimensions_and_task_type(
+        self,
+        sync_provider: GCPVertexProvider,
+        mock_client: MagicMock,
+        embed_response: MagicMock,
+    ) -> None:
+        mock_client.models.embed_content.return_value = embed_response
+
+        sync_provider.embed(
+            "text-embedding-005",
+            "hello",
+            dimensions=256,
+            provider_params=GCPVertexParams(task_type="RETRIEVAL_DOCUMENT"),
+        )
+
+        mock_client.models.embed_content.assert_called_once_with(
+            model="text-embedding-005",
+            contents=["hello"],
+            config={"output_dimensionality": 256, "task_type": "RETRIEVAL_DOCUMENT"},
         )
 
     def test_embed_exception_mapping(
@@ -512,7 +563,9 @@ class TestAembed:
 
         assert result.embeddings == [[0.1, 0.2, 0.3]]
         assert result.provider == "gcp-vertex"
-        mock_client.aio.models.embed_content.assert_awaited_once_with(model="text-embedding-005", contents=["hello"])
+        mock_client.aio.models.embed_content.assert_awaited_once_with(
+            model="text-embedding-005", contents=["hello"], config=None
+        )
         mock_client.aio.models.generate_content.assert_not_called()
 
     async def test_aembed_list_input(
@@ -526,7 +579,7 @@ class TestAembed:
 
         assert result.embeddings == [[0.1], [0.2]]
         mock_client.aio.models.embed_content.assert_awaited_once_with(
-            model="text-embedding-005", contents=["hello", "world"]
+            model="text-embedding-005", contents=["hello", "world"], config=None
         )
 
     async def test_aembed_exception_mapping(

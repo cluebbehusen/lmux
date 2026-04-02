@@ -279,9 +279,12 @@ class AzureFoundryProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: AzureFoundryParams | None = None,
     ) -> EmbeddingResponse:
         extra: dict[str, Any] = self._provider_params_kwargs(provider_params) if provider_params else {}
+        if dimensions is not None:
+            extra["dimensions"] = dimensions
         try:
             client = self._get_sync_client()
             response = client.embeddings.create(model=model, input=input, **extra)
@@ -295,9 +298,12 @@ class AzureFoundryProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: AzureFoundryParams | None = None,
     ) -> EmbeddingResponse:
         extra: dict[str, Any] = self._provider_params_kwargs(provider_params) if provider_params else {}
+        if dimensions is not None:
+            extra["dimensions"] = dimensions
         try:
             client = await self._get_async_client()
             response = await client.embeddings.create(model=model, input=input, **extra)
