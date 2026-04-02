@@ -88,8 +88,7 @@ class BedrockSessionAuthProvider:
         if self._kwargs["profile_name"] is not None:
             session.set_config_variable("profile", self._kwargs["profile_name"])
         has_credentials = any(
-            self._kwargs[key] is not None
-            for key in ("aws_access_key_id", "aws_secret_access_key", "aws_session_token")
+            self._kwargs[key] is not None for key in ("aws_access_key_id", "aws_secret_access_key", "aws_session_token")
         )
         if has_credentials:
             session.set_credentials(
