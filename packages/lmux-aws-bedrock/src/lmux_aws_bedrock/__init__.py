@@ -19,7 +19,7 @@ __all__ = [
 
 
 def preload() -> None:
-    """Eagerly import boto3 (and aioboto3 if installed).
+    """Eagerly import boto3 (and aiobotocore if installed).
 
     Call this during application startup to pay the import cost upfront
     rather than on the first request.
@@ -27,4 +27,4 @@ def preload() -> None:
     import boto3  # noqa: F401, PLC0415  # pyright: ignore[reportUnusedImport]
 
     with contextlib.suppress(ImportError):
-        import aioboto3  # noqa: F401, PLC0415  # pyright: ignore[reportUnusedImport]
+        import aiobotocore  # noqa: F401, PLC0415  # pyright: ignore[reportUnusedImport]

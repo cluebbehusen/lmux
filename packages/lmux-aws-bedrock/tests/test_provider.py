@@ -8,13 +8,14 @@ import pytest
 from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
-from lmux.exceptions import ProviderError, UnsupportedFeatureError
+from lmux.exceptions import ProviderError
 from lmux.types import (
     ChatChunk,
     ChatResponse,
     EmbeddingResponse,
     FunctionDefinition,
     JsonObjectResponseFormat,
+    JsonSchemaResponseFormat,
     SystemMessage,
     TextResponseFormat,
     Tool,
@@ -32,13 +33,17 @@ class FakeAuth:
     """Fake auth provider for testing."""
 
     def __init__(self, async_session: MagicMock | None = None) -> None:
-        self._async_session = async_session or MagicMock()
+        self.async_session = async_session or MagicMock()
+        self.get_credentials_calls = 0
+        self.aget_credentials_calls = 0
 
     def get_credentials(self) -> MagicMock:
+        self.get_credentials_calls += 1
         return MagicMock()
 
     async def aget_credentials(self) -> MagicMock:
-        return self._async_session
+        self.aget_credentials_calls += 1
+        return self.async_session
 
 
 @pytest.fixture
@@ -98,19 +103,21 @@ def mock_async_client() -> AsyncMock:
 
 
 @pytest.fixture
-def mock_async_session(mock_async_client: AsyncMock) -> MagicMock:
-    mock_session = MagicMock()
+def mock_async_client_ctx(mock_async_client: AsyncMock) -> AsyncMock:
     mock_ctx_manager = AsyncMock()
     mock_ctx_manager.__aenter__ = AsyncMock(return_value=mock_async_client)
     mock_ctx_manager.__aexit__ = AsyncMock(return_value=None)
-    mock_session.client.return_value = mock_ctx_manager
-    return mock_session
+    return mock_ctx_manager
 
 
 @pytest.fixture
-def async_provider(mock_async_session: MagicMock) -> BedrockProvider:
-    auth = FakeAuth(async_session=mock_async_session)
-    return BedrockProvider(auth=auth)
+def mock_async_create(mock_async_client_ctx: AsyncMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_aws_bedrock.provider.create_async_client", return_value=mock_async_client_ctx)
+
+
+@pytest.fixture
+def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> BedrockProvider:
+    return BedrockProvider(auth=fake_auth)
 
 
 @pytest.fixture
@@ -183,23 +190,74 @@ class TestChat:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
 
-        # TextResponseFormat is a no-op for Bedrock; just ensure it doesn't raise
         result = sync_provider.chat(
             "anthropic.claude-sonnet-4", [UserMessage(content="Hi")], response_format=TextResponseFormat()
         )
 
         assert result.content == "Hello!"
-        mock_sync_client.converse.assert_called_once()
+        mock_sync_client.converse.assert_called_once_with(
+            modelId="anthropic.claude-sonnet-4",
+            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
+        )
 
-    def test_chat_with_json_response_format_raises(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock
+    def test_chat_with_json_object_response_format(
+        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
     ) -> None:
-        with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat"):
-            sync_provider.chat(
-                "anthropic.claude-sonnet-4",
-                [UserMessage(content="Hi")],
-                response_format=JsonObjectResponseFormat(),
-            )
+        mock_sync_client.converse.return_value = converse_response
+
+        sync_provider.chat(
+            "anthropic.claude-sonnet-4",
+            [UserMessage(content="Hi")],
+            response_format=JsonObjectResponseFormat(),
+        )
+
+        mock_sync_client.converse.assert_called_once_with(
+            modelId="anthropic.claude-sonnet-4",
+            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
+            outputConfig={
+                "textFormat": {
+                    "type": "json_schema",
+                    "structure": {
+                        "jsonSchema": {
+                            "schema": '{"type": "object"}',
+                            "name": "json_object",
+                        }
+                    },
+                }
+            },
+        )
+
+    def test_chat_with_json_schema_response_format(
+        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    ) -> None:
+        mock_sync_client.converse.return_value = converse_response
+
+        sync_provider.chat(
+            "anthropic.claude-sonnet-4",
+            [UserMessage(content="Hi")],
+            response_format=JsonSchemaResponseFormat(
+                name="weather_response",
+                description="Structured weather payload",
+                json_schema={"type": "object", "properties": {"city": {"type": "string"}}},
+            ),
+        )
+
+        mock_sync_client.converse.assert_called_once_with(
+            modelId="anthropic.claude-sonnet-4",
+            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
+            outputConfig={
+                "textFormat": {
+                    "type": "json_schema",
+                    "structure": {
+                        "jsonSchema": {
+                            "schema": '{"properties": {"city": {"type": "string"}}, "type": "object"}',
+                            "name": "weather_response",
+                            "description": "Structured weather payload",
+                        }
+                    },
+                }
+            },
+        )
 
     def test_chat_with_provider_params(
         self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
@@ -591,56 +649,49 @@ class TestClientManagement:
 
         mock_sync_create.assert_called_once()
 
-    async def test_async_session_reused(self, converse_response: dict[str, Any]) -> None:
-        mock_client = AsyncMock()
-        mock_client.converse.return_value = converse_response
-
-        mock_session = MagicMock()
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_ctx.__aexit__ = AsyncMock(return_value=None)
-        mock_session.client.return_value = mock_ctx
-
-        auth = FakeAuth(async_session=mock_session)
-        provider = BedrockProvider(auth=auth)
+    async def test_async_session_reused(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: AsyncMock,
+        converse_response: dict[str, Any],
+    ) -> None:
+        mock_async_client.converse.return_value = converse_response
+        provider = BedrockProvider(auth=fake_auth)
         await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
         await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi again")])
 
-        # aget_credentials called once, session reused
-        assert mock_session.client.call_count == 2
+        assert fake_auth.aget_credentials_calls == 1
+        assert mock_async_create.call_count == 2
 
-    async def test_async_region_passed(self, converse_response: dict[str, Any]) -> None:
-        mock_client = AsyncMock()
-        mock_client.converse.return_value = converse_response
-
-        mock_session = MagicMock()
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_ctx.__aexit__ = AsyncMock(return_value=None)
-        mock_session.client.return_value = mock_ctx
-
-        auth = FakeAuth(async_session=mock_session)
-        provider = BedrockProvider(auth=auth, region="eu-west-1")
+    async def test_async_region_passed(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: AsyncMock,
+        converse_response: dict[str, Any],
+    ) -> None:
+        mock_async_client.converse.return_value = converse_response
+        provider = BedrockProvider(auth=fake_auth, region="eu-west-1")
         await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
 
-        mock_session.client.assert_called_with("bedrock-runtime", region_name="eu-west-1", endpoint_url=None)
+        mock_async_create.assert_called_once_with(fake_auth.async_session, region_name="eu-west-1", endpoint_url=None)
 
-    async def test_async_endpoint_url_passed(self, converse_response: dict[str, Any]) -> None:
-        mock_client = AsyncMock()
-        mock_client.converse.return_value = converse_response
-
-        mock_session = MagicMock()
-        mock_ctx = AsyncMock()
-        mock_ctx.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_ctx.__aexit__ = AsyncMock(return_value=None)
-        mock_session.client.return_value = mock_ctx
-
-        auth = FakeAuth(async_session=mock_session)
-        provider = BedrockProvider(auth=auth, endpoint_url="https://custom.endpoint")
+    async def test_async_endpoint_url_passed(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: AsyncMock,
+        converse_response: dict[str, Any],
+    ) -> None:
+        mock_async_client.converse.return_value = converse_response
+        provider = BedrockProvider(auth=fake_auth, endpoint_url="https://custom.endpoint")
         await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
 
-        mock_session.client.assert_called_with(
-            "bedrock-runtime", region_name=None, endpoint_url="https://custom.endpoint"
+        mock_async_create.assert_called_once_with(
+            fake_auth.async_session,
+            region_name=None,
+            endpoint_url="https://custom.endpoint",
         )
 
     def test_sync_client_init_failure_mapped(
@@ -773,11 +824,11 @@ class TestProviderParamsKwargs:
 
 class TestPreload:
     @pytest.fixture
-    def mock_missing_aioboto3(self, mocker: MockerFixture) -> None:
-        mocker.patch.dict("sys.modules", {"aioboto3": None})
+    def mock_missing_aiobotocore(self, mocker: MockerFixture) -> None:
+        mocker.patch.dict("sys.modules", {"aiobotocore": None})
 
-    def test_preload_imports_boto3_and_aioboto3(self) -> None:
-        preload()  # should not raise; aioboto3 is installed in dev
+    def test_preload_imports_boto3_and_aiobotocore(self) -> None:
+        preload()  # should not raise; aiobotocore is installed in dev
 
-    def test_preload_without_aioboto3(self, mock_missing_aioboto3: None) -> None:
-        preload()  # should not raise when aioboto3 is missing
+    def test_preload_without_aiobotocore(self, mock_missing_aiobotocore: None) -> None:
+        preload()  # should not raise when aiobotocore is missing

@@ -2,11 +2,12 @@
 
 import json
 from collections.abc import AsyncIterator, Iterator, Sequence
+from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import aioboto3
     import boto3
+    from aiobotocore.session import AioSession
     from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
     from types_aiobotocore_bedrock_runtime import BedrockRuntimeClient as AsyncBedrockRuntimeClient
 
@@ -23,7 +24,7 @@ from lmux.types import (
     Usage,
 )
 from lmux_aws_bedrock._exceptions import map_bedrock_error
-from lmux_aws_bedrock._lazy import create_sync_client
+from lmux_aws_bedrock._lazy import create_async_client, create_sync_client
 from lmux_aws_bedrock._mappers import (
     build_embedding_request_body,
     map_converse_response,
@@ -49,15 +50,15 @@ class BedrockProvider(
     def __init__(
         self,
         *,
-        auth: AuthProvider["boto3.Session", "aioboto3.Session"] | None = None,
+        auth: AuthProvider["boto3.Session", "AioSession"] | None = None,
         region: str | None = None,
         endpoint_url: str | None = None,
     ) -> None:
-        self._auth: AuthProvider[boto3.Session, aioboto3.Session] = auth or BedrockEnvAuthProvider()
+        self._auth: AuthProvider[boto3.Session, AioSession] = auth or BedrockEnvAuthProvider()
         self._region = region
         self._endpoint_url = endpoint_url
         self._sync_client: BedrockRuntimeClient | None = None
-        self._async_session: aioboto3.Session | None = None
+        self._async_session: AioSession | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
     # MARK: Pricing
@@ -79,12 +80,14 @@ class BedrockProvider(
             self._sync_client = create_sync_client(session, region_name=self._region, endpoint_url=self._endpoint_url)
         return self._sync_client
 
-    async def _get_async_client_ctx(self) -> "AsyncBedrockRuntimeClient":
-        """Return an aioboto3 async client context manager."""
+    async def _get_async_client_ctx(self) -> AbstractAsyncContextManager["AsyncBedrockRuntimeClient"]:
+        """Return an aiobotocore async client context manager."""
         if self._async_session is None:
             self._async_session = await self._auth.aget_credentials()
-        return self._async_session.client(  # pyright: ignore[reportReturnType]
-            "bedrock-runtime", region_name=self._region, endpoint_url=self._endpoint_url
+        return create_async_client(
+            self._async_session,
+            region_name=self._region,
+            endpoint_url=self._endpoint_url,
         )
 
     # MARK: Chat
@@ -321,7 +324,9 @@ class BedrockProvider(
             kwargs["toolConfig"] = map_tools(tools)
 
         if response_format is not None:
-            map_response_format(response_format)
+            output_config = map_response_format(response_format)
+            if output_config is not None:
+                kwargs["outputConfig"] = output_config
 
         if provider_params is not None:
             kwargs.update(BedrockProvider._provider_params_kwargs(provider_params))

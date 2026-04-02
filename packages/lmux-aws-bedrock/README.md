@@ -1,6 +1,6 @@
 # lmux-aws-bedrock
 
-AWS Bedrock provider for [lmux](https://github.com/cluebbehusen/lmux). Uses [boto3](https://pypi.org/project/boto3/) and the Converse API.
+AWS Bedrock provider for [lmux](https://github.com/cluebbehusen/lmux). Uses [boto3](https://pypi.org/project/boto3/), [aiobotocore](https://pypi.org/project/aiobotocore/), and the Converse API.
 
 Supports chat completions, streaming, and embeddings.
 
@@ -8,7 +8,7 @@ Part of the [lmux](https://github.com/cluebbehusen/lmux) ecosystem: standardized
 
 ## Optional Extras
 
-- `lmux-aws-bedrock[async]`: async support via `aioboto3`
+- `lmux-aws-bedrock[async]`: async support via `aiobotocore`
 
 ## Auth
 
@@ -61,6 +61,8 @@ print(response.embeddings)
 ### Async
 
 Requires the `[async]` extra. All methods have async variants: `achat`, `achat_stream`, `aembed`.
+
+Bedrock also supports lmux `response_format`, mapped to Converse `outputConfig.textFormat`.
 
 ### Registry
 
