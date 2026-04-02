@@ -2,7 +2,9 @@
 
 Google Cloud Vertex AI provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [google-genai](https://pypi.org/project/google-genai/) SDK.
 
-Supports chat completions, streaming, and embeddings. Standardized interface, cost tracking on every response, and registry-based routing across providers.
+Supports chat completions, streaming, and embeddings.
+
+Part of the [lmux](https://github.com/cluebbehusen/lmux) ecosystem: standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Auth
 

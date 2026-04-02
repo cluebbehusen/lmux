@@ -2,7 +2,9 @@
 
 Groq provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [groq](https://pypi.org/project/groq/) SDK.
 
-Supports chat completions and streaming. Standardized interface, cost tracking on every response, and registry-based routing across providers.
+Supports chat completions and streaming.
+
+Part of the [lmux](https://github.com/cluebbehusen/lmux) ecosystem: standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Auth
 

@@ -2,7 +2,9 @@
 
 Azure AI Foundry provider for [lmux](https://github.com/cluebbehusen/lmux). Uses the [openai](https://pypi.org/project/openai/) SDK's `AzureOpenAI` client.
 
-Supports chat completions, streaming, and embeddings. Standardized interface, cost tracking on every response, and registry-based routing across providers.
+Supports chat completions, streaming, and embeddings.
+
+Part of the [lmux](https://github.com/cluebbehusen/lmux) ecosystem: standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Optional Extras
 
