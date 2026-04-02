@@ -87,15 +87,11 @@ class BedrockSessionAuthProvider:
             session.set_config_variable("region", self._kwargs["region_name"])
         if self._kwargs["profile_name"] is not None:
             session.set_config_variable("profile", self._kwargs["profile_name"])
-        if any(
+        has_credentials = any(
             self._kwargs[key] is not None
-            for key in (
-                "aws_account_id",
-                "aws_access_key_id",
-                "aws_secret_access_key",
-                "aws_session_token",
-            )
-        ):
+            for key in ("aws_access_key_id", "aws_secret_access_key", "aws_session_token")
+        )
+        if has_credentials:
             session.set_credentials(
                 self._kwargs["aws_access_key_id"],
                 self._kwargs["aws_secret_access_key"],

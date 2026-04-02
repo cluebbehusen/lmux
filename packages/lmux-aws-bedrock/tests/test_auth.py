@@ -103,6 +103,15 @@ class TestBedrockSessionAuthProvider:
         mock_aiobotocore_get_session.return_value.set_config_variable.assert_not_called()
         mock_aiobotocore_get_session.return_value.set_credentials.assert_not_called()
 
+    async def test_aget_account_id_only_does_not_override_credential_chain(
+        self, mock_aiobotocore_get_session: MagicMock
+    ) -> None:
+        provider = BedrockSessionAuthProvider(aws_account_id="123456789012")
+
+        await provider.aget_credentials()
+
+        mock_aiobotocore_get_session.return_value.set_credentials.assert_not_called()
+
     def test_default_kwargs_all_none(self, mock_boto3_session_cls: MagicMock) -> None:
         provider = BedrockSessionAuthProvider()
         provider.get_credentials()
