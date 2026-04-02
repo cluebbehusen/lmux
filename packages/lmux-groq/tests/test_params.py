@@ -13,6 +13,10 @@ class TestGroqParams:
         assert params.seed is None
         assert params.user is None
 
+    def test_groq_specific_reasoning_effort_values(self) -> None:
+        assert GroqParams(reasoning_effort="none").reasoning_effort == "none"
+        assert GroqParams(reasoning_effort="default").reasoning_effort == "default"
+
     def test_invalid_service_tier(self) -> None:
         with pytest.raises(ValidationError):
             GroqParams(service_tier="invalid")  # pyright: ignore[reportArgumentType]

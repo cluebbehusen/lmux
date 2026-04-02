@@ -321,7 +321,25 @@ class TestChat:
             model="o3",
             messages=[{"role": "user", "content": "Hi"}],
             stream=False,
-            reasoning={"effort": "high"},
+            reasoning_effort="high",
+        )
+
+    def test_chat_with_top_level_reasoning_effort(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
+
+        sync_provider.chat(
+            "o3",
+            [UserMessage(content="Hi")],
+            reasoning_effort="high",
+        )
+
+        mock_sync_client.chat.completions.create.assert_called_once_with(
+            model="o3",
+            messages=[{"role": "user", "content": "Hi"}],
+            stream=False,
+            reasoning_effort="high",
         )
 
     def test_chat_exception_mapping(
@@ -1035,7 +1053,7 @@ class TestProviderParamsKwargs:
         sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], provider_params=AzureFoundryParams())
 
         call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert "reasoning" not in call_kwargs
+        assert "reasoning_effort" not in call_kwargs
         assert "seed" not in call_kwargs
         assert "user" not in call_kwargs
         assert "deployment_type" not in call_kwargs
@@ -1049,7 +1067,7 @@ class TestProviderParamsKwargs:
         sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], provider_params=params)
 
         call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert call_kwargs["reasoning"] == {"effort": "low"}
+        assert call_kwargs["reasoning_effort"] == "low"
         assert call_kwargs["seed"] == 42
         assert call_kwargs["user"] == "u1"
         assert "deployment_type" not in call_kwargs

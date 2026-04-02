@@ -83,6 +83,7 @@ def _make_response_mock(
     usage.prompt_token_count = prompt_tokens
     usage.candidates_token_count = output_tokens
     usage.cached_content_token_count = cached_tokens
+    usage.thoughts_token_count = None
     response.usage_metadata = usage
 
     return response
@@ -260,6 +261,16 @@ class TestChat:
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         ]
         assert config["presence_penalty"] == 0.5
+
+    def test_chat_with_reasoning_effort(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], reasoning_effort="medium")
+
+        call_kwargs = mock_client.models.generate_content.call_args.kwargs
+        assert call_kwargs["config"]["thinking_config"] == {"thinking_budget": 8192, "include_thoughts": True}
 
     def test_chat_exception_mapping(
         self, sync_provider: GCPVertexProvider, mock_client: MagicMock, server_error: Exception

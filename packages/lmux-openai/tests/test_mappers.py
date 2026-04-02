@@ -9,7 +9,7 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta, ChoiceDeltaToolCall, ChoiceDeltaToolCallFunction
 from openai.types.chat.chat_completion_message_function_tool_call import Function as ToolCallFunction
-from openai.types.completion_usage import CompletionUsage, PromptTokensDetails
+from openai.types.completion_usage import CompletionTokensDetails, CompletionUsage, PromptTokensDetails
 from openai.types.create_embedding_response import CreateEmbeddingResponse
 from openai.types.create_embedding_response import Usage as EmbUsage
 from openai.types.embedding import Embedding
@@ -309,6 +309,30 @@ class TestMapChatCompletion:
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
 
+    def test_with_reasoning_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        completion = ChatCompletion(
+            id="chatcmpl-123",
+            choices=[
+                Choice(
+                    finish_reason="stop",
+                    index=0,
+                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
+                )
+            ],
+            created=1234567890,
+            model="o3",
+            object="chat.completion",
+            usage=CompletionUsage(
+                prompt_tokens=10,
+                completion_tokens=25,
+                total_tokens=35,
+                completion_tokens_details=CompletionTokensDetails(reasoning_tokens=20),
+            ),
+        )
+        result = map_chat_completion(completion, "openai", noop_cost_fn)
+        assert result.usage is not None
+        assert result.usage.reasoning_tokens == 20
+
     def test_none_usage(self, chat_completion: ChatCompletion, noop_cost_fn: Any) -> None:  # noqa: ANN401
         chat_completion.usage = None
         result = map_chat_completion(chat_completion, "openai", noop_cost_fn)
@@ -438,6 +462,24 @@ class TestMapChatChunk:
         result = map_chat_chunk(chunk)
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 3
+
+    def test_usage_chunk_with_reasoning_tokens(self) -> None:
+        chunk = ChatCompletionChunk(
+            id="chatcmpl-123",
+            choices=[],
+            created=1234567890,
+            model="o3",
+            object="chat.completion.chunk",
+            usage=CompletionUsage(
+                prompt_tokens=10,
+                completion_tokens=25,
+                total_tokens=35,
+                completion_tokens_details=CompletionTokensDetails(reasoning_tokens=20),
+            ),
+        )
+        result = map_chat_chunk(chunk)
+        assert result.usage is not None
+        assert result.usage.reasoning_tokens == 20
 
     def test_empty_choices(self) -> None:
         chunk = ChatCompletionChunk(

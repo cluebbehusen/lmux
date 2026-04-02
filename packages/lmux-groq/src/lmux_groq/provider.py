@@ -1,7 +1,7 @@
 """Groq provider implementation."""
 
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import groq
@@ -91,10 +91,20 @@ class GroqProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GroqParams | None = None,
     ) -> ChatResponse:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = self._get_sync_client()
@@ -114,10 +124,20 @@ class GroqProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GroqParams | None = None,
     ) -> ChatResponse:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = await self._get_async_client()
@@ -137,10 +157,20 @@ class GroqProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GroqParams | None = None,
     ) -> Iterator[ChatChunk]:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         kwargs["stream_options"] = {"include_usage": True}
         try:
@@ -169,10 +199,20 @@ class GroqProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GroqParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         kwargs["stream_options"] = {"include_usage": True}
         try:
@@ -202,6 +242,7 @@ class GroqProvider(
         stop: str | list[str] | None,
         tools: list[Tool] | None,
         response_format: ResponseFormat | None,
+        reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: GroqParams | None,
     ) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
@@ -220,6 +261,9 @@ class GroqProvider(
             kwargs["tools"] = map_tools(tools)
         if response_format is not None:
             kwargs["response_format"] = map_response_format(response_format)
+        if reasoning_effort is not None:
+            kwargs["reasoning_effort"] = reasoning_effort
+            kwargs["include_reasoning"] = True
         if provider_params is not None:
             kwargs.update(GroqProvider._provider_params_kwargs(provider_params))
         return kwargs
@@ -230,6 +274,10 @@ class GroqProvider(
         kwargs: dict[str, Any] = {}
         if params.service_tier is not None:
             kwargs["service_tier"] = params.service_tier
+        if params.reasoning_effort is not None:
+            kwargs["reasoning_effort"] = params.reasoning_effort
+            if params.reasoning_effort != "none":
+                kwargs["include_reasoning"] = True
         if params.seed is not None:
             kwargs["seed"] = params.seed
         if params.user is not None:

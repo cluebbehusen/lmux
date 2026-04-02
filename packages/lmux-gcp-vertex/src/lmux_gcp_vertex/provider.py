@@ -1,7 +1,7 @@
 """GCP Vertex AI provider implementation."""
 
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from google.auth.credentials import Credentials
@@ -112,11 +112,12 @@ class GCPVertexProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> ChatResponse:
         system, contents = map_messages(messages)
         config = self._build_config(
-            system, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            system, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
         )
         try:
             client = self._get_client()
@@ -140,11 +141,12 @@ class GCPVertexProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> ChatResponse:
         system, contents = map_messages(messages)
         config = self._build_config(
-            system, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            system, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
         )
         try:
             client = await self._aget_client()
@@ -168,11 +170,12 @@ class GCPVertexProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> Iterator[ChatChunk]:
         system, contents = map_messages(messages)
         config = self._build_config(
-            system, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            system, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
         )
         try:
             client = self._get_client()
@@ -204,11 +207,12 @@ class GCPVertexProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
         system, contents = map_messages(messages)
         config = self._build_config(
-            system, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            system, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
         )
         try:
             client = await self._aget_client()
@@ -268,6 +272,7 @@ class GCPVertexProvider(
         stop: str | list[str] | None,
         tools: list[Tool] | None,
         response_format: ResponseFormat | None,
+        reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: GCPVertexParams | None,
     ) -> dict[str, Any]:
         config: dict[str, Any] = {}
@@ -289,6 +294,9 @@ class GCPVertexProvider(
                 config["response_mime_type"] = mime_type
             if schema is not None:
                 config["response_schema"] = schema
+        if reasoning_effort is not None:
+            budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
+            config["thinking_config"] = {"thinking_budget": budget, "include_thoughts": True}
         if provider_params is not None:
             config.update(GCPVertexProvider._provider_params_kwargs(provider_params))
         return config

@@ -288,7 +288,25 @@ class TestChat:
             model="o3",
             messages=[{"role": "user", "content": "Hi"}],
             stream=False,
-            reasoning={"effort": "high"},
+            reasoning_effort="high",
+        )
+
+    def test_chat_with_top_level_reasoning_effort(
+        self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
+
+        sync_provider.chat(
+            "o3",
+            [UserMessage(content="Hi")],
+            reasoning_effort="high",
+        )
+
+        mock_sync_client.chat.completions.create.assert_called_once_with(
+            model="o3",
+            messages=[{"role": "user", "content": "Hi"}],
+            stream=False,
+            reasoning_effort="high",
         )
 
     def test_chat_exception_mapping(
@@ -599,6 +617,27 @@ class TestCreateResponse:
         with pytest.raises(NotFoundError):
             await async_provider.acreate_response("gpt-4o", "Hello")
 
+    def test_create_response_with_reasoning_effort(
+        self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        mock_sync_client.responses.create.return_value = responses_mock
+
+        sync_provider.create_response("o3", "Think hard", provider_params=OpenAIParams(reasoning_effort="high"))
+
+        call_kwargs = mock_sync_client.responses.create.call_args.kwargs
+        assert call_kwargs["reasoning"] == {"effort": "high"}
+        assert "reasoning_effort" not in call_kwargs
+
+    def test_create_response_without_reasoning_effort(
+        self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        mock_sync_client.responses.create.return_value = responses_mock
+
+        sync_provider.create_response("gpt-4o", "Hello", provider_params=OpenAIParams())
+
+        call_kwargs = mock_sync_client.responses.create.call_args.kwargs
+        assert "reasoning" not in call_kwargs
+
 
 # MARK: Client Management
 
@@ -744,7 +783,7 @@ class TestProviderParamsKwargs:
 
         call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
         assert "service_tier" not in call_kwargs
-        assert "reasoning" not in call_kwargs
+        assert "reasoning_effort" not in call_kwargs
         assert "seed" not in call_kwargs
         assert "user" not in call_kwargs
 
@@ -758,7 +797,7 @@ class TestProviderParamsKwargs:
 
         call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["service_tier"] == "auto"
-        assert call_kwargs["reasoning"] == {"effort": "low"}
+        assert call_kwargs["reasoning_effort"] == "low"
         assert call_kwargs["seed"] == 42
         assert call_kwargs["user"] == "u1"
 

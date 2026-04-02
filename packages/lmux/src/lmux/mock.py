@@ -4,6 +4,7 @@
 
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from lmux.cost import ModelPricing
 from lmux.exceptions import LmuxError
@@ -120,6 +121,7 @@ class MockProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
     ) -> ChatResponse:
         self._maybe_raise()
@@ -137,6 +139,7 @@ class MockProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
     ) -> ChatResponse:
         self._maybe_raise()
@@ -154,6 +157,7 @@ class MockProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
     ) -> Iterator[ChatChunk]:
         self._maybe_raise()
@@ -171,6 +175,7 @@ class MockProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
     ) -> AsyncIterator[ChatChunk]:
         self._maybe_raise()

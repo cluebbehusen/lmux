@@ -1,7 +1,7 @@
 """OpenAI provider implementation."""
 
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import openai
@@ -107,10 +107,20 @@ class OpenAIProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
     ) -> ChatResponse:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = self._get_sync_client()
@@ -130,10 +140,20 @@ class OpenAIProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
     ) -> ChatResponse:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = await self._get_async_client()
@@ -153,10 +173,20 @@ class OpenAIProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
     ) -> Iterator[ChatChunk]:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         kwargs["stream_options"] = {"include_usage": True}
         try:
@@ -185,10 +215,20 @@ class OpenAIProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         kwargs["stream_options"] = {"include_usage": True}
         try:
@@ -247,7 +287,7 @@ class OpenAIProvider(
         *,
         provider_params: OpenAIParams | None = None,
     ) -> ResponseResponse:
-        extra: dict[str, Any] = self._provider_params_kwargs(provider_params) if provider_params else {}
+        extra = self._responses_kwargs(provider_params)
         try:
             client = self._get_sync_client()
             response = client.responses.create(model=model, input=map_response_input(input), stream=False, **extra)
@@ -262,7 +302,7 @@ class OpenAIProvider(
         *,
         provider_params: OpenAIParams | None = None,
     ) -> ResponseResponse:
-        extra: dict[str, Any] = self._provider_params_kwargs(provider_params) if provider_params else {}
+        extra = self._responses_kwargs(provider_params)
         try:
             client = await self._get_async_client()
             response = await client.responses.create(
@@ -275,6 +315,15 @@ class OpenAIProvider(
     # MARK: Internal Helpers
 
     @staticmethod
+    def _responses_kwargs(provider_params: OpenAIParams | None) -> dict[str, Any]:
+        """Build extra kwargs for the Responses API."""
+        extra: dict[str, Any] = OpenAIProvider._provider_params_kwargs(provider_params) if provider_params else {}
+        # Responses API uses reasoning={"effort": ...}, not flat reasoning_effort
+        if provider_params is not None and provider_params.reasoning_effort is not None:
+            extra["reasoning"] = {"effort": provider_params.reasoning_effort}
+        return extra
+
+    @staticmethod
     def _build_chat_kwargs(  # noqa: PLR0913
         model: str,
         messages: Sequence[Message],
@@ -284,6 +333,7 @@ class OpenAIProvider(
         stop: str | list[str] | None,
         tools: list[Tool] | None,
         response_format: ResponseFormat | None,
+        reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: OpenAIParams | None,
     ) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
@@ -302,18 +352,26 @@ class OpenAIProvider(
             kwargs["tools"] = map_tools(tools)
         if response_format is not None:
             kwargs["response_format"] = map_response_format(response_format)
+        if reasoning_effort is not None:
+            kwargs["reasoning_effort"] = reasoning_effort
         if provider_params is not None:
             kwargs.update(OpenAIProvider._provider_params_kwargs(provider_params))
+            # Chat Completions uses flat reasoning_effort; provider_params overrides top-level
+            if provider_params.reasoning_effort is not None:
+                kwargs["reasoning_effort"] = provider_params.reasoning_effort
         return kwargs
 
     @staticmethod
     def _provider_params_kwargs(params: OpenAIParams) -> dict[str, Any]:
-        """Convert OpenAIParams to kwargs for the OpenAI SDK."""
+        """Convert OpenAIParams to kwargs shared across all OpenAI API surfaces.
+
+        Reasoning is intentionally excluded here because the Chat Completions API
+        and Responses API use different field shapes (``reasoning_effort`` vs
+        ``reasoning``).  Each call site maps it separately.
+        """
         kwargs: dict[str, Any] = {}
         if params.service_tier is not None:
             kwargs["service_tier"] = params.service_tier
-        if params.reasoning_effort is not None:
-            kwargs["reasoning"] = {"effort": params.reasoning_effort}
         if params.seed is not None:
             kwargs["seed"] = params.seed
         if params.user is not None:

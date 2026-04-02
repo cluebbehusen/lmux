@@ -1,6 +1,7 @@
 """Tests for the prefix-based routing registry."""
 
 from collections.abc import AsyncIterator, Iterator, Sequence
+from typing import Literal
 
 import pytest
 
@@ -193,6 +194,7 @@ class CompletionOnlyProvider(CompletionProvider[None]):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
     ) -> ChatResponse:
         return ChatResponse(  # pragma: no cover
@@ -210,6 +212,7 @@ class CompletionOnlyProvider(CompletionProvider[None]):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
     ) -> ChatResponse:
         return ChatResponse(  # pragma: no cover
@@ -227,6 +230,7 @@ class CompletionOnlyProvider(CompletionProvider[None]):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
     ) -> Iterator[ChatChunk]:
         yield ChatChunk(delta="ok")  # pragma: no cover
@@ -242,6 +246,7 @@ class CompletionOnlyProvider(CompletionProvider[None]):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
     ) -> AsyncIterator[ChatChunk]:
         yield ChatChunk(delta="ok")  # pragma: no cover
@@ -332,9 +337,10 @@ class FakeParams(BaseProviderParams):
 
 
 class RecordingProvider(CompletionProvider[FakeParams]):
-    """A provider that records the provider_params it receives."""
+    """A provider that records the provider_params and reasoning_effort it receives."""
 
     last_params: BaseProviderParams | None = None
+    last_reasoning_effort: Literal["low", "medium", "high"] | None = None
 
     def chat(  # noqa: PLR0913
         self,
@@ -347,9 +353,11 @@ class RecordingProvider(CompletionProvider[FakeParams]):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: FakeParams | None = None,
     ) -> ChatResponse:
         self.last_params = provider_params
+        self.last_reasoning_effort = reasoning_effort
         return ChatResponse(
             content="ok", usage=Usage(input_tokens=1, output_tokens=1), cost=None, model=model, provider="rec"
         )
@@ -365,6 +373,7 @@ class RecordingProvider(CompletionProvider[FakeParams]):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: FakeParams | None = None,
     ) -> ChatResponse:
         self.last_params = provider_params  # pragma: no cover
@@ -383,6 +392,7 @@ class RecordingProvider(CompletionProvider[FakeParams]):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: FakeParams | None = None,
     ) -> Iterator[ChatChunk]:
         self.last_params = provider_params  # pragma: no cover
@@ -399,6 +409,7 @@ class RecordingProvider(CompletionProvider[FakeParams]):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: FakeParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
         self.last_params = provider_params  # pragma: no cover
@@ -463,6 +474,13 @@ class TestProviderParamsResolution:
         params: dict[str, BaseProviderParams] = {"other": FakeParams(tag="wrong")}
         reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
         assert prov.last_params is None
+
+    def test_reasoning_effort_passed_through(self) -> None:
+        prov = RecordingProvider()
+        reg = Registry()
+        reg.register("rec", prov)
+        reg.chat("rec/model", [UserMessage(content="Hi")], reasoning_effort="high")
+        assert prov.last_reasoning_effort == "high"
 
     def test_reregister_without_default_clears_old_default(self) -> None:
         prov = RecordingProvider()

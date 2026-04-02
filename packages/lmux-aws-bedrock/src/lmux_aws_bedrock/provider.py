@@ -3,7 +3,7 @@
 import json
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import AbstractAsyncContextManager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import boto3
@@ -103,10 +103,20 @@ class BedrockProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BedrockParams | None = None,
     ) -> ChatResponse:
         kwargs = self._build_converse_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = self._get_sync_client()
@@ -126,10 +136,20 @@ class BedrockProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BedrockParams | None = None,
     ) -> ChatResponse:
         kwargs = self._build_converse_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             async with await self._get_async_client_ctx() as client:
@@ -149,10 +169,20 @@ class BedrockProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BedrockParams | None = None,
     ) -> Iterator[ChatChunk]:
         kwargs = self._build_converse_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = self._get_sync_client()
@@ -182,10 +212,20 @@ class BedrockProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BedrockParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
         kwargs = self._build_converse_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             async with await self._get_async_client_ctx() as client:
@@ -297,6 +337,7 @@ class BedrockProvider(
         stop: str | list[str] | None,
         tools: list[Tool] | None,
         response_format: ResponseFormat | None,
+        reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: BedrockParams | None,
     ) -> dict[str, Any]:
         system, mapped_messages = map_messages(messages)
@@ -330,6 +371,16 @@ class BedrockProvider(
 
         if provider_params is not None:
             kwargs.update(BedrockProvider._provider_params_kwargs(provider_params))
+
+        # Apply reasoning_effort AFTER provider_params so we merge into any existing
+        # additionalModelRequestFields rather than being clobbered by them.
+        # If provider_params also sets a "thinking" key, it wins (already in the dict).
+        if reasoning_effort is not None:
+            budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
+            existing = {**kwargs.get("additionalModelRequestFields", {})}
+            if "thinking" not in existing:
+                existing["thinking"] = {"type": "enabled", "budget_tokens": budget}
+            kwargs["additionalModelRequestFields"] = existing
 
         return kwargs
 

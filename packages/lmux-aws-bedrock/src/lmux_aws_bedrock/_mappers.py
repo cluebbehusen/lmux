@@ -208,9 +208,14 @@ def map_converse_response(
 
     text_parts: list[str] = []
     tool_calls: list[ToolCall] = []
+    reasoning_parts: list[str] = []
 
     for block in content_blocks:
-        if "text" in block:
+        if "reasoningContent" in block:
+            reasoning_text = block["reasoningContent"].get("reasoningText", {})
+            if text := reasoning_text.get("text"):
+                reasoning_parts.append(text)
+        elif "text" in block:
             text_parts.append(block["text"])
         elif "toolUse" in block:
             tu = block["toolUse"]
@@ -225,6 +230,7 @@ def map_converse_response(
             )
 
     content = "\n".join(text_parts) if text_parts else None
+    reasoning = "\n".join(reasoning_parts) if reasoning_parts else None
     stop_reason = response.get("stopReason")
     finish_reason = _map_stop_reason(stop_reason)
     usage = _map_converse_usage(response)
@@ -232,6 +238,7 @@ def map_converse_response(
 
     return ChatResponse(
         content=content,
+        reasoning=reasoning,
         tool_calls=tool_calls or None,
         usage=usage,
         cost=cost,
@@ -280,6 +287,11 @@ def map_stream_event(event: "ConverseStreamOutputTypeDef") -> ChatChunk | None:
 
 def _map_content_block_delta(data: "ContentBlockDeltaEventTypeDef") -> ChatChunk | None:
     delta = data.get("delta", {})
+    if "reasoningContent" in delta:
+        text = delta["reasoningContent"].get("text")
+        if text:
+            return ChatChunk(reasoning_delta=text)
+        return None
     if "text" in delta:
         return ChatChunk(delta=delta["text"])
     if "toolUse" in delta:

@@ -1,7 +1,7 @@
 """Anthropic provider implementation."""
 
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import anthropic
@@ -101,10 +101,20 @@ class AnthropicProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> ChatResponse:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = self._get_sync_client()
@@ -125,10 +135,20 @@ class AnthropicProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> ChatResponse:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = await self._get_async_client()
@@ -149,10 +169,20 @@ class AnthropicProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> Iterator[ChatChunk]:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = self._get_sync_client()
@@ -196,10 +226,20 @@ class AnthropicProvider(
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
         kwargs = self._build_chat_kwargs(
-            model, messages, temperature, max_tokens, top_p, stop, tools, response_format, provider_params
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = await self._get_async_client()
@@ -244,6 +284,7 @@ class AnthropicProvider(
         stop: str | list[str] | None,
         tools: list[Tool] | None,
         response_format: ResponseFormat | None,
+        reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: AnthropicParams | None,
     ) -> dict[str, Any]:
         system, mapped_messages = map_messages(messages)
@@ -266,6 +307,10 @@ class AnthropicProvider(
             output_config = map_response_format(response_format)
             if output_config is not None:
                 kwargs["output_config"] = output_config
+        if reasoning_effort is not None:
+            budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
+            budget = min(budget, kwargs["max_tokens"] - 1)
+            kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
         if provider_params is not None:
             kwargs.update(self._provider_params_kwargs(provider_params))
         return kwargs

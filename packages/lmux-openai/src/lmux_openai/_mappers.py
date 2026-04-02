@@ -172,6 +172,7 @@ def map_chat_completion(
     """Convert OpenAI ChatCompletion to lmux ChatResponse."""
     choice = completion.choices[0]
     message = choice.message
+    reasoning = getattr(message, "reasoning_content", None)
 
     tool_calls: list[ToolCall] | None = None
     if message.tool_calls:
@@ -182,6 +183,7 @@ def map_chat_completion(
 
     return ChatResponse(
         content=message.content,
+        reasoning=reasoning,
         tool_calls=tool_calls or None,
         usage=usage,
         cost=cost,
@@ -201,22 +203,29 @@ def _map_completion_usage(completion: "ChatCompletion") -> Usage | None:
     if oai_usage.prompt_tokens_details and oai_usage.prompt_tokens_details.cached_tokens:
         cache_read = oai_usage.prompt_tokens_details.cached_tokens
 
+    reasoning_tokens = None
+    if oai_usage.completion_tokens_details and oai_usage.completion_tokens_details.reasoning_tokens:
+        reasoning_tokens = oai_usage.completion_tokens_details.reasoning_tokens
+
     return Usage(
         input_tokens=oai_usage.prompt_tokens,
         output_tokens=oai_usage.completion_tokens,
         cache_read_tokens=cache_read,
+        reasoning_tokens=reasoning_tokens,
     )
 
 
 def map_chat_chunk(chunk: "ChatCompletionChunk") -> ChatChunk:
     """Convert an OpenAI ChatCompletionChunk to an lmux ChatChunk."""
     delta_text: str | None = None
+    reasoning_delta: str | None = None
     tool_call_deltas: list[ToolCallDelta] | None = None
     finish_reason: str | None = None
 
     if chunk.choices:
         choice = chunk.choices[0]
         delta_text = choice.delta.content
+        reasoning_delta = getattr(choice.delta, "reasoning_content", None)
         finish_reason = choice.finish_reason
 
         if choice.delta.tool_calls:
@@ -240,14 +249,19 @@ def map_chat_chunk(chunk: "ChatCompletionChunk") -> ChatChunk:
         cache_read = None
         if chunk.usage.prompt_tokens_details and chunk.usage.prompt_tokens_details.cached_tokens:
             cache_read = chunk.usage.prompt_tokens_details.cached_tokens
+        reasoning_tokens = None
+        if chunk.usage.completion_tokens_details and chunk.usage.completion_tokens_details.reasoning_tokens:
+            reasoning_tokens = chunk.usage.completion_tokens_details.reasoning_tokens
         usage = Usage(
             input_tokens=chunk.usage.prompt_tokens,
             output_tokens=chunk.usage.completion_tokens,
             cache_read_tokens=cache_read,
+            reasoning_tokens=reasoning_tokens,
         )
 
     return ChatChunk(
         delta=delta_text,
+        reasoning_delta=reasoning_delta,
         tool_call_deltas=tool_call_deltas,
         usage=usage,
         finish_reason=finish_reason,

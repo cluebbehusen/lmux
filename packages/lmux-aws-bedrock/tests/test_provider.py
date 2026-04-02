@@ -312,6 +312,73 @@ class TestChat:
         call_kwargs = mock_sync_client.converse.call_args.kwargs
         assert call_kwargs["inferenceConfig"]["stopSequences"] == ["STOP"]
 
+    def test_chat_with_reasoning_effort(
+        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    ) -> None:
+        mock_sync_client.converse.return_value = converse_response
+
+        sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], reasoning_effort="medium")
+
+        call_kwargs = mock_sync_client.converse.call_args.kwargs
+        assert call_kwargs["additionalModelRequestFields"]["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": 8192,
+        }
+
+    def test_chat_reasoning_effort_deep_merges_with_provider_params(
+        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    ) -> None:
+        mock_sync_client.converse.return_value = converse_response
+
+        sync_provider.chat(
+            "anthropic.claude-sonnet-4",
+            [UserMessage(content="Hi")],
+            reasoning_effort="high",
+            provider_params=BedrockParams(additional_model_request_fields={"some_field": "value"}),
+        )
+
+        call_kwargs = mock_sync_client.converse.call_args.kwargs
+        additional = call_kwargs["additionalModelRequestFields"]
+        assert additional["thinking"] == {"type": "enabled", "budget_tokens": 32768}
+        assert additional["some_field"] == "value"
+
+    def test_chat_provider_params_thinking_overrides_reasoning_effort(
+        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    ) -> None:
+        mock_sync_client.converse.return_value = converse_response
+
+        sync_provider.chat(
+            "anthropic.claude-sonnet-4",
+            [UserMessage(content="Hi")],
+            reasoning_effort="high",
+            provider_params=BedrockParams(
+                additional_model_request_fields={"thinking": {"type": "enabled", "budget_tokens": 99999}}
+            ),
+        )
+
+        call_kwargs = mock_sync_client.converse.call_args.kwargs
+        assert call_kwargs["additionalModelRequestFields"]["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": 99999,
+        }
+
+    def test_chat_reasoning_effort_does_not_mutate_provider_params(
+        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    ) -> None:
+        mock_sync_client.converse.return_value = converse_response
+        fields: dict[str, Any] = {"some_field": "value"}
+        params = BedrockParams(additional_model_request_fields=fields)
+
+        sync_provider.chat(
+            "anthropic.claude-sonnet-4",
+            [UserMessage(content="Hi")],
+            reasoning_effort="high",
+            provider_params=params,
+        )
+
+        # The original dict must not have been mutated
+        assert "thinking" not in fields
+
 
 # MARK: Achat
 

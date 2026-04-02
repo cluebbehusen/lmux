@@ -108,6 +108,7 @@ def _make_response(  # noqa: PLR0913
     usage.prompt_token_count = prompt_tokens
     usage.candidates_token_count = output_tokens
     usage.cached_content_token_count = cached_tokens
+    usage.thoughts_token_count = None
     response.usage_metadata = usage
 
     return response
@@ -463,10 +464,43 @@ class TestMapGenerateContentResponse:
         result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.finish_reason == "SOME_NEW_REASON"
 
-    def test_thought_parts_skipped(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+    def test_thought_parts_extracted(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Answer", thoughts=["Thinking..."])
         result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.content == "Answer"
+        assert result.reasoning == "Thinking..."
+
+    def test_thought_part_with_none_text(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        """A thought part with thought=True but text=None should be skipped without error."""
+        response = MagicMock()
+        candidate = MagicMock()
+
+        thought_part = MagicMock()
+        thought_part.thought = True
+        thought_part.text = None
+        thought_part.function_call = None
+
+        text_part = MagicMock()
+        text_part.thought = False
+        text_part.text = "Answer"
+        text_part.function_call = None
+
+        content = MagicMock()
+        content.parts = [thought_part, text_part]
+        candidate.content = content
+        candidate.finish_reason = MagicMock(value="STOP")
+
+        response.candidates = [candidate]
+        usage = MagicMock()
+        usage.prompt_token_count = 10
+        usage.candidates_token_count = 5
+        usage.cached_content_token_count = None
+        usage.thoughts_token_count = None
+        response.usage_metadata = usage
+
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        assert result.content == "Answer"
+        assert result.reasoning is None
 
     def test_no_content_on_candidate(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hi")
@@ -522,11 +556,34 @@ class TestMapGenerateContentChunk:
         result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
         assert result == ChatChunk(model="gemini-2.0-flash")
 
-    def test_thought_parts_skipped_in_chunk(self) -> None:
+    def test_thought_parts_extracted_in_chunk(self) -> None:
         chunk = _make_response(text=None, thoughts=["Thinking..."], finish_reason=None)
         chunk.usage_metadata = None
         result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
         assert result.delta is None
+        assert result.reasoning_delta == "Thinking..."
+
+    def test_thought_part_with_none_text_in_chunk(self) -> None:
+        """A thought part with thought=True but text=None should be skipped in streaming."""
+        chunk = MagicMock()
+        candidate = MagicMock()
+
+        thought_part = MagicMock()
+        thought_part.thought = True
+        thought_part.text = None
+        thought_part.function_call = None
+
+        content = MagicMock()
+        content.parts = [thought_part]
+        candidate.content = content
+        candidate.finish_reason = None
+
+        chunk.candidates = [candidate]
+        chunk.usage_metadata = None
+
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        assert result.delta is None
+        assert result.reasoning_delta is None
 
     def test_function_call_without_args_in_chunk(self) -> None:
         chunk = _make_response(

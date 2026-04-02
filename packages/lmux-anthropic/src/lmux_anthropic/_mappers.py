@@ -174,10 +174,13 @@ def map_message_response(
 ) -> ChatResponse:
     """Convert Anthropic Message to lmux ChatResponse."""
     text_parts: list[str] = []
+    thinking_parts: list[str] = []
     tool_calls: list[ToolCall] = []
 
     for block in message.content:
-        if block.type == "text":
+        if block.type == "thinking":
+            thinking_parts.append(block.thinking)
+        elif block.type == "text":
             text_parts.append(block.text)
         elif block.type == "tool_use":
             tool_calls.append(
@@ -188,11 +191,13 @@ def map_message_response(
             )
 
     content = "\n".join(text_parts) if text_parts else None
+    reasoning = "\n".join(thinking_parts) if thinking_parts else None
     usage = _map_usage(message.usage)
     cost = cost_fn(message.model, usage)
 
     return ChatResponse(
         content=content,
+        reasoning=reasoning,
         tool_calls=tool_calls or None,
         usage=usage,
         cost=cost,
@@ -252,6 +257,8 @@ def map_content_block_delta(event: "RawContentBlockDeltaEvent") -> ChatChunk | N
                 )
             ],
         )
+    if delta.type == "thinking_delta":
+        return ChatChunk(reasoning_delta=delta.thinking)
     return None
 
 

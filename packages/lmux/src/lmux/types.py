@@ -163,6 +163,7 @@ class Usage(BaseModel):
     output_tokens: int
     cache_read_tokens: int | None = None
     cache_creation_tokens: int | None = None
+    reasoning_tokens: int | None = None
 
 
 class Cost(BaseModel):
@@ -183,6 +184,7 @@ class ChatResponse(BaseModel):
     """Flattened chat completion response."""
 
     content: str | None
+    reasoning: str | None = None
     tool_calls: list[ToolCall] | None = None
     usage: Usage | None
     cost: Cost | None
@@ -195,6 +197,7 @@ class ChatChunk(BaseModel):
     """A single chunk in a streaming chat response."""
 
     delta: str | None = None
+    reasoning_delta: str | None = None
     tool_call_deltas: list[ToolCallDelta] | None = None
     usage: Usage | None = None
     cost: Cost | None = None
