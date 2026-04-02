@@ -100,6 +100,7 @@ class EmbeddingProvider[ParamsT](Protocol):
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: ParamsT | None = None,
     ) -> EmbeddingResponse: ...
 
@@ -108,6 +109,7 @@ class EmbeddingProvider[ParamsT](Protocol):
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: ParamsT | None = None,
     ) -> EmbeddingResponse: ...
 

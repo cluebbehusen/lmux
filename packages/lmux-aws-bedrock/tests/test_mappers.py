@@ -630,3 +630,8 @@ class TestBuildEmbeddingRequestBody:
         body = build_embedding_request_body("Hello, world!")
         parsed = json.loads(body)
         assert parsed == {"inputText": "Hello, world!"}
+
+    def test_with_dimensions(self) -> None:
+        body = build_embedding_request_body("Hello!", dimensions=256)
+        parsed = json.loads(body)
+        assert parsed == {"inputText": "Hello!", "dimensions": 256}

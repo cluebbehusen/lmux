@@ -236,12 +236,14 @@ class GCPVertexProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> EmbeddingResponse:
         contents = input if isinstance(input, list) else [input]
+        config = self._build_embed_config(dimensions, provider_params)
         try:
             client = self._get_client()
-            response = client.models.embed_content(model=model, contents=contents)
+            response = client.models.embed_content(model=model, contents=contents, config=config)  # pyright: ignore[reportArgumentType]
         except Exception as e:
             raise map_gcp_vertex_error(e) from e
         return map_embed_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
@@ -251,17 +253,31 @@ class GCPVertexProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> EmbeddingResponse:
         contents = input if isinstance(input, list) else [input]
+        config = self._build_embed_config(dimensions, provider_params)
         try:
             client = await self._aget_client()
-            response = await client.aio.models.embed_content(model=model, contents=contents)
+            response = await client.aio.models.embed_content(model=model, contents=contents, config=config)  # pyright: ignore[reportArgumentType]
         except Exception as e:
             raise map_gcp_vertex_error(e) from e
         return map_embed_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
     # MARK: Internal Helpers
+
+    @staticmethod
+    def _build_embed_config(
+        dimensions: int | None,
+        provider_params: GCPVertexParams | None,
+    ) -> dict[str, Any] | None:
+        config: dict[str, Any] = {}
+        if dimensions is not None:
+            config["output_dimensionality"] = dimensions
+        if provider_params is not None and provider_params.task_type is not None:
+            config["task_type"] = provider_params.task_type
+        return config or None
 
     @staticmethod
     def _build_config(  # noqa: PLR0913

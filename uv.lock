@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-03-26T18:53:40.345692Z"
+exclude-newer = "2026-03-26T21:23:47.547064Z"
 exclude-newer-span = "P7D"
 
 [manifest]
@@ -773,7 +773,7 @@ wheels = [
 
 [[package]]
 name = "lmux"
-version = "0.2.0"
+version = "0.4.0"
 source = { editable = "packages/lmux" }
 dependencies = [
     { name = "pydantic" },
@@ -799,7 +799,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-aws-bedrock"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "packages/lmux-aws-bedrock" }
 dependencies = [
     { name = "boto3" },
@@ -821,7 +821,7 @@ provides-extras = ["async"]
 
 [[package]]
 name = "lmux-azure-foundry"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/lmux-azure-foundry" }
 dependencies = [
     { name = "lmux" },
@@ -843,7 +843,7 @@ provides-extras = ["identity"]
 
 [[package]]
 name = "lmux-gcp-vertex"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "packages/lmux-gcp-vertex" }
 dependencies = [
     { name = "google-genai" },
@@ -873,7 +873,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-openai"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/lmux-openai" }
 dependencies = [
     { name = "lmux" },

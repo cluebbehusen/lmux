@@ -53,3 +53,4 @@ class GCPVertexParams(BaseProviderParams):
     google_search: GoogleSearchConfig | bool | None = None
     google_search_retrieval: GoogleSearchRetrievalConfig | None = None
     code_execution: bool | None = None
+    task_type: str | None = None

@@ -83,6 +83,7 @@ class TestGCPVertexParams:
         assert params.google_search is None
         assert params.google_search_retrieval is None
         assert params.code_execution is None
+        assert params.task_type is None
 
     def test_all_fields(self) -> None:
         params = GCPVertexParams(

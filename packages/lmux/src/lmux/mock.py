@@ -190,6 +190,7 @@ class MockProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: None = None,
     ) -> EmbeddingResponse:
         self._maybe_raise()
@@ -201,6 +202,7 @@ class MockProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: None = None,
     ) -> EmbeddingResponse:
         self._maybe_raise()

@@ -247,6 +247,7 @@ class BedrockProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: BedrockParams | None = None,
     ) -> EmbeddingResponse:
         texts = [input] if isinstance(input, str) else input
@@ -260,7 +261,7 @@ class BedrockProvider(
             raise map_bedrock_error(e) from e
 
         for text in texts:
-            body = build_embedding_request_body(text)
+            body = build_embedding_request_body(text, dimensions=dimensions)
             try:
                 response = client.invoke_model(
                     modelId=model,
@@ -290,6 +291,7 @@ class BedrockProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: BedrockParams | None = None,
     ) -> EmbeddingResponse:
         texts = [input] if isinstance(input, str) else input
@@ -299,7 +301,7 @@ class BedrockProvider(
 
         async with await self._get_async_client_ctx() as client:
             for text in texts:
-                body = build_embedding_request_body(text)
+                body = build_embedding_request_body(text, dimensions=dimensions)
                 try:
                     response = await client.invoke_model(
                         modelId=model,

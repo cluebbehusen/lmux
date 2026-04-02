@@ -155,10 +155,18 @@ class TestEmbed:
         result = registry.embed("mock/text-embedding-3-small", "hello")
         assert result.embeddings == [[0.1, 0.2, 0.3]]
 
+    def test_passes_dimensions(self, registry: Registry) -> None:
+        result = registry.embed("mock/text-embedding-3-small", "hello", dimensions=256)
+        assert result.embeddings == [[0.1, 0.2, 0.3]]
+
 
 class TestAembed:
     async def test_routes_to_provider(self, registry: Registry) -> None:
         result = await registry.aembed("mock/text-embedding-3-small", "hello")
+        assert result.embeddings == [[0.1, 0.2, 0.3]]
+
+    async def test_passes_dimensions(self, registry: Registry) -> None:
+        result = await registry.aembed("mock/text-embedding-3-small", "hello", dimensions=256)
         assert result.embeddings == [[0.1, 0.2, 0.3]]
 
 
@@ -260,6 +268,7 @@ class EmbeddingOnlyProvider(EmbeddingProvider[None]):
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: None = None,
     ) -> EmbeddingResponse:
         return EmbeddingResponse(  # pragma: no cover
@@ -271,6 +280,7 @@ class EmbeddingOnlyProvider(EmbeddingProvider[None]):
         model: str,
         input: str | list[str],  # noqa: A002
         *,
+        dimensions: int | None = None,
         provider_params: None = None,
     ) -> EmbeddingResponse:
         return EmbeddingResponse(  # pragma: no cover
