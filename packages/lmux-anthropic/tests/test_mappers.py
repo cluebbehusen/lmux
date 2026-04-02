@@ -320,9 +320,10 @@ class TestMapMessageResponse:
         ]
         assert result.finish_reason == "tool_use"
 
-    def test_thinking_blocks_skipped(self, cost_fn: CostCalculator) -> None:
+    def test_thinking_blocks_extracted(self, cost_fn: CostCalculator) -> None:
         thinking_block = MagicMock()
         thinking_block.type = "thinking"
+        thinking_block.thinking = "Let me think about this..."
         text_block = MagicMock()
         text_block.type = "text"
         text_block.text = "Answer"
@@ -337,6 +338,24 @@ class TestMapMessageResponse:
 
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.content == "Answer"
+        assert result.reasoning == "Let me think about this..."
+
+    def test_thinking_blocks_only_no_text(self, cost_fn: CostCalculator) -> None:
+        thinking_block = MagicMock()
+        thinking_block.type = "thinking"
+        thinking_block.thinking = "Deep thought..."
+
+        message = MagicMock()
+        message.content = [thinking_block]
+        message.usage = MagicMock(
+            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+        )
+        message.model = "claude-sonnet-4-6"
+        message.stop_reason = "end_turn"
+
+        result = map_message_response(message, "anthropic", cost_fn)
+        assert result.content is None
+        assert result.reasoning == "Deep thought..."
 
     def test_multiple_text_blocks_joined(self, cost_fn: CostCalculator) -> None:
         message = MagicMock()
@@ -352,6 +371,60 @@ class TestMapMessageResponse:
 
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.content == "Part 1\nPart 2"
+
+    def test_thinking_with_tool_use_and_text(self, cost_fn: CostCalculator) -> None:
+        thinking_block = MagicMock()
+        thinking_block.type = "thinking"
+        thinking_block.thinking = "Reasoning..."
+
+        tool_block1 = MagicMock()
+        tool_block1.type = "tool_use"
+        tool_block1.id = "call_1"
+        tool_block1.name = "get_weather"
+        tool_block1.input = {"city": "NYC"}
+
+        tool_block2 = MagicMock()
+        tool_block2.type = "tool_use"
+        tool_block2.id = "call_2"
+        tool_block2.name = "get_time"
+        tool_block2.input = {}
+
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "Here's the weather"
+
+        message = MagicMock()
+        message.content = [thinking_block, tool_block1, tool_block2, text_block]
+        message.usage = MagicMock(
+            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+        )
+        message.model = "claude-sonnet-4-6"
+        message.stop_reason = "tool_use"
+
+        result = map_message_response(message, "anthropic", cost_fn)
+        assert result.reasoning == "Reasoning..."
+        assert result.tool_calls is not None
+        assert len(result.tool_calls) == 2
+        assert result.content == "Here's the weather"
+
+    def test_unknown_block_type_ignored(self, cost_fn: CostCalculator) -> None:
+        unknown_block = MagicMock()
+        unknown_block.type = "some_future_block"
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "Answer"
+
+        message = MagicMock()
+        message.content = [unknown_block, text_block]
+        message.usage = MagicMock(
+            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+        )
+        message.model = "claude-sonnet-4-6"
+        message.stop_reason = "end_turn"
+
+        result = map_message_response(message, "anthropic", cost_fn)
+        assert result.content == "Answer"
+        assert result.reasoning is None
 
     def test_none_cost_when_unknown_model(self, none_cost_fn: CostCalculator) -> None:
         message = MagicMock()
@@ -435,9 +508,17 @@ class TestMapContentBlockDelta:
             tool_call_deltas=[ToolCallDelta(index=1, function=FunctionCallDelta(arguments='{"city":'))]
         )
 
-    def test_unknown_delta_type_returns_none(self) -> None:
+    def test_thinking_delta_returns_reasoning(self) -> None:
         event = MagicMock()
         event.delta.type = "thinking_delta"
+        event.delta.thinking = "Let me think..."
+        result = map_content_block_delta(event)
+        assert result is not None
+        assert result.reasoning_delta == "Let me think..."
+
+    def test_unknown_delta_type_returns_none(self) -> None:
+        event = MagicMock()
+        event.delta.type = "some_future_delta"
         assert map_content_block_delta(event) is None
 
 

@@ -395,6 +395,40 @@ class TestMapConverseResponse:
         assert result.content is None
         assert result.tool_calls is None
 
+    def test_reasoning_content_extracted(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response: Any = {
+            "output": {
+                "message": {
+                    "content": [
+                        {"reasoningContent": {"reasoningText": {"text": "Let me think..."}}},
+                        {"text": "Answer"},
+                    ]
+                }
+            },
+            "stopReason": "end_turn",
+            "usage": {"inputTokens": 10, "outputTokens": 5},
+        }
+        result = map_converse_response(response, "anthropic.claude-3", "aws-bedrock", noop_cost_fn)
+        assert result.content == "Answer"
+        assert result.reasoning == "Let me think..."
+
+    def test_reasoning_content_empty_text(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response: Any = {
+            "output": {
+                "message": {
+                    "content": [
+                        {"reasoningContent": {"reasoningText": {"text": ""}}},
+                        {"text": "Answer"},
+                    ]
+                }
+            },
+            "stopReason": "end_turn",
+            "usage": {"inputTokens": 10, "outputTokens": 5},
+        }
+        result = map_converse_response(response, "anthropic.claude-3", "aws-bedrock", noop_cost_fn)
+        assert result.content == "Answer"
+        assert result.reasoning is None
+
     def test_cost_none_for_unknown_model(self, none_cost_fn: Any) -> None:  # noqa: ANN401
         response: Any = {
             "output": {"message": {"content": [{"text": "Hi"}]}},
@@ -523,6 +557,27 @@ class TestMapStreamEvent:
             "contentBlockStart": {
                 "contentBlockIndex": 0,
                 "start": {"text": ""},
+            }
+        }
+        result = map_stream_event(event)
+        assert result is None
+
+    def test_content_block_delta_reasoning(self) -> None:
+        event: Any = {
+            "contentBlockDelta": {
+                "contentBlockIndex": 0,
+                "delta": {"reasoningContent": {"text": "thinking..."}},
+            }
+        }
+        result = map_stream_event(event)
+        assert result is not None
+        assert result.reasoning_delta == "thinking..."
+
+    def test_content_block_delta_reasoning_no_text(self) -> None:
+        event: Any = {
+            "contentBlockDelta": {
+                "contentBlockIndex": 0,
+                "delta": {"reasoningContent": {}},
             }
         }
         result = map_stream_event(event)

@@ -202,11 +202,14 @@ def map_generate_content_response(
         return ChatResponse(content=None, tool_calls=None, usage=usage, cost=cost, model=model, provider=provider_name)
 
     text_parts: list[str] = []
+    thinking_parts: list[str] = []
     tool_calls: list[ToolCall] = []
 
     if candidate.content and candidate.content.parts:
         for i, part in enumerate(candidate.content.parts):
             if part.thought:
+                if part.text is not None:
+                    thinking_parts.append(part.text)
                 continue
             if part.text is not None:
                 text_parts.append(part.text)
@@ -223,12 +226,14 @@ def map_generate_content_response(
                 )
 
     content = "\n".join(text_parts) if text_parts else None
+    reasoning = "\n".join(thinking_parts) if thinking_parts else None
     finish_reason = _map_finish_reason(candidate.finish_reason, bool(tool_calls))
     usage = _map_usage(response.usage_metadata)
     cost = cost_fn(model, usage) if usage else None
 
     return ChatResponse(
         content=content,
+        reasoning=reasoning,
         tool_calls=tool_calls or None,
         usage=usage,
         cost=cost,
@@ -248,13 +253,17 @@ def map_generate_content_chunk(
     finish_reason: str | None = None
     usage: Usage | None = None
 
+    reasoning_delta: str | None = None
     candidate = _get_candidate(chunk)
     if candidate is not None:
         if candidate.content and candidate.content.parts:
             text_pieces: list[str] = []
+            thinking_pieces: list[str] = []
             tcd_list: list[ToolCallDelta] = []
             for i, part in enumerate(candidate.content.parts):
                 if part.thought:
+                    if part.text is not None:
+                        thinking_pieces.append(part.text)
                     continue
                 if part.text is not None:
                     text_pieces.append(part.text)
@@ -273,6 +282,8 @@ def map_generate_content_chunk(
                     )
             if text_pieces:
                 delta = "".join(text_pieces)
+            if thinking_pieces:
+                reasoning_delta = "".join(thinking_pieces)
             if tcd_list:
                 tool_call_deltas = tcd_list
         finish_reason = _map_finish_reason(candidate.finish_reason, tool_call_deltas is not None)
@@ -281,6 +292,7 @@ def map_generate_content_chunk(
 
     return ChatChunk(
         delta=delta,
+        reasoning_delta=reasoning_delta,
         tool_call_deltas=tool_call_deltas,
         usage=usage,
         finish_reason=finish_reason,
@@ -341,8 +353,10 @@ def _map_usage(usage_metadata: "GenerateContentResponseUsageMetadata | None") ->
     input_tokens = usage_metadata.prompt_token_count or 0
     output_tokens = usage_metadata.candidates_token_count or 0
     cache_read = usage_metadata.cached_content_token_count or None
+    reasoning_tokens = getattr(usage_metadata, "thoughts_token_count", None) or None
     return Usage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cache_read_tokens=cache_read,
+        reasoning_tokens=reasoning_tokens,
     )

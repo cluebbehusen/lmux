@@ -3,7 +3,7 @@
 # ruff: noqa: PLR0913
 
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from lmux.cost import ModelPricing
 from lmux.types import (
@@ -41,6 +41,7 @@ class CompletionProvider[ParamsT](Protocol):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,
     ) -> ChatResponse: ...
 
@@ -55,6 +56,7 @@ class CompletionProvider[ParamsT](Protocol):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,
     ) -> ChatResponse: ...
 
@@ -69,6 +71,7 @@ class CompletionProvider[ParamsT](Protocol):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,
     ) -> Iterator[ChatChunk]: ...
 
@@ -83,6 +86,7 @@ class CompletionProvider[ParamsT](Protocol):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,
     ) -> AsyncIterator[ChatChunk]: ...
 

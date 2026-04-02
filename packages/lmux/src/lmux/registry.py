@@ -3,7 +3,7 @@
 # ruff: noqa: PLR0913
 
 from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
-from typing import Any
+from typing import Any, Literal
 
 from lmux.exceptions import InvalidRequestError, UnsupportedFeatureError
 from lmux.protocols import CompletionProvider, EmbeddingProvider, ResponsesProvider
@@ -95,6 +95,32 @@ class Registry:
 
     # MARK: Chat
 
+    def _build_provider_kwargs(
+        self,
+        prefix: str,
+        temperature: float | None,
+        max_tokens: int | None,
+        top_p: float | None,
+        stop: str | list[str] | None,
+        tools: list[Tool] | None,
+        response_format: ResponseFormat | None,
+        reasoning_effort: Literal["low", "medium", "high"] | None,
+        provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None,
+    ) -> dict[str, Any]:
+        """Build kwargs for a provider chat call, omitting reasoning_effort when None."""
+        kwargs: dict[str, Any] = {
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "top_p": top_p,
+            "stop": stop,
+            "tools": tools,
+            "response_format": response_format,
+            "provider_params": self._resolve_params(prefix, provider_params),
+        }
+        if reasoning_effort is not None:
+            kwargs["reasoning_effort"] = reasoning_effort
+        return kwargs
+
     def chat(
         self,
         model: str,
@@ -106,6 +132,7 @@ class Registry:
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> ChatResponse:
         """Route a chat completion to the provider registered under *model*'s prefix."""
@@ -113,17 +140,10 @@ class Registry:
         if not isinstance(provider, CompletionProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
-        return provider.chat(
-            bare_model,
-            messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=top_p,
-            stop=stop,
-            tools=tools,
-            response_format=response_format,
-            provider_params=self._resolve_params(prefix, provider_params),
+        kwargs = self._build_provider_kwargs(
+            prefix, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
         )
+        return provider.chat(bare_model, messages, **kwargs)
 
     async def achat(
         self,
@@ -136,6 +156,7 @@ class Registry:
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> ChatResponse:
         """Async variant of :meth:`chat`."""
@@ -143,17 +164,10 @@ class Registry:
         if not isinstance(provider, CompletionProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
-        return await provider.achat(
-            bare_model,
-            messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=top_p,
-            stop=stop,
-            tools=tools,
-            response_format=response_format,
-            provider_params=self._resolve_params(prefix, provider_params),
+        kwargs = self._build_provider_kwargs(
+            prefix, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
         )
+        return await provider.achat(bare_model, messages, **kwargs)
 
     def chat_stream(
         self,
@@ -166,6 +180,7 @@ class Registry:
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> Iterator[ChatChunk]:
         """Streaming variant of :meth:`chat`. Yields :class:`ChatChunk` instances."""
@@ -173,17 +188,10 @@ class Registry:
         if not isinstance(provider, CompletionProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
-        yield from provider.chat_stream(
-            bare_model,
-            messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=top_p,
-            stop=stop,
-            tools=tools,
-            response_format=response_format,
-            provider_params=self._resolve_params(prefix, provider_params),
+        kwargs = self._build_provider_kwargs(
+            prefix, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
         )
+        yield from provider.chat_stream(bare_model, messages, **kwargs)
 
     async def achat_stream(
         self,
@@ -196,6 +204,7 @@ class Registry:
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
     ) -> AsyncIterator[ChatChunk]:
         """Async streaming variant of :meth:`chat`. Yields :class:`ChatChunk` instances."""
@@ -203,17 +212,10 @@ class Registry:
         if not isinstance(provider, CompletionProvider):
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
-        async for chunk in provider.achat_stream(
-            bare_model,
-            messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=top_p,
-            stop=stop,
-            tools=tools,
-            response_format=response_format,
-            provider_params=self._resolve_params(prefix, provider_params),
-        ):
+        kwargs = self._build_provider_kwargs(
+            prefix, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
+        )
+        async for chunk in provider.achat_stream(bare_model, messages, **kwargs):
             yield chunk
 
     # MARK: Embed

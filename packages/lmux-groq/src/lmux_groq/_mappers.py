@@ -140,6 +140,7 @@ def map_chat_completion(
     """Convert Groq ChatCompletion to lmux ChatResponse."""
     choice = completion.choices[0]
     message = choice.message
+    reasoning = getattr(message, "reasoning", None)
 
     tool_calls: list[ToolCall] | None = None
     if message.tool_calls:
@@ -150,6 +151,7 @@ def map_chat_completion(
 
     return ChatResponse(
         content=message.content,
+        reasoning=reasoning,
         tool_calls=tool_calls or None,
         usage=usage,
         cost=cost,
@@ -179,12 +181,14 @@ def _map_completion_usage(completion: "ChatCompletion") -> Usage | None:
 def map_chat_chunk(chunk: "ChatCompletionChunk") -> ChatChunk:
     """Convert a Groq ChatCompletionChunk to an lmux ChatChunk."""
     delta_text: str | None = None
+    reasoning_delta: str | None = None
     tool_call_deltas: list[ToolCallDelta] | None = None
     finish_reason: str | None = None
 
     if chunk.choices:
         choice = chunk.choices[0]
         delta_text = choice.delta.content
+        reasoning_delta = getattr(choice.delta, "reasoning", None)
         finish_reason = choice.finish_reason
 
         if choice.delta.tool_calls:
@@ -216,6 +220,7 @@ def map_chat_chunk(chunk: "ChatCompletionChunk") -> ChatChunk:
 
     return ChatChunk(
         delta=delta_text,
+        reasoning_delta=reasoning_delta,
         tool_call_deltas=tool_call_deltas,
         usage=usage,
         finish_reason=finish_reason,

@@ -316,6 +316,28 @@ class TestChat:
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["stop_sequences"] == ["STOP"]
 
+    def test_chat_with_reasoning_effort(
+        self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        # default max_tokens=4096, so medium (8192) gets capped to 4095
+        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="medium")
+
+        call_kwargs = mock_sync_client.messages.create.call_args.kwargs
+        assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 4095}
+
+    def test_chat_with_reasoning_effort_and_high_max_tokens(
+        self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="high", max_tokens=50000)
+
+        call_kwargs = mock_sync_client.messages.create.call_args.kwargs
+        assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 32768}
+        assert call_kwargs["max_tokens"] == 50000
+
     def test_chat_exception_mapping(
         self,
         sync_provider: AnthropicProvider,
@@ -453,9 +475,14 @@ class TestChatStream:
         block_start.content_block.name = "get_weather"
         block_start.index = 0
 
-        unknown_delta = MagicMock()
-        unknown_delta.type = "content_block_delta"
-        unknown_delta.delta.type = "thinking_delta"
+        thinking_delta_event = MagicMock()
+        thinking_delta_event.type = "content_block_delta"
+        thinking_delta_event.delta.type = "thinking_delta"
+        thinking_delta_event.delta.thinking = "Let me think..."
+
+        unknown_delta_event = MagicMock()
+        unknown_delta_event.type = "content_block_delta"
+        unknown_delta_event.delta.type = "some_future_delta"
 
         unknown_event = MagicMock()
         unknown_event.type = "content_block_stop"
@@ -466,16 +493,38 @@ class TestChatStream:
         delta_event.usage.output_tokens = 5
 
         mock_sync_client.messages.create.return_value = iter(
-            [start_event, text_block_start, block_start, unknown_delta, unknown_event, delta_event]
+            [
+                start_event,
+                text_block_start,
+                block_start,
+                thinking_delta_event,
+                unknown_delta_event,
+                unknown_event,
+                delta_event,
+            ]
         )
 
         chunks = list(sync_provider.chat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")]))
 
-        assert len(chunks) == 2
+        assert len(chunks) == 3
         assert chunks[0].tool_call_deltas is not None
         assert chunks[0].tool_call_deltas[0].function is not None
         assert chunks[0].tool_call_deltas[0].function.name == "get_weather"
-        assert chunks[1].finish_reason == "tool_use"
+        assert chunks[1].reasoning_delta == "Let me think..."
+        assert chunks[2].finish_reason == "tool_use"
+
+    def test_stream_with_reasoning_effort(
+        self,
+        sync_provider: AnthropicProvider,
+        mock_sync_client: MagicMock,
+        stream_events: list[MagicMock],
+    ) -> None:
+        mock_sync_client.messages.create.return_value = iter(stream_events)
+
+        list(sync_provider.chat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="medium"))
+
+        call_kwargs = mock_sync_client.messages.create.call_args.kwargs
+        assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 4095}
 
     def test_stream_exception_on_create(
         self,
@@ -553,9 +602,14 @@ class TestAchatStream:
         block_start.content_block.name = "get_weather"
         block_start.index = 0
 
-        unknown_delta = MagicMock()
-        unknown_delta.type = "content_block_delta"
-        unknown_delta.delta.type = "thinking_delta"
+        thinking_delta_event = MagicMock()
+        thinking_delta_event.type = "content_block_delta"
+        thinking_delta_event.delta.type = "thinking_delta"
+        thinking_delta_event.delta.thinking = "Let me think..."
+
+        unknown_delta_event = MagicMock()
+        unknown_delta_event.type = "content_block_delta"
+        unknown_delta_event.delta.type = "some_future_delta"
 
         unknown_event = MagicMock()
         unknown_event.type = "content_block_stop"
@@ -566,7 +620,15 @@ class TestAchatStream:
         delta_event.usage.output_tokens = 5
 
         async def _async_iter() -> Any:  # noqa: ANN401
-            for event in [start_event, text_block_start, block_start, unknown_delta, unknown_event, delta_event]:
+            for event in [
+                start_event,
+                text_block_start,
+                block_start,
+                thinking_delta_event,
+                unknown_delta_event,
+                unknown_event,
+                delta_event,
+            ]:
                 yield event
 
         mock_async_client.messages.create.return_value = _async_iter()
@@ -575,11 +637,35 @@ class TestAchatStream:
             chunk async for chunk in async_provider.achat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")])
         ]
 
-        assert len(chunks) == 2
+        assert len(chunks) == 3
         assert chunks[0].tool_call_deltas is not None
         assert chunks[0].tool_call_deltas[0].function is not None
         assert chunks[0].tool_call_deltas[0].function.name == "get_weather"
-        assert chunks[1].finish_reason == "tool_use"
+        assert chunks[1].reasoning_delta == "Let me think..."
+        assert chunks[2].finish_reason == "tool_use"
+
+    async def test_stream_with_reasoning_effort(
+        self,
+        async_provider: AnthropicProvider,
+        mock_async_client: MagicMock,
+        stream_events: list[MagicMock],
+    ) -> None:
+        async def _async_iter() -> Any:  # noqa: ANN401
+            for event in stream_events:
+                yield event
+
+        mock_async_client.messages.create.return_value = _async_iter()
+
+        chunks = [
+            chunk
+            async for chunk in async_provider.achat_stream(
+                "claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="medium"
+            )
+        ]
+
+        assert len(chunks) == 3
+        call_kwargs = mock_async_client.messages.create.call_args.kwargs
+        assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 4095}
 
     async def test_exception_on_create(
         self,
