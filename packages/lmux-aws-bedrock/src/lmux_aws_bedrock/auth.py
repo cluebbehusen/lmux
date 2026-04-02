@@ -2,7 +2,7 @@
 
 The simplest way to authenticate is to set the ``AWS_BEARER_TOKEN_BEDROCK``
 environment variable with a Bedrock API key and use ``BedrockEnvAuthProvider``
-(the default). boto3/aioboto3 pick up this variable automatically via the
+(the default). boto3/aiobotocore pick up this variable automatically via the
 standard credential chain.
 
 See: https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys-use.html
@@ -15,8 +15,8 @@ addressed we should accept the key directly instead of relying on the env var.
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import aioboto3
     import boto3
+    from aiobotocore.session import AioSession
 
 
 class BedrockEnvAuthProvider:
@@ -32,21 +32,22 @@ class BedrockEnvAuthProvider:
 
         return boto3.Session()
 
-    async def aget_credentials(self) -> "aioboto3.Session":
+    async def aget_credentials(self) -> "AioSession":
         try:
-            import aioboto3  # noqa: PLC0415
+            from aiobotocore.session import get_session  # noqa: PLC0415
         except ImportError as e:
             raise ImportError("[async] extra group is required for async operations") from e  # noqa: TRY003
 
-        return aioboto3.Session()
+        return get_session()
 
 
 class BedrockSessionAuthProvider:
     """Auth provider that creates sessions with explicit configuration.
 
-    Accepts the same keyword arguments as ``boto3.Session`` /
-    ``aioboto3.Session`` (``region_name``, ``profile_name``,
-    ``aws_account_id``, ``aws_access_key_id``, ``aws_secret_access_key``, ``aws_session_token``).
+    Accepts the same keyword arguments as ``boto3.Session`` and maps the
+    async equivalents onto ``aiobotocore.session.get_session()``
+    (``region_name``, ``profile_name``, ``aws_account_id``,
+    ``aws_access_key_id``, ``aws_secret_access_key``, ``aws_session_token``).
     Both sync and async sessions are constructed with the same kwargs.
     """
 
@@ -74,10 +75,27 @@ class BedrockSessionAuthProvider:
 
         return boto3.Session(**self._kwargs)
 
-    async def aget_credentials(self) -> "aioboto3.Session":
+    async def aget_credentials(self) -> "AioSession":
         try:
-            import aioboto3  # noqa: PLC0415
+            from aiobotocore.session import get_session  # noqa: PLC0415
         except ImportError as e:
             raise ImportError("[async] extra group is required for async operations") from e  # noqa: TRY003
 
-        return aioboto3.Session(**self._kwargs)
+        session = get_session()
+
+        if self._kwargs["region_name"] is not None:
+            session.set_config_variable("region", self._kwargs["region_name"])
+        if self._kwargs["profile_name"] is not None:
+            session.set_config_variable("profile", self._kwargs["profile_name"])
+        has_credentials = any(
+            self._kwargs[key] is not None for key in ("aws_access_key_id", "aws_secret_access_key", "aws_session_token")
+        )
+        if has_credentials:
+            session.set_credentials(
+                self._kwargs["aws_access_key_id"],
+                self._kwargs["aws_secret_access_key"],
+                token=self._kwargs["aws_session_token"],
+                account_id=self._kwargs["aws_account_id"],
+            )
+
+        return session

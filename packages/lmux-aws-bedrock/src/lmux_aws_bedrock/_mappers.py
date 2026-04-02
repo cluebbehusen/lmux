@@ -165,20 +165,31 @@ def map_tools(tools: list[Tool]) -> "ToolConfigurationTypeDef":
     return {"tools": tool_specs}
 
 
-def map_response_format(rf: ResponseFormat) -> None:
-    """Validate response format for Converse API.
-
-    The Converse API does not natively support structured output modes.
-    Text format is a no-op; JSON formats raise UnsupportedFeatureError.
-    """
+def map_response_format(rf: ResponseFormat) -> dict[str, object] | None:
+    """Convert lmux ResponseFormat to Bedrock ``outputConfig`` fields."""
     if isinstance(rf, TextResponseFormat):
-        return
+        return None
     if isinstance(rf, JsonObjectResponseFormat):
-        msg = "JsonObjectResponseFormat is not supported by AWS Bedrock Converse API"
-        raise UnsupportedFeatureError(msg, provider=PROVIDER_NAME)
-    # JsonSchemaResponseFormat
-    msg = "JsonSchemaResponseFormat is not supported by AWS Bedrock Converse API"
-    raise UnsupportedFeatureError(msg, provider=PROVIDER_NAME)
+        json_schema: dict[str, str] = {
+            "schema": json.dumps({"type": "object"}, sort_keys=True),
+            "name": "json_object",
+        }
+    else:
+        json_schema = {
+            "schema": json.dumps(rf.json_schema, sort_keys=True),
+            "name": rf.name,
+        }
+        if rf.description is not None:
+            json_schema["description"] = rf.description
+
+    return {
+        "textFormat": {
+            "type": "json_schema",
+            "structure": {
+                "jsonSchema": json_schema,
+            },
+        },
+    }
 
 
 # MARK: Output Mappers (Converse response -> lmux)

@@ -245,14 +245,54 @@ class TestMapResponseFormat:
     def test_text_returns_none(self) -> None:
         assert map_response_format(TextResponseFormat()) is None
 
-    def test_json_object_raises(self) -> None:
-        with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat"):
-            map_response_format(JsonObjectResponseFormat())
+    def test_json_object_returns_output_config(self) -> None:
+        result = map_response_format(JsonObjectResponseFormat())
+        assert result == {
+            "textFormat": {
+                "type": "json_schema",
+                "structure": {
+                    "jsonSchema": {
+                        "schema": '{"type": "object"}',
+                        "name": "json_object",
+                    }
+                },
+            }
+        }
 
-    def test_json_schema_raises(self) -> None:
+    def test_json_schema_returns_output_config(self) -> None:
+        rf = JsonSchemaResponseFormat(
+            name="test",
+            description="Test schema",
+            json_schema={"type": "object", "properties": {"city": {"type": "string"}}},
+        )
+        result = map_response_format(rf)
+        assert result == {
+            "textFormat": {
+                "type": "json_schema",
+                "structure": {
+                    "jsonSchema": {
+                        "schema": '{"properties": {"city": {"type": "string"}}, "type": "object"}',
+                        "name": "test",
+                        "description": "Test schema",
+                    }
+                },
+            }
+        }
+
+    def test_json_schema_without_description_returns_output_config(self) -> None:
         rf = JsonSchemaResponseFormat(name="test", json_schema={"type": "object"})
-        with pytest.raises(UnsupportedFeatureError, match="JsonSchemaResponseFormat"):
-            map_response_format(rf)
+        result = map_response_format(rf)
+        assert result == {
+            "textFormat": {
+                "type": "json_schema",
+                "structure": {
+                    "jsonSchema": {
+                        "schema": '{"type": "object"}',
+                        "name": "test",
+                    }
+                },
+            }
+        }
 
 
 # MARK: map_converse_response
