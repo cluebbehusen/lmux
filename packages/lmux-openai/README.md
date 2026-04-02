@@ -2,7 +2,9 @@
 
 OpenAI provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [openai](https://pypi.org/project/openai/) SDK.
 
-Supports chat completions, streaming, embeddings, and the Responses API. Standardized interface, cost tracking on every response, and registry-based routing across providers.
+Supports chat completions, streaming, embeddings, and the Responses API.
+
+Part of the [lmux](https://github.com/cluebbehusen/lmux) ecosystem: standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Auth
 

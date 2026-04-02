@@ -2,7 +2,9 @@
 
 AWS Bedrock provider for [lmux](https://github.com/cluebbehusen/lmux). Uses [boto3](https://pypi.org/project/boto3/) and the Converse API.
 
-Supports chat completions, streaming, and embeddings. Standardized interface, cost tracking on every response, and registry-based routing across providers.
+Supports chat completions, streaming, and embeddings.
+
+Part of the [lmux](https://github.com/cluebbehusen/lmux) ecosystem: standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Optional Extras
 
