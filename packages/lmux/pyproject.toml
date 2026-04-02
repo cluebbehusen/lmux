@@ -1,6 +1,6 @@
 [project]
 name = "lmux"
-version = "0.2.0"
+version = "0.3.0"
 description = "Core types, protocols, and utilities for the lmux language model multiplexer"
 requires-python = ">=3.13"
 license = "MIT"

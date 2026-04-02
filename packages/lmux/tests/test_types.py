@@ -6,6 +6,7 @@ from lmux.types import (
     Cost,
     FunctionCallResult,
     ImageContent,
+    ServerToolResult,
     TextContent,
     ToolCall,
     Usage,
@@ -46,6 +47,26 @@ class TestSerialization:
             cost=Cost(input_cost=0.001, output_cost=0.002, total_cost=0.003),
             model="gpt-4o",
             provider="openai",
+        )
+        data = r.model_dump()
+        restored = ChatResponse.model_validate(data)
+        assert restored == r
+
+    def test_chat_response_with_server_tool_results(self) -> None:
+        r = ChatResponse(
+            content="The result is 42.",
+            server_tool_results=[
+                ServerToolResult(
+                    name="code_execution",
+                    input={"code": "print(42)", "language": "PYTHON"},
+                    output="42\n",
+                    provider_specific_fields={"outcome": "OUTCOME_OK"},
+                ),
+            ],
+            usage=Usage(input_tokens=10, output_tokens=5),
+            cost=None,
+            model="gemini-2.0-flash",
+            provider="gcp-vertex",
         )
         data = r.model_dump()
         restored = ChatResponse.model_validate(data)

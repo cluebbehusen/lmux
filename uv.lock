@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-03-26T17:13:38.817574Z"
+exclude-newer = "2026-03-26T18:53:40.345692Z"
 exclude-newer-span = "P7D"
 
 [manifest]
@@ -843,7 +843,7 @@ provides-extras = ["identity"]
 
 [[package]]
 name = "lmux-gcp-vertex"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/lmux-gcp-vertex" }
 dependencies = [
     { name = "google-genai" },

@@ -33,6 +33,8 @@ from lmux.types import (
     JsonObjectResponseFormat,
     Message,
     ResponseFormat,
+    ServerToolDelta,
+    ServerToolResult,
     SystemMessage,
     TextContent,
     TextResponseFormat,
@@ -204,8 +206,10 @@ def map_generate_content_response(
     text_parts: list[str] = []
     thinking_parts: list[str] = []
     tool_calls: list[ToolCall] = []
+    server_tool_results: list[ServerToolResult] = []
 
     if candidate.content and candidate.content.parts:
+        pending_code_input: dict[str, str | None] | None = None
         for i, part in enumerate(candidate.content.parts):
             if part.thought:
                 if part.text is not None:
@@ -224,6 +228,24 @@ def map_generate_content_response(
                         ),
                     )
                 )
+            ec = getattr(part, "executable_code", None)
+            if ec is not None:
+                pending_code_input = {
+                    "code": ec.code,
+                    "language": ec.language.value if hasattr(ec.language, "value") else ec.language,
+                }
+            cer = getattr(part, "code_execution_result", None)
+            if cer is not None:
+                outcome = cer.outcome.value if hasattr(cer.outcome, "value") else cer.outcome
+                server_tool_results.append(
+                    ServerToolResult(
+                        name="code_execution",
+                        input=pending_code_input,
+                        output=cer.output,
+                        provider_specific_fields={"outcome": outcome} if outcome else None,
+                    )
+                )
+                pending_code_input = None
 
     content = "\n".join(text_parts) if text_parts else None
     reasoning = "\n".join(thinking_parts) if thinking_parts else None
@@ -235,6 +257,7 @@ def map_generate_content_response(
         content=content,
         reasoning=reasoning,
         tool_calls=tool_calls or None,
+        server_tool_results=server_tool_results or None,
         usage=usage,
         cost=cost,
         model=model,
@@ -243,13 +266,14 @@ def map_generate_content_response(
     )
 
 
-def map_generate_content_chunk(
+def map_generate_content_chunk(  # noqa: PLR0912
     chunk: "GenerateContentResponse",
     model: str,
 ) -> ChatChunk:
     """Convert a streaming chunk to lmux ChatChunk."""
     delta: str | None = None
     tool_call_deltas: list[ToolCallDelta] | None = None
+    server_tool_deltas: list[ServerToolDelta] | None = None
     finish_reason: str | None = None
     usage: Usage | None = None
 
@@ -260,6 +284,8 @@ def map_generate_content_chunk(
             text_pieces: list[str] = []
             thinking_pieces: list[str] = []
             tcd_list: list[ToolCallDelta] = []
+            std_list: list[ServerToolDelta] = []
+            std_index = 0
             for i, part in enumerate(candidate.content.parts):
                 if part.thought:
                     if part.text is not None:
@@ -280,12 +306,33 @@ def map_generate_content_chunk(
                             ),
                         )
                     )
+                ec = getattr(part, "executable_code", None)
+                if ec is not None:
+                    language = ec.language.value if hasattr(ec.language, "value") else ec.language
+                    std_list.append(
+                        ServerToolDelta(
+                            index=std_index,
+                            name="code_execution",
+                            input_delta=json.dumps({"code": ec.code, "language": language}),
+                        )
+                    )
+                cer = getattr(part, "code_execution_result", None)
+                if cer is not None:
+                    std_list.append(
+                        ServerToolDelta(
+                            index=std_index,
+                            output_delta=cer.output,
+                        )
+                    )
+                    std_index += 1
             if text_pieces:
                 delta = "".join(text_pieces)
             if thinking_pieces:
                 reasoning_delta = "".join(thinking_pieces)
             if tcd_list:
                 tool_call_deltas = tcd_list
+            if std_list:
+                server_tool_deltas = std_list
         finish_reason = _map_finish_reason(candidate.finish_reason, tool_call_deltas is not None)
 
     usage = _map_usage(chunk.usage_metadata)
@@ -294,6 +341,7 @@ def map_generate_content_chunk(
         delta=delta,
         reasoning_delta=reasoning_delta,
         tool_call_deltas=tool_call_deltas,
+        server_tool_deltas=server_tool_deltas,
         usage=usage,
         finish_reason=finish_reason,
         model=model,

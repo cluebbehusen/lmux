@@ -20,6 +20,8 @@ from lmux.types import (
     ImageContent,
     JsonObjectResponseFormat,
     JsonSchemaResponseFormat,
+    ServerToolDelta,
+    ServerToolResult,
     SystemMessage,
     TextContent,
     TextResponseFormat,
@@ -58,10 +60,24 @@ def none_cost_fn() -> Any:  # noqa: ANN401
     return _fn
 
 
+def _make_part(**attrs: Any) -> MagicMock:  # noqa: ANN401
+    """Create a mock Part with all code-execution attributes defaulted to None."""
+    part = MagicMock()
+    part.thought = False
+    part.text = None
+    part.function_call = None
+    part.executable_code = None
+    part.code_execution_result = None
+    for key, value in attrs.items():
+        setattr(part, key, value)
+    return part
+
+
 def _make_response(  # noqa: PLR0913
     *,
     text: str | None = None,
     function_calls: list[dict[str, Any]] | None = None,
+    code_executions: list[dict[str, Any]] | None = None,
     finish_reason: str | None = "STOP",
     prompt_tokens: int = 10,
     output_tokens: int = 5,
@@ -74,28 +90,27 @@ def _make_response(  # noqa: PLR0913
 
     parts = []
     if thoughts:
-        for thought_text in thoughts:
-            thought_part = MagicMock()
-            thought_part.thought = True
-            thought_part.text = thought_text
-            thought_part.function_call = None
-            parts.append(thought_part)
+        parts.extend(_make_part(thought=True, text=thought_text) for thought_text in thoughts)
     if text is not None:
-        text_part = MagicMock()
-        text_part.thought = False
-        text_part.text = text
-        text_part.function_call = None
-        parts.append(text_part)
+        parts.append(_make_part(text=text))
     if function_calls:
         for fc in function_calls:
-            fc_part = MagicMock()
-            fc_part.thought = False
-            fc_part.text = None
-            fc_part.function_call = MagicMock()
-            fc_part.function_call.id = fc.get("id")
-            fc_part.function_call.name = fc.get("name")
-            fc_part.function_call.args = fc.get("args")
-            parts.append(fc_part)
+            fc_mock = MagicMock()
+            fc_mock.id = fc.get("id")
+            fc_mock.name = fc.get("name")
+            fc_mock.args = fc.get("args")
+            parts.append(_make_part(function_call=fc_mock))
+    if code_executions:
+        for ce in code_executions:
+            ec_mock = MagicMock()
+            ec_mock.code = ce.get("code")
+            ec_mock.language = MagicMock(value=ce.get("language")) if ce.get("language") else None
+            parts.append(_make_part(executable_code=ec_mock))
+
+            cer_mock = MagicMock()
+            cer_mock.output = ce.get("output")
+            cer_mock.outcome = MagicMock(value=ce.get("outcome")) if ce.get("outcome") else None
+            parts.append(_make_part(code_execution_result=cer_mock))
 
     content = MagicMock()
     content.parts = parts or None
@@ -475,18 +490,8 @@ class TestMapGenerateContentResponse:
         response = MagicMock()
         candidate = MagicMock()
 
-        thought_part = MagicMock()
-        thought_part.thought = True
-        thought_part.text = None
-        thought_part.function_call = None
-
-        text_part = MagicMock()
-        text_part.thought = False
-        text_part.text = "Answer"
-        text_part.function_call = None
-
         content = MagicMock()
-        content.parts = [thought_part, text_part]
+        content.parts = [_make_part(thought=True), _make_part(text="Answer")]
         candidate.content = content
         candidate.finish_reason = MagicMock(value="STOP")
 
@@ -508,6 +513,59 @@ class TestMapGenerateContentResponse:
         result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
         assert result.content is None
         assert result.tool_calls is None
+
+    def test_code_execution_response(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = _make_response(
+            text="The answer is 42.",
+            code_executions=[{"code": "print(42)", "language": "PYTHON", "output": "42\n", "outcome": "OUTCOME_OK"}],
+        )
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        assert result.content == "The answer is 42."
+        assert result.server_tool_results == [
+            ServerToolResult(
+                name="code_execution",
+                input={"code": "print(42)", "language": "PYTHON"},
+                output="42\n",
+                provider_specific_fields={"outcome": "OUTCOME_OK"},
+            ),
+        ]
+
+    def test_code_execution_without_text(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = _make_response(
+            code_executions=[{"code": "print(42)", "language": "PYTHON", "output": "42\n", "outcome": "OUTCOME_OK"}],
+        )
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        assert result.content is None
+        assert result.server_tool_results is not None
+        assert len(result.server_tool_results) == 1
+
+    def test_code_execution_no_outcome(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = _make_response(
+            code_executions=[{"code": "x = 1", "language": None, "output": None, "outcome": None}],
+        )
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        assert result.server_tool_results is not None
+        assert result.server_tool_results[0].input == {"code": "x = 1", "language": None}
+        assert result.server_tool_results[0].output is None
+        assert result.server_tool_results[0].provider_specific_fields is None
+
+    def test_multiple_code_executions(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = _make_response(
+            code_executions=[
+                {"code": "print(1)", "language": "PYTHON", "output": "1\n", "outcome": "OUTCOME_OK"},
+                {"code": "print(2)", "language": "PYTHON", "output": "2\n", "outcome": "OUTCOME_OK"},
+            ],
+        )
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        assert result.server_tool_results is not None
+        assert len(result.server_tool_results) == 2
+        assert result.server_tool_results[0].output == "1\n"
+        assert result.server_tool_results[1].output == "2\n"
+
+    def test_no_code_execution_returns_none(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = _make_response(text="Hello!")
+        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        assert result.server_tool_results is None
 
 
 # MARK: map_generate_content_chunk
@@ -568,13 +626,8 @@ class TestMapGenerateContentChunk:
         chunk = MagicMock()
         candidate = MagicMock()
 
-        thought_part = MagicMock()
-        thought_part.thought = True
-        thought_part.text = None
-        thought_part.function_call = None
-
         content = MagicMock()
-        content.parts = [thought_part]
+        content.parts = [_make_part(thought=True)]
         candidate.content = content
         candidate.finish_reason = None
 
@@ -613,6 +666,54 @@ class TestMapGenerateContentChunk:
         chunk.usage_metadata = None
         result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
         assert result.finish_reason is None
+
+    def test_code_execution_chunk(self) -> None:
+        chunk = _make_response(
+            code_executions=[{"code": "print(42)", "language": "PYTHON", "output": "42\n", "outcome": "OUTCOME_OK"}],
+            finish_reason=None,
+        )
+        chunk.usage_metadata = None
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        assert result.server_tool_deltas == [
+            ServerToolDelta(
+                index=0,
+                name="code_execution",
+                input_delta='{"code": "print(42)", "language": "PYTHON"}',
+            ),
+            ServerToolDelta(
+                index=0,
+                output_delta="42\n",
+            ),
+        ]
+
+    def test_code_execution_chunk_no_server_tool_deltas_when_absent(self) -> None:
+        chunk = _make_response(text="Hello", finish_reason=None)
+        chunk.usage_metadata = None
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        assert result.server_tool_deltas is None
+
+    def test_multiple_code_executions_in_chunk(self) -> None:
+        chunk = _make_response(
+            code_executions=[
+                {"code": "print(1)", "language": "PYTHON", "output": "1\n", "outcome": "OUTCOME_OK"},
+                {"code": "print(2)", "language": "PYTHON", "output": "2\n", "outcome": "OUTCOME_OK"},
+            ],
+            finish_reason=None,
+        )
+        chunk.usage_metadata = None
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        assert result.server_tool_deltas is not None
+        assert len(result.server_tool_deltas) == 4
+        # First pair at index 0
+        assert result.server_tool_deltas[0].index == 0
+        assert result.server_tool_deltas[0].name == "code_execution"
+        assert result.server_tool_deltas[1].index == 0
+        assert result.server_tool_deltas[1].output_delta == "1\n"
+        # Second pair at index 1
+        assert result.server_tool_deltas[2].index == 1
+        assert result.server_tool_deltas[2].name == "code_execution"
+        assert result.server_tool_deltas[3].index == 1
+        assert result.server_tool_deltas[3].output_delta == "2\n"
 
 
 # MARK: map_embed_content_response

@@ -21,7 +21,14 @@ from lmux.types import (
     UserMessage,
 )
 from lmux_gcp_vertex import preload
-from lmux_gcp_vertex.params import GCPVertexParams, SafetySetting
+from lmux_gcp_vertex.params import (
+    DynamicRetrievalConfig,
+    GCPVertexParams,
+    GoogleSearchConfig,
+    GoogleSearchRetrievalConfig,
+    GoogleSearchTypes,
+    SafetySetting,
+)
 from lmux_gcp_vertex.provider import GCPVertexProvider
 
 # MARK: Shared Fixtures
@@ -70,6 +77,8 @@ def _make_response_mock(
     part.thought = False
     part.text = text
     part.function_call = None
+    part.executable_code = None
+    part.code_execution_result = None
 
     content = MagicMock()
     content.parts = [part]
@@ -742,6 +751,255 @@ class TestProviderParamsKwargs:
         assert config["seed"] == 42
         assert config["labels"] == {"env": "test"}
         assert config["thinking_config"] == {"thinking_budget": 1024}
+
+    def test_google_search_bool(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(google_search=True),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [{"google_search": {}}]
+
+    def test_google_search_config_with_search_types(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(
+                google_search=GoogleSearchConfig(
+                    search_types=GoogleSearchTypes(web_search=True),
+                    exclude_domains=["example.com"],
+                ),
+            ),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [
+            {"google_search": {"search_types": {"web_search": {}}, "exclude_domains": ["example.com"]}},
+        ]
+
+    def test_google_search_config_empty(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(google_search=GoogleSearchConfig()),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [{"google_search": {}}]
+
+    def test_google_search_config_image_search(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(
+                google_search=GoogleSearchConfig(search_types=GoogleSearchTypes(image_search=True)),
+            ),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [{"google_search": {"search_types": {"image_search": {}}}}]
+
+    def test_code_execution(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(code_execution=True),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [{"code_execution": {}}]
+
+    def test_google_search_retrieval(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(
+                google_search_retrieval=GoogleSearchRetrievalConfig(
+                    dynamic_retrieval_config=DynamicRetrievalConfig(mode="MODE_DYNAMIC", dynamic_threshold=0.5),
+                ),
+            ),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        expected_drc = {"mode": "MODE_DYNAMIC", "dynamic_threshold": 0.5}
+        assert config["tools"] == [
+            {"google_search_retrieval": {"dynamic_retrieval_config": expected_drc}},
+        ]
+
+    def test_google_search_retrieval_empty(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(google_search_retrieval=GoogleSearchRetrievalConfig()),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [{"google_search_retrieval": {}}]
+
+    def test_special_tools_merge_with_function_tools(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            tools=[Tool(function=FunctionDefinition(name="get_weather"))],
+            provider_params=GCPVertexParams(google_search=True, code_execution=True),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [
+            {"function_declarations": [{"name": "get_weather"}]},
+            {"google_search": {}},
+            {"code_execution": {}},
+        ]
+
+    def test_multiple_special_tools(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(google_search=True, code_execution=True),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [{"google_search": {}}, {"code_execution": {}}]
+
+    def test_google_search_retrieval_mode_only(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(
+                google_search_retrieval=GoogleSearchRetrievalConfig(
+                    dynamic_retrieval_config=DynamicRetrievalConfig(mode="MODE_DYNAMIC"),
+                ),
+            ),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [
+            {"google_search_retrieval": {"dynamic_retrieval_config": {"mode": "MODE_DYNAMIC"}}},
+        ]
+
+    def test_google_search_retrieval_threshold_only(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(
+                google_search_retrieval=GoogleSearchRetrievalConfig(
+                    dynamic_retrieval_config=DynamicRetrievalConfig(dynamic_threshold=0.7),
+                ),
+            ),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [
+            {"google_search_retrieval": {"dynamic_retrieval_config": {"dynamic_threshold": 0.7}}},
+        ]
+
+    def test_google_search_retrieval_empty_drc(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(
+                google_search_retrieval=GoogleSearchRetrievalConfig(
+                    dynamic_retrieval_config=DynamicRetrievalConfig(),
+                ),
+            ),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [{"google_search_retrieval": {}}]
+
+    def test_google_search_config_empty_search_types(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(
+                google_search=GoogleSearchConfig(search_types=GoogleSearchTypes()),
+            ),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert config["tools"] == [{"google_search": {}}]
+
+    def test_google_search_false_is_noop(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(google_search=False),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert "tools" not in config
+
+    def test_no_special_tools_no_tools_key(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        sync_provider.chat(
+            "gemini-2.0-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GCPVertexParams(presence_penalty=0.5),
+        )
+
+        config = mock_client.models.generate_content.call_args.kwargs["config"]
+        assert "tools" not in config
 
 
 # MARK: Preload
