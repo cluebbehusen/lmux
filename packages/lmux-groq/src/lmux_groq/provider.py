@@ -276,7 +276,8 @@ class GroqProvider(
             kwargs["service_tier"] = params.service_tier
         if params.reasoning_effort is not None:
             kwargs["reasoning_effort"] = params.reasoning_effort
-            kwargs["include_reasoning"] = True
+            if params.reasoning_effort != "none":
+                kwargs["include_reasoning"] = True
         if params.seed is not None:
             kwargs["seed"] = params.seed
         if params.user is not None:

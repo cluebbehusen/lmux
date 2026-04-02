@@ -266,6 +266,21 @@ class TestChat:
         assert call_kwargs["reasoning_effort"] == "high"
         assert call_kwargs["include_reasoning"] is True
 
+    def test_chat_with_provider_params_reasoning_effort_none(
+        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
+
+        sync_provider.chat(
+            "qwen/qwen3-32b",
+            [UserMessage(content="Hi")],
+            provider_params=GroqParams(reasoning_effort="none"),
+        )
+
+        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["reasoning_effort"] == "none"
+        assert "include_reasoning" not in call_kwargs
+
     def test_chat_exception_mapping(
         self, sync_provider: GroqProvider, mock_sync_client: MagicMock, bad_request_error: groq.BadRequestError
     ) -> None:
