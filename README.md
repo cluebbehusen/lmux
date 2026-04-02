@@ -73,6 +73,28 @@ print(response.embeddings)
 print(response.cost)
 ```
 
+### Reasoning
+
+Request reasoning with a unified `reasoning_effort` parameter that works across all providers:
+
+```python
+response = provider.chat("o3", messages, reasoning_effort="high")
+print(response.reasoning)  # normalized reasoning text (or None)
+print(response.usage.reasoning_tokens)  # reasoning token count (or None)
+```
+
+Streaming returns reasoning in `chunk.reasoning_delta`. Each provider maps the effort level to its native API:
+
+| Provider | Mapping |
+|---|---|
+| OpenAI / Azure Foundry | `reasoning_effort` |
+| Anthropic | `thinking` with budget tokens (capped to `max_tokens - 1`) |
+| GCP Vertex | `thinking_config` with `thinking_budget` and `include_thoughts` |
+| AWS Bedrock | `additionalModelRequestFields.thinking` |
+| Groq | `reasoning_effort` + `include_reasoning` |
+
+For fine-grained control, use provider-specific params instead (e.g., `AnthropicParams(thinking=...)`). Provider params always take precedence over the top-level `reasoning_effort`.
+
 ### Cost
 
 Every response includes a `.cost` field when the model's pricing is known. Unknown models return `None`, not an error.
@@ -107,6 +129,7 @@ Implement the protocols you need. Only `lmux` is required as a dependency.
 
 ```python
 from collections.abc import AsyncIterator, Iterator, Sequence
+from typing import Literal
 
 from lmux import (
     ChatChunk,
@@ -130,6 +153,7 @@ class MyProvider(CompletionProvider[None]):
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
         response_format: ResponseFormat | None = None,
+        reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
     ) -> ChatResponse: ...
 
