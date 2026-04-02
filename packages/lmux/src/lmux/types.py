@@ -1,6 +1,6 @@
 """Core type definitions for lmux."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -80,6 +80,29 @@ class ToolCallDelta(BaseModel):
     id: str | None = None
     type: Literal["function"] | None = None
     function: FunctionCallDelta | None = None
+
+
+# MARK: Server Tools
+
+
+class ServerToolResult(BaseModel):
+    """A completed server-side tool call with its result."""
+
+    id: str | None = None
+    name: str
+    input: dict[str, Any] | None = None
+    output: str | None = None
+    provider_specific_fields: dict[str, Any] | None = None
+
+
+class ServerToolDelta(BaseModel):
+    """Incremental server tool data in a streaming chunk."""
+
+    index: int
+    id: str | None = None
+    name: str | None = None
+    input_delta: str | None = None
+    output_delta: str | None = None
 
 
 # MARK: Messages
@@ -186,6 +209,7 @@ class ChatResponse(BaseModel):
     content: str | None
     reasoning: str | None = None
     tool_calls: list[ToolCall] | None = None
+    server_tool_results: list[ServerToolResult] | None = None
     usage: Usage | None
     cost: Cost | None
     model: str
@@ -199,6 +223,7 @@ class ChatChunk(BaseModel):
     delta: str | None = None
     reasoning_delta: str | None = None
     tool_call_deltas: list[ToolCallDelta] | None = None
+    server_tool_deltas: list[ServerToolDelta] | None = None
     usage: Usage | None = None
     cost: Cost | None = None
     finish_reason: str | None = None

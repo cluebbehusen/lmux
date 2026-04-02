@@ -6,15 +6,26 @@ from lmux_gcp_vertex.auth import (
     GCPVertexServiceAccountAuthProvider,
 )
 from lmux_gcp_vertex.cost import calculate_gcp_vertex_cost
-from lmux_gcp_vertex.params import GCPVertexParams, SafetySetting
+from lmux_gcp_vertex.params import (
+    DynamicRetrievalConfig,
+    GCPVertexParams,
+    GoogleSearchConfig,
+    GoogleSearchRetrievalConfig,
+    GoogleSearchTypes,
+    SafetySetting,
+)
 from lmux_gcp_vertex.provider import GCPVertexProvider
 
 __all__ = [
+    "DynamicRetrievalConfig",
     "GCPVertexADCAuthProvider",
     "GCPVertexAPIKeyAuthProvider",
     "GCPVertexParams",
     "GCPVertexProvider",
     "GCPVertexServiceAccountAuthProvider",
+    "GoogleSearchConfig",
+    "GoogleSearchRetrievalConfig",
+    "GoogleSearchTypes",
     "SafetySetting",
     "calculate_gcp_vertex_cost",
     "preload",

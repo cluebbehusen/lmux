@@ -31,7 +31,7 @@ from lmux_gcp_vertex._mappers import (
 )
 from lmux_gcp_vertex.auth import GCPVertexADCAuthProvider
 from lmux_gcp_vertex.cost import calculate_gcp_vertex_cost
-from lmux_gcp_vertex.params import GCPVertexParams
+from lmux_gcp_vertex.params import GCPVertexParams, GoogleSearchConfig
 
 type GCPVertexAuth = AuthProvider["Credentials | str", "Credentials | str"]
 
@@ -299,6 +299,9 @@ class GCPVertexProvider(
             config["thinking_config"] = {"thinking_budget": budget, "include_thoughts": True}
         if provider_params is not None:
             config.update(GCPVertexProvider._provider_params_kwargs(provider_params))
+            special_tools = GCPVertexProvider._build_special_tools(provider_params)
+            if special_tools:
+                config.setdefault("tools", []).extend(special_tools)
         return config
 
     @staticmethod
@@ -320,3 +323,44 @@ class GCPVertexProvider(
         if params.thinking_config is not None:
             kwargs["thinking_config"] = params.thinking_config
         return kwargs
+
+    @staticmethod
+    def _build_special_tools(params: GCPVertexParams) -> list[dict[str, Any]]:
+        """Convert special tool params to google-genai tool dicts."""
+        tools: list[dict[str, Any]] = []
+        if params.google_search is not None:
+            if params.google_search is True:
+                tools.append({"google_search": {}})
+            elif isinstance(params.google_search, GoogleSearchConfig):
+                tools.append({"google_search": GCPVertexProvider._build_google_search_dict(params.google_search)})
+        if params.google_search_retrieval is not None:
+            gsr_dict: dict[str, Any] = {}
+            drc = params.google_search_retrieval.dynamic_retrieval_config
+            if drc is not None:
+                drc_dict: dict[str, Any] = {}
+                if drc.mode is not None:
+                    drc_dict["mode"] = drc.mode
+                if drc.dynamic_threshold is not None:
+                    drc_dict["dynamic_threshold"] = drc.dynamic_threshold
+                if drc_dict:
+                    gsr_dict["dynamic_retrieval_config"] = drc_dict
+            tools.append({"google_search_retrieval": gsr_dict})
+        if params.code_execution is True:
+            tools.append({"code_execution": {}})
+        return tools
+
+    @staticmethod
+    def _build_google_search_dict(config: GoogleSearchConfig) -> dict[str, Any]:
+        """Convert GoogleSearchConfig to a google-genai tool dict."""
+        gs_dict: dict[str, Any] = {}
+        if config.search_types is not None:
+            st_dict: dict[str, Any] = {}
+            if config.search_types.web_search is True:
+                st_dict["web_search"] = {}
+            if config.search_types.image_search is True:
+                st_dict["image_search"] = {}
+            if st_dict:
+                gs_dict["search_types"] = st_dict
+        if config.exclude_domains is not None:
+            gs_dict["exclude_domains"] = config.exclude_domains
+        return gs_dict
