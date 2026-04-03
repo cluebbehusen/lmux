@@ -2,7 +2,7 @@
 
 import base64
 import json
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -245,19 +245,9 @@ class TestMapResponseFormat:
     def test_text_returns_none(self) -> None:
         assert map_response_format(TextResponseFormat()) is None
 
-    def test_json_object_returns_output_config(self) -> None:
-        result = map_response_format(JsonObjectResponseFormat())
-        assert result == {
-            "textFormat": {
-                "type": "json_schema",
-                "structure": {
-                    "jsonSchema": {
-                        "schema": '{"type": "object"}',
-                        "name": "json_object",
-                    }
-                },
-            }
-        }
+    def test_json_object_raises(self) -> None:
+        with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat is not supported"):
+            map_response_format(JsonObjectResponseFormat())
 
     def test_json_schema_returns_output_config(self) -> None:
         rf = JsonSchemaResponseFormat(
@@ -271,7 +261,14 @@ class TestMapResponseFormat:
                 "type": "json_schema",
                 "structure": {
                     "jsonSchema": {
-                        "schema": '{"properties": {"city": {"type": "string"}}, "type": "object"}',
+                        "schema": json.dumps(
+                            {
+                                "additionalProperties": False,
+                                "properties": {"city": {"type": "string"}},
+                                "type": "object",
+                            },
+                            sort_keys=True,
+                        ),
                         "name": "test",
                         "description": "Test schema",
                     }
@@ -287,12 +284,63 @@ class TestMapResponseFormat:
                 "type": "json_schema",
                 "structure": {
                     "jsonSchema": {
-                        "schema": '{"type": "object"}',
+                        "schema": '{"additionalProperties": false, "type": "object"}',
                         "name": "test",
                     }
                 },
             }
         }
+
+    def test_json_schema_preserves_existing_additional_properties(self) -> None:
+        rf = JsonSchemaResponseFormat(
+            name="test",
+            json_schema={"type": "object", "additionalProperties": True},
+        )
+        result = map_response_format(rf)
+        assert result is not None
+        schema_str = cast("str", result["textFormat"]["structure"]["jsonSchema"]["schema"])  # pyright: ignore[reportIndexIssue]
+        schema = json.loads(schema_str)
+        assert schema["additionalProperties"] is True
+
+    def test_json_schema_patches_objects_inside_arrays(self) -> None:
+        rf = JsonSchemaResponseFormat(
+            name="test",
+            json_schema={
+                "type": "object",
+                "anyOf": [
+                    {"type": "object", "properties": {"a": {"type": "string"}}},
+                    {"type": "object", "properties": {"b": {"type": "string"}}},
+                ],
+                "required": ["a"],  # list of non-dict items to cover the skip branch
+            },
+        )
+        result = map_response_format(rf)
+        assert result is not None
+        schema_str = cast("str", result["textFormat"]["structure"]["jsonSchema"]["schema"])  # pyright: ignore[reportIndexIssue]
+        schema = json.loads(schema_str)
+        assert schema["additionalProperties"] is False
+        assert schema["anyOf"][0]["additionalProperties"] is False
+        assert schema["anyOf"][1]["additionalProperties"] is False
+
+    def test_json_schema_patches_nested_objects(self) -> None:
+        rf = JsonSchemaResponseFormat(
+            name="test",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "inner": {
+                        "type": "object",
+                        "properties": {"value": {"type": "string"}},
+                    }
+                },
+            },
+        )
+        result = map_response_format(rf)
+        assert result is not None
+        schema_str = cast("str", result["textFormat"]["structure"]["jsonSchema"]["schema"])  # pyright: ignore[reportIndexIssue]
+        schema = json.loads(schema_str)
+        assert schema["additionalProperties"] is False
+        assert schema["properties"]["inner"]["additionalProperties"] is False
 
 
 # MARK: map_converse_response

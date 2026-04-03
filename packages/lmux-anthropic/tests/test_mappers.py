@@ -260,7 +260,7 @@ class TestMapResponseFormat:
         assert map_response_format(TextResponseFormat()) is None
 
     def test_json_object_raises(self) -> None:
-        with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat"):
+        with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat is not supported"):
             map_response_format(JsonObjectResponseFormat())
 
     def test_json_schema(self) -> None:
@@ -295,7 +295,7 @@ class TestMapMessageResponse:
             cost=Cost(input_cost=0.01, output_cost=0.02, total_cost=0.03),
             model="claude-sonnet-4-6",
             provider="anthropic",
-            finish_reason="end_turn",
+            finish_reason="stop",
         )
 
     def test_tool_use_response(self, cost_fn: CostCalculator) -> None:
@@ -318,7 +318,7 @@ class TestMapMessageResponse:
         assert result.tool_calls == [
             ToolCall(id="call_1", function=FunctionCallResult(name="get_weather", arguments='{"city": "NYC"}'))
         ]
-        assert result.finish_reason == "tool_use"
+        assert result.finish_reason == "tool_calls"
 
     def test_thinking_blocks_extracted(self, cost_fn: CostCalculator) -> None:
         thinking_block = MagicMock()
@@ -452,6 +452,18 @@ class TestMapMessageResponse:
         assert result.usage.cache_read_tokens == 20
         assert result.usage.cache_creation_tokens == 10
 
+    def test_none_stop_reason(self, cost_fn: CostCalculator) -> None:
+        message = MagicMock()
+        message.content = [MagicMock(type="text", text="Hello")]
+        message.usage = MagicMock(
+            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+        )
+        message.model = "claude-sonnet-4-6"
+        message.stop_reason = None
+
+        result = map_message_response(message, "anthropic", cost_fn)
+        assert result.finish_reason is None
+
 
 # MARK: Streaming mappers
 
@@ -532,6 +544,6 @@ class TestMapMessageDelta:
         result = map_message_delta(event, start_usage)
 
         assert result == ChatChunk(
-            finish_reason="end_turn",
+            finish_reason="stop",
             usage=Usage(input_tokens=100, output_tokens=50, cache_read_tokens=10, cache_creation_tokens=5),
         )

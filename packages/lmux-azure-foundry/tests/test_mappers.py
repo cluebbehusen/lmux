@@ -183,7 +183,7 @@ class TestMapResponseFormat:
         result = map_response_format(rf)
         assert result == {
             "type": "json_schema",
-            "json_schema": {"name": "test", "schema": {"type": "object"}},
+            "json_schema": {"name": "test", "schema": {"type": "object", "additionalProperties": False}},
         }
 
     def test_json_schema_full(self) -> None:
@@ -196,8 +196,36 @@ class TestMapResponseFormat:
         result = map_response_format(rf)
         assert result == {
             "type": "json_schema",
-            "json_schema": {"name": "test", "schema": {"type": "object"}, "description": "A test", "strict": True},
+            "json_schema": {
+                "name": "test",
+                "schema": {"type": "object", "additionalProperties": False},
+                "description": "A test",
+                "strict": True,
+            },
         }
+
+    def test_json_schema_nested_objects_get_additional_properties(self) -> None:
+        rf = JsonSchemaResponseFormat(
+            name="nested",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "address": {
+                        "type": "object",
+                        "properties": {"street": {"type": "string"}},
+                    },
+                    "status": {"type": "string", "enum": ["active", "inactive"]},
+                },
+                "anyOf": [
+                    {"type": "object", "properties": {"name": {"type": "string"}}},
+                ],
+            },
+        )
+        result = map_response_format(rf)
+        schema: dict[str, Any] = result["json_schema"]["schema"]  # pyright: ignore[reportGeneralTypeIssues, reportTypedDictNotRequiredAccess, reportUnknownVariableType]
+        assert schema["additionalProperties"] is False
+        assert schema["properties"]["address"]["additionalProperties"] is False
+        assert schema["anyOf"][0]["additionalProperties"] is False
 
 
 # MARK: map_chat_completion
