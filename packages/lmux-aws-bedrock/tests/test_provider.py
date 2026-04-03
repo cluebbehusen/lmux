@@ -8,7 +8,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
-from lmux.exceptions import ProviderError
+from lmux.exceptions import ProviderError, UnsupportedFeatureError
 from lmux.types import (
     ChatChunk,
     ChatResponse,
@@ -200,32 +200,11 @@ class TestChat:
             messages=[{"role": "user", "content": [{"text": "Hi"}]}],
         )
 
-    def test_chat_with_json_object_response_format(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
-    ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        sync_provider.chat(
-            "anthropic.claude-sonnet-4",
-            [UserMessage(content="Hi")],
-            response_format=JsonObjectResponseFormat(),
-        )
-
-        mock_sync_client.converse.assert_called_once_with(
-            modelId="anthropic.claude-sonnet-4",
-            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
-            outputConfig={
-                "textFormat": {
-                    "type": "json_schema",
-                    "structure": {
-                        "jsonSchema": {
-                            "schema": '{"type": "object"}',
-                            "name": "json_object",
-                        }
-                    },
-                }
-            },
-        )
+    def test_chat_json_object_raises(self, sync_provider: BedrockProvider) -> None:
+        with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat is not supported"):
+            sync_provider.chat(
+                "anthropic.claude-sonnet-4", [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat()
+            )
 
     def test_chat_with_json_schema_response_format(
         self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
@@ -250,7 +229,14 @@ class TestChat:
                     "type": "json_schema",
                     "structure": {
                         "jsonSchema": {
-                            "schema": '{"properties": {"city": {"type": "string"}}, "type": "object"}',
+                            "schema": json.dumps(
+                                {
+                                    "additionalProperties": False,
+                                    "properties": {"city": {"type": "string"}},
+                                    "type": "object",
+                                },
+                                sort_keys=True,
+                            ),
                             "name": "weather_response",
                             "description": "Structured weather payload",
                         }

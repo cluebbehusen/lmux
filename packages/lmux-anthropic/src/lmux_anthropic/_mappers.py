@@ -57,6 +57,21 @@ type CostCalculator = Callable[[str, Usage], Cost | None]
 
 _DATA_URI_PATTERN = re.compile(r"^data:(image/[^;]+);base64,(.+)$", re.DOTALL)
 
+_STOP_REASON_MAP: dict[str, str] = {
+    "end_turn": "stop",
+    "tool_use": "tool_calls",
+    "max_tokens": "length",
+    "stop_sequence": "stop",
+    "model_context_window_exceeded": "length",
+    "pause_turn": "pause_turn",
+}
+
+
+def _map_stop_reason(stop_reason: str | None) -> str | None:
+    if stop_reason is None:
+        return None
+    return _STOP_REASON_MAP.get(stop_reason, stop_reason)
+
 
 # MARK: Input Mappers (lmux -> Anthropic SDK params)
 
@@ -203,7 +218,7 @@ def map_message_response(
         cost=cost,
         model=message.model,
         provider=provider_name,
-        finish_reason=message.stop_reason,
+        finish_reason=_map_stop_reason(message.stop_reason),
     )
 
 
@@ -266,7 +281,7 @@ def map_message_delta(event: "RawMessageDeltaEvent", start_usage: Usage) -> Chat
     """Map the message_delta event (final event with output usage)."""
     usage = _map_delta_usage(event.usage, start_usage)
     return ChatChunk(
-        finish_reason=event.delta.stop_reason,
+        finish_reason=_map_stop_reason(event.delta.stop_reason),
         usage=usage,
     )
 

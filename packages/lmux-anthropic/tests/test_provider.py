@@ -278,12 +278,10 @@ class TestChat:
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert "output_config" not in call_kwargs
 
-    def test_chat_json_object_raises(self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock) -> None:
-        with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat"):
+    def test_chat_json_object_raises(self, sync_provider: AnthropicProvider) -> None:
+        with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat is not supported"):
             sync_provider.chat(
-                "claude-sonnet-4-6",
-                [UserMessage(content="Hi")],
-                response_format=JsonObjectResponseFormat(),
+                "claude-sonnet-4-6", [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat()
             )
 
     def test_chat_with_provider_params(
@@ -436,7 +434,7 @@ class TestChatStream:
         assert len(chunks) == 3
         assert chunks[0].delta == "Hel"
         assert chunks[1].delta == "lo!"
-        assert chunks[2].finish_reason == "end_turn"
+        assert chunks[2].finish_reason == "stop"
 
     def test_cost_on_final_chunk(
         self,
@@ -511,7 +509,7 @@ class TestChatStream:
         assert chunks[0].tool_call_deltas[0].function is not None
         assert chunks[0].tool_call_deltas[0].function.name == "get_weather"
         assert chunks[1].reasoning_delta == "Let me think..."
-        assert chunks[2].finish_reason == "tool_use"
+        assert chunks[2].finish_reason == "tool_calls"
 
     def test_stream_with_reasoning_effort(
         self,
@@ -577,7 +575,7 @@ class TestAchatStream:
 
         assert len(chunks) == 3
         assert chunks[0].delta == "Hel"
-        assert chunks[2].finish_reason == "end_turn"
+        assert chunks[2].finish_reason == "stop"
         assert chunks[2].cost is not None
 
     async def test_stream_with_content_block_start(
@@ -642,7 +640,7 @@ class TestAchatStream:
         assert chunks[0].tool_call_deltas[0].function is not None
         assert chunks[0].tool_call_deltas[0].function.name == "get_weather"
         assert chunks[1].reasoning_delta == "Let me think..."
-        assert chunks[2].finish_reason == "tool_use"
+        assert chunks[2].finish_reason == "tool_calls"
 
     async def test_stream_with_reasoning_effort(
         self,
