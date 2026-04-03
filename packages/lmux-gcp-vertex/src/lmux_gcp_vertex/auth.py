@@ -31,18 +31,24 @@ class GCPVertexADCAuthProvider:
 
     Credentials are resolved by ``google.auth.default()`` which searches
     environment variables, ``gcloud`` CLI defaults, and instance metadata.
+
+    Scopes default to ``cloud-platform`` which is required for Vertex AI
+    and for Workload Identity Federation impersonation flows.
     """
+
+    def __init__(self, *, scopes: list[str] | None = None) -> None:
+        self._scopes = scopes or ["https://www.googleapis.com/auth/cloud-platform"]
 
     def get_credentials(self) -> "Credentials":
         import google.auth  # noqa: PLC0415
 
         # google.auth has unresolvable string forward-ref annotations; cast is required
-        return cast("Credentials", google.auth.default()[0])
+        return cast("Credentials", google.auth.default(scopes=self._scopes)[0])
 
     async def aget_credentials(self) -> "Credentials":
         import google.auth  # noqa: PLC0415
 
-        return cast("Credentials", google.auth.default()[0])
+        return cast("Credentials", google.auth.default(scopes=self._scopes)[0])
 
 
 class GCPVertexServiceAccountAuthProvider:

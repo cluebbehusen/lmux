@@ -27,14 +27,21 @@ class TestGCPVertexADCAuthProvider:
         result = provider.get_credentials()
 
         assert result is mock_creds
-        mock_google_auth_default.assert_called_once()
+        mock_google_auth_default.assert_called_once_with(scopes=["https://www.googleapis.com/auth/cloud-platform"])
 
     async def test_aget_credentials(self, mock_creds: MagicMock, mock_google_auth_default: MagicMock) -> None:
         provider = GCPVertexADCAuthProvider()
         result = await provider.aget_credentials()
 
         assert result is mock_creds
-        mock_google_auth_default.assert_called_once()
+        mock_google_auth_default.assert_called_once_with(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+
+    def test_custom_scopes(self, mock_google_auth_default: MagicMock) -> None:
+        custom_scopes = ["https://www.googleapis.com/auth/bigquery"]
+        provider = GCPVertexADCAuthProvider(scopes=custom_scopes)
+        provider.get_credentials()
+
+        mock_google_auth_default.assert_called_once_with(scopes=custom_scopes)
 
 
 class TestGCPVertexServiceAccountAuthProvider:
