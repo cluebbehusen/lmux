@@ -62,6 +62,78 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(75.00),
                 output_cost_per_token=per_million_tokens(150.00),
+                cache_read_cost_per_token=per_million_tokens(37.50),
+            )
+        ],
+    ),
+    "gpt-5.2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.75),
+                output_cost_per_token=per_million_tokens(14.00),
+                cache_read_cost_per_token=per_million_tokens(0.175),
+            )
+        ],
+    ),
+    "gpt-5.2-chat": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.75),
+                output_cost_per_token=per_million_tokens(14.00),
+                cache_read_cost_per_token=per_million_tokens(0.175),
+            )
+        ],
+    ),
+    "gpt-5.1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.125),
+            )
+        ],
+    ),
+    "gpt-5.1-chat": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.125),
+            )
+        ],
+    ),
+    "gpt-5.1-codex": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.125),
+            )
+        ],
+    ),
+    "gpt-5.1-codex-max": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.125),
+            )
+        ],
+    ),
+    "gpt-5.1-codex-mini": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.25),
+                output_cost_per_token=per_million_tokens(2.00),
+                cache_read_cost_per_token=per_million_tokens(0.025),
+            )
+        ],
+    ),
+    "gpt-5-pro": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(15.00),
+                output_cost_per_token=per_million_tokens(120.00),
             )
         ],
     ),
@@ -166,6 +238,23 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "o1-mini": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.10),
+                output_cost_per_token=per_million_tokens(4.40),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+            )
+        ],
+    ),
+    "computer-use-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.00),
+                output_cost_per_token=per_million_tokens(12.00),
+            )
+        ],
+    ),
     "codex-mini": ModelPricing(
         tiers=[
             PricingTier(
@@ -180,10 +269,10 @@ _PRICING: dict[str, ModelPricing] = {
         tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.02), output_cost_per_token=0.0)]
     ),
     "text-embedding-3-large": ModelPricing(
-        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.13), output_cost_per_token=0.0)]
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.143), output_cost_per_token=0.0)]
     ),
     "text-embedding-ada-002": ModelPricing(
-        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.10), output_cost_per_token=0.0)]
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.11), output_cost_per_token=0.0)]
     ),
     # --- DeepSeek ---
     "deepseek-r1": ModelPricing(
@@ -207,6 +296,14 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(1.23),
                 output_cost_per_token=per_million_tokens(4.94),
+            )
+        ],
+    ),
+    "deepseek-v3.2-sp": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.58),
+                output_cost_per_token=per_million_tokens(1.68),
             )
         ],
     ),
@@ -314,6 +411,15 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.30),
                 output_cost_per_token=per_million_tokens(0.90),
+            )
+        ],
+    ),
+    # --- OpenAI OSS ---
+    "gpt-oss-120b": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.15),
+                output_cost_per_token=per_million_tokens(0.60),
             )
         ],
     ),
