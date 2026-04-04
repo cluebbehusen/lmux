@@ -60,7 +60,7 @@ _PRICING: dict[str, ModelPricing] = {
     "gpt-4.5": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(60.00),
+                input_cost_per_token=per_million_tokens(75.00),
                 output_cost_per_token=per_million_tokens(150.00),
             )
         ],
