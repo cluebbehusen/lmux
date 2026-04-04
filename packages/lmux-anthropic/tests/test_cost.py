@@ -78,14 +78,14 @@ class TestCalculateAnthropicCost:
         # Both are $15 input, so same price, but they should resolve to different prefixes
         assert cost_41.input_cost == cost_4.input_cost
 
-    def test_flat_pricing_at_high_token_count(self) -> None:
-        """Claude Sonnet 4 uses flat pricing regardless of input token count."""
+    def test_long_context_pricing_at_high_token_count(self) -> None:
+        """Claude Sonnet 4 uses long-context pricing above 200K input tokens."""
         usage = Usage(input_tokens=250_000, output_tokens=1000)
         cost = calculate_anthropic_cost("claude-sonnet-4", usage)
         assert cost is not None
-        # No tiered pricing — base rate applies even above 200K
-        assert cost.input_cost == pytest.approx(250_000 * 3.0 / 1_000_000)
-        assert cost.output_cost == pytest.approx(1000 * 15.0 / 1_000_000)
+        # >200K triggers long-context tier: $6/$22.50
+        assert cost.input_cost == pytest.approx(250_000 * 6.0 / 1_000_000)
+        assert cost.output_cost == pytest.approx(1000 * 22.5 / 1_000_000)
 
     def test_opus_4_6_flat_pricing_at_high_token_count(self) -> None:
         """Claude Opus 4.6 uses flat pricing across the full 1M context window."""

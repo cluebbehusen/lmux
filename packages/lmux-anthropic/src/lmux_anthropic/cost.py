@@ -50,6 +50,13 @@ _PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.30),
                 cache_creation_cost_per_token=per_million_tokens(3.75),
             ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.00),
+                output_cost_per_token=per_million_tokens(22.50),
+                cache_read_cost_per_token=per_million_tokens(0.60),
+                cache_creation_cost_per_token=per_million_tokens(7.50),
+                min_input_tokens=200000,
+            ),
         ],
     ),
     "claude-haiku-4-5": ModelPricing(
@@ -91,6 +98,13 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(15.00),
                 cache_read_cost_per_token=per_million_tokens(0.30),
                 cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.00),
+                output_cost_per_token=per_million_tokens(22.50),
+                cache_read_cost_per_token=per_million_tokens(0.60),
+                cache_creation_cost_per_token=per_million_tokens(7.50),
+                min_input_tokens=200000,
             ),
         ],
     ),
