@@ -17,6 +17,7 @@ Usage::
 import argparse
 import importlib
 import json
+import re
 import sys
 import urllib.request
 from collections.abc import Callable
@@ -40,6 +41,13 @@ class PricePoint:
     output: Decimal
     cache_read: Decimal | None = None
     cache_write: Decimal | None = None
+
+
+@dataclass
+class TieredPricing:
+    """All pricing tiers for a model: list of (min_input_tokens, PricePoint)."""
+
+    tiers: list[tuple[int, PricePoint]]
 
 
 @dataclass
@@ -125,6 +133,35 @@ def extract_lmux_pricing(module_name: str) -> dict[str, PricePoint]:
     return result
 
 
+def extract_lmux_tiered_pricing(module_name: str) -> dict[str, TieredPricing]:
+    """Import a provider's cost module and extract all pricing tiers."""
+    mod = importlib.import_module(module_name)
+    pricing_dict: dict[str, Any] = mod._PRICING
+    result: dict[str, TieredPricing] = {}
+    for model_id, model_pricing in pricing_dict.items():
+        if len(model_pricing.tiers) <= 1:
+            continue
+        result[model_id] = TieredPricing(
+            tiers=[
+                (
+                    tier.min_input_tokens,
+                    PricePoint(
+                        input=_to_per_million(tier.input_cost_per_token),
+                        output=_to_per_million(tier.output_cost_per_token),
+                        cache_read=_to_per_million(tier.cache_read_cost_per_token)
+                        if tier.cache_read_cost_per_token is not None
+                        else None,
+                        cache_write=_to_per_million(tier.cache_creation_cost_per_token)
+                        if tier.cache_creation_cost_per_token is not None
+                        else None,
+                    ),
+                )
+                for tier in model_pricing.tiers
+            ]
+        )
+    return result
+
+
 # ---------------------------------------------------------------------------
 # External source: LiteLLM
 # ---------------------------------------------------------------------------
@@ -157,50 +194,101 @@ def _litellm_entry_to_price(entry: dict[str, object]) -> PricePoint | None:
     )
 
 
-def litellm_lookup(
-    data: dict[str, Any],
-    model_id: str,
-    provider_prefixes: list[str],
-) -> PricePoint | None:
-    """Look up a model in LiteLLM data, trying provider-prefixed and bare names."""
+def _litellm_build_candidates(model_id: str, provider_prefixes: list[str]) -> list[str]:
+    """Build candidate keys to try when looking up a model in LiteLLM."""
     candidates: list[str] = []
     for pfx in provider_prefixes:
         sep = "" if pfx.endswith("/") or pfx == "" else "/"
         candidates.append(f"{pfx}{sep}{model_id}")
     if model_id not in candidates:
         candidates.append(model_id)
-
     # Also try with :0 suffix (common in Bedrock model IDs)
     candidates += [c + ":0" for c in candidates if not c.endswith(":0")]
+    return candidates
+
+
+def _litellm_find_entry(
+    data: dict[str, Any],
+    model_id: str,
+    provider_prefixes: list[str],
+) -> dict[str, object] | None:
+    """Find the raw LiteLLM entry for a model, trying prefixed/bare/case-insensitive."""
+    candidates = _litellm_build_candidates(model_id, provider_prefixes)
 
     # Exact match
     for candidate in candidates:
         if candidate in data:
-            result = _litellm_entry_to_price(data[candidate])
-            if result is not None:
-                return result
+            return data[candidate]
 
-    # Case-insensitive fallback: find keys where the suffix (after provider prefix)
-    # matches the model_id case-insensitively, or the model_id is a prefix of the suffix.
-    # Handles e.g. azure_ai/Llama-3.3-70B-Instruct matching llama-3.3-70b.
+    # Case-insensitive fallback
     model_lower = model_id.lower()
     for key, entry in data.items():
         key_lower = key.lower()
         for candidate in candidates:
             if key_lower == candidate.lower():
-                result = _litellm_entry_to_price(entry)
-                if result is not None:
-                    return result
-        # Also check if key ends with a suffix that starts with model_id (prefix match)
+                return entry
         for pfx in provider_prefixes:
             sep = "" if pfx.endswith("/") or pfx == "" else "/"
             full_prefix = f"{pfx}{sep}".lower()
             if key_lower.startswith(full_prefix) and key_lower[len(full_prefix) :].startswith(model_lower):
-                result = _litellm_entry_to_price(entry)
-                if result is not None:
-                    return result
+                return entry
 
     return None
+
+
+def litellm_lookup(
+    data: dict[str, Any],
+    model_id: str,
+    provider_prefixes: list[str],
+) -> PricePoint | None:
+    """Look up a model in LiteLLM data, trying provider-prefixed and bare names."""
+    entry = _litellm_find_entry(data, model_id, provider_prefixes)
+    if entry is None:
+        return None
+    return _litellm_entry_to_price(entry)
+
+
+_ABOVE_PATTERN = re.compile(r"_above_(\d+)k_tokens$")
+
+
+def _litellm_extract_tiers(entry: dict[str, object]) -> TieredPricing | None:
+    """Extract tiered pricing from a LiteLLM entry's _above_*k_tokens fields."""
+    base = _litellm_entry_to_price(entry)
+    if base is None:
+        return None
+
+    # Collect all _above_ thresholds present
+    thresholds: set[int] = set()
+    for key in entry:
+        m = _ABOVE_PATTERN.search(key)
+        if m:
+            thresholds.add(int(m.group(1)) * 1000)
+
+    if not thresholds:
+        return None
+
+    tiers: list[tuple[int, PricePoint]] = [(0, base)]
+    for threshold in sorted(thresholds):
+        suffix = f"_above_{threshold // 1000}k_tokens"
+        input_cost = entry.get(f"input_cost_per_token{suffix}")
+        output_cost = entry.get(f"output_cost_per_token{suffix}")
+        if input_cost is None or output_cost is None:
+            continue
+        cache_read = entry.get(f"cache_read_input_token_cost{suffix}")
+        cache_write = entry.get(f"cache_creation_input_token_cost{suffix}")
+        tiers.append(
+            (
+                threshold,
+                PricePoint(
+                    input=Decimal(str(input_cost)) * MILLION,
+                    output=Decimal(str(output_cost)) * MILLION,
+                    cache_read=Decimal(str(cache_read)) * MILLION if cache_read is not None else None,
+                    cache_write=Decimal(str(cache_write)) * MILLION if cache_write is not None else None,
+                ),
+            )
+        )
+
+    return TieredPricing(tiers=tiers) if len(tiers) > 1 else None
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +490,50 @@ def compare_prices(
                 )
             )
     return mismatches
+
+
+def _litellm_lookup_tiered(
+    data: dict[str, Any],
+    lmux_tiered: dict[str, TieredPricing],
+    provider_prefixes: list[str],
+) -> dict[str, TieredPricing]:
+    """Look up tiered pricing from LiteLLM for all models that have tiers in lmux."""
+    result: dict[str, TieredPricing] = {}
+    for model_id in lmux_tiered:
+        entry = _litellm_find_entry(data, model_id, provider_prefixes)
+        if entry is None:
+            continue
+        tiered = _litellm_extract_tiers(entry)
+        if tiered is not None:
+            result[model_id] = tiered
+    return result
+
+
+def compare_tiered_prices(
+    lmux_tiered: dict[str, TieredPricing],
+    external_tiered: dict[str, TieredPricing],
+    tolerance_pct: Decimal,
+) -> SourceReport:
+    """Compare tiered pricing between lmux and an external source."""
+    report = SourceReport(source_name="LiteLLM (tiered)")
+    for model_id, lmux_tp in lmux_tiered.items():
+        ext_tp = external_tiered.get(model_id)
+        if ext_tp is None:
+            report.missing_from_source.append(model_id)
+            continue
+        report.matched += 1
+        # Compare tier by tier — match on threshold
+        ext_by_threshold = dict(ext_tp.tiers)
+        for threshold, lmux_pp in lmux_tp.tiers:
+            if threshold == 0:
+                continue  # base tier already compared separately
+            ext_pp = ext_by_threshold.get(threshold)
+            if ext_pp is None:
+                report.missing_from_source.append(f"{model_id} (>{threshold:,} tier)")
+                continue
+            label = f"{model_id} (>{threshold:,})"
+            report.mismatches.extend(compare_prices(lmux_pp, ext_pp, label, tolerance_pct))
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -640,11 +772,17 @@ def _validate_provider(
     reports: list[SourceReport] = []
     calc_mismatches: dict[str, list[Mismatch]] = {}
 
+    lmux_tiered = extract_lmux_tiered_pricing(spec.module)
+
     if ext_data.litellm is not None:
         ext_prices = _lookup_all(litellm_lookup, ext_data.litellm, model_ids, spec.litellm_prefixes)
         reports.append(_compare_against_source("LiteLLM", ext_prices, lmux_prices, tolerance))
         if not skip_calculated and ext_prices:
             calc_mismatches["LiteLLM"] = compare_calculated_costs(spec.module, lmux_prices, ext_prices, tolerance)
+        # Tiered pricing comparison (LiteLLM only — OpenRouter/genai-prices lack tier data)
+        if lmux_tiered:
+            ext_tiered = _litellm_lookup_tiered(ext_data.litellm, lmux_tiered, spec.litellm_prefixes)
+            reports.append(compare_tiered_prices(lmux_tiered, ext_tiered, tolerance))
 
     if ext_data.openrouter is not None:
         ext_prices = _lookup_all(openrouter_lookup, ext_data.openrouter, model_ids, spec.openrouter_prefixes)
