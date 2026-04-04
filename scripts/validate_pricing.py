@@ -89,7 +89,11 @@ PROVIDER_SPECS: list[ProviderSpec] = [
         ["google/"],
     ),
     ProviderSpec(
-        "lmux_azure_foundry.cost", "azure-foundry", ["azure/", "azure_ai/", ""], "azure", ["azure/", "microsoft/"]
+        "lmux_azure_foundry.cost",
+        "azure-foundry",
+        ["azure/", "azure/global/", "azure/global-standard/", "azure_ai/", "azure_ai/global/", ""],
+        "azure",
+        ["azure/", "microsoft/"],
     ),
 ]
 
@@ -134,6 +138,22 @@ def fetch_litellm() -> dict[str, Any]:
         return result
 
 
+def _litellm_entry_to_price(entry: dict[str, object]) -> PricePoint | None:
+    """Convert a LiteLLM entry to a PricePoint, or None if missing required fields."""
+    input_cost = entry.get("input_cost_per_token")
+    output_cost = entry.get("output_cost_per_token")
+    if input_cost is None or output_cost is None:
+        return None
+    cache_read = entry.get("cache_read_input_token_cost")
+    cache_write = entry.get("cache_creation_input_token_cost")
+    return PricePoint(
+        input=Decimal(str(input_cost)) * MILLION,
+        output=Decimal(str(output_cost)) * MILLION,
+        cache_read=Decimal(str(cache_read)) * MILLION if cache_read is not None else None,
+        cache_write=Decimal(str(cache_write)) * MILLION if cache_write is not None else None,
+    )
+
+
 def litellm_lookup(
     data: dict[str, Any],
     model_id: str,
@@ -146,21 +166,34 @@ def litellm_lookup(
         candidates.append(f"{pfx}{sep}{model_id}")
     if model_id not in candidates:
         candidates.append(model_id)
+
+    # Exact match
     for candidate in candidates:
         if candidate in data:
-            entry = data[candidate]
-            input_cost = entry.get("input_cost_per_token")
-            output_cost = entry.get("output_cost_per_token")
-            if input_cost is None or output_cost is None:
-                continue
-            cache_read = entry.get("cache_read_input_token_cost")
-            cache_write = entry.get("cache_creation_input_token_cost")
-            return PricePoint(
-                input=Decimal(str(input_cost)) * MILLION,
-                output=Decimal(str(output_cost)) * MILLION,
-                cache_read=Decimal(str(cache_read)) * MILLION if cache_read is not None else None,
-                cache_write=Decimal(str(cache_write)) * MILLION if cache_write is not None else None,
-            )
+            result = _litellm_entry_to_price(data[candidate])
+            if result is not None:
+                return result
+
+    # Case-insensitive fallback: find keys where the suffix (after provider prefix)
+    # matches the model_id case-insensitively, or the model_id is a prefix of the suffix.
+    # Handles e.g. azure_ai/Llama-3.3-70B-Instruct matching llama-3.3-70b.
+    model_lower = model_id.lower()
+    for key, entry in data.items():
+        key_lower = key.lower()
+        for candidate in candidates:
+            if key_lower == candidate.lower():
+                result = _litellm_entry_to_price(entry)
+                if result is not None:
+                    return result
+        # Also check if key ends with a suffix that starts with model_id (prefix match)
+        for pfx in provider_prefixes:
+            sep = "" if pfx.endswith("/") or pfx == "" else "/"
+            full_prefix = f"{pfx}{sep}".lower()
+            if key_lower.startswith(full_prefix) and key_lower[len(full_prefix) :].startswith(model_lower):
+                result = _litellm_entry_to_price(entry)
+                if result is not None:
+                    return result
+
     return None
 
 
