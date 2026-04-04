@@ -6,8 +6,9 @@ are identical to those used by the OpenAI provider.
 
 import copy
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from lmux.schema import add_additional_properties_false
 from lmux.types import (
     AssistantMessage,
     ChatChunk,
@@ -128,23 +129,6 @@ def map_tools(tools: list[Tool]) -> list["ChatCompletionToolParam"]:
     return result
 
 
-def _add_additional_properties_false(schema: dict[str, Any]) -> None:
-    """Recursively set ``additionalProperties: false`` on all object-typed nodes.
-
-    Azure OpenAI requires this field on every ``object`` node in a JSON Schema.
-    Many schema generators omit it, so we patch in-place before sending to the API.
-    """
-    if schema.get("type") == "object" and "additionalProperties" not in schema:
-        schema["additionalProperties"] = False
-    for value in schema.values():
-        if isinstance(value, dict):
-            _add_additional_properties_false(value)  # pyright: ignore[reportUnknownArgumentType]
-        elif isinstance(value, list):
-            for item in value:  # pyright: ignore[reportUnknownVariableType]
-                if isinstance(item, dict):
-                    _add_additional_properties_false(item)  # pyright: ignore[reportUnknownArgumentType]
-
-
 def map_response_format(
     rf: ResponseFormat,
 ) -> "ResponseFormatText | ResponseFormatJSONObject | ResponseFormatJSONSchema":
@@ -154,7 +138,7 @@ def map_response_format(
     if isinstance(rf, JsonObjectResponseFormat):
         return {"type": "json_object"}
     patched = copy.deepcopy(rf.json_schema)
-    _add_additional_properties_false(patched)
+    add_additional_properties_false(patched)
     schema_dict: JSONSchema = {"name": rf.name, "schema": patched}
     if rf.description is not None:
         schema_dict["description"] = rf.description

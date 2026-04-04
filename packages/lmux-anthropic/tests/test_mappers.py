@@ -1,9 +1,9 @@
 """Tests for Anthropic type mappers."""
 
-from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
+from pytest_mock import MockerFixture
 
 from lmux.exceptions import UnsupportedFeatureError
 from lmux.types import (
@@ -256,6 +256,11 @@ class TestMapTools:
 # MARK: map_response_format
 
 
+@pytest.fixture
+def mock_add_additional_properties_false(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic._mappers.add_additional_properties_false")
+
+
 class TestMapResponseFormat:
     def test_text_returns_none(self) -> None:
         assert map_response_format(TextResponseFormat()) is None
@@ -264,63 +269,19 @@ class TestMapResponseFormat:
         with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat is not supported"):
             map_response_format(JsonObjectResponseFormat())
 
-    def test_json_schema(self) -> None:
-        rf = JsonSchemaResponseFormat(name="person", json_schema={"type": "object", "properties": {}})
+    def test_json_schema(self, mock_add_additional_properties_false: MagicMock) -> None:
+        rf = JsonSchemaResponseFormat(
+            name="person",
+            json_schema={"type": "object", "additionalProperties": False, "properties": {}},
+        )
         result = map_response_format(rf)
+        mock_add_additional_properties_false.assert_called_once()
         assert result == {
             "format": {
                 "type": "json_schema",
-                "schema": {"type": "object", "properties": {}, "additionalProperties": False},
+                "schema": {"type": "object", "additionalProperties": False, "properties": {}},
             }
         }
-
-    def test_json_schema_patches_nested_objects(self) -> None:
-        rf = JsonSchemaResponseFormat(
-            name="test",
-            json_schema={
-                "type": "object",
-                "properties": {
-                    "inner": {
-                        "type": "object",
-                        "properties": {"value": {"type": "string"}},
-                    }
-                },
-            },
-        )
-        result = map_response_format(rf)
-        assert result is not None
-        schema = cast("dict[str, Any]", cast("dict[str, Any]", result["format"])["schema"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
-        assert schema["additionalProperties"] is False
-        assert schema["properties"]["inner"]["additionalProperties"] is False
-
-    def test_json_schema_patches_objects_inside_arrays(self) -> None:
-        rf = JsonSchemaResponseFormat(
-            name="test",
-            json_schema={
-                "type": "object",
-                "anyOf": [
-                    {"type": "object", "properties": {"a": {"type": "string"}}},
-                    {"type": "object", "properties": {"b": {"type": "string"}}},
-                ],
-                "required": ["a"],  # list of non-dict items to cover the skip branch
-            },
-        )
-        result = map_response_format(rf)
-        assert result is not None
-        schema = cast("dict[str, Any]", cast("dict[str, Any]", result["format"])["schema"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
-        assert schema["additionalProperties"] is False
-        assert schema["anyOf"][0]["additionalProperties"] is False
-        assert schema["anyOf"][1]["additionalProperties"] is False
-
-    def test_json_schema_preserves_existing_additional_properties(self) -> None:
-        rf = JsonSchemaResponseFormat(
-            name="test",
-            json_schema={"type": "object", "additionalProperties": True},
-        )
-        result = map_response_format(rf)
-        assert result is not None
-        schema = cast("dict[str, Any]", cast("dict[str, Any]", result["format"])["schema"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
-        assert schema["additionalProperties"] is True
 
 
 # MARK: map_message_response

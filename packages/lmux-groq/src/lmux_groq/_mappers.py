@@ -1,8 +1,10 @@
 """Internal mappers between lmux types and Groq SDK types."""
 
+import copy
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
+from lmux.schema import add_additional_properties_false
 from lmux.types import (
     AssistantMessage,
     ChatChunk,
@@ -114,7 +116,9 @@ def map_response_format(rf: ResponseFormat) -> "GroqResponseFormat":
         return {"type": "text"}
     if isinstance(rf, JsonObjectResponseFormat):
         return {"type": "json_object"}
-    schema_dict: ResponseFormatResponseFormatJsonSchemaJsonSchema = {"name": rf.name, "schema": rf.json_schema}
+    patched = copy.deepcopy(rf.json_schema)
+    add_additional_properties_false(patched)
+    schema_dict: ResponseFormatResponseFormatJsonSchemaJsonSchema = {"name": rf.name, "schema": patched}
     if rf.description is not None:
         schema_dict["description"] = rf.description
     if rf.strict is not None:

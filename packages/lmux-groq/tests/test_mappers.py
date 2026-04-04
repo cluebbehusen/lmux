@@ -1,6 +1,7 @@
 """Tests for Groq type mappers."""
 
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from groq.types.chat import ChatCompletion, ChatCompletionChunk, ChatCompletionMessage
@@ -10,6 +11,7 @@ from groq.types.chat.chat_completion_chunk import ChoiceDelta, ChoiceDeltaToolCa
 from groq.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
 from groq.types.chat.chat_completion_message_tool_call import Function as ToolCallFunction
 from groq.types.completion_usage import CompletionUsage, PromptTokensDetails
+from pytest_mock import MockerFixture
 
 from lmux.types import (
     AssistantMessage,
@@ -162,6 +164,11 @@ class TestMapTools:
 # MARK: map_response_format
 
 
+@pytest.fixture
+def mock_add_additional_properties_false(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_groq._mappers.add_additional_properties_false")
+
+
 class TestMapResponseFormat:
     def test_text(self) -> None:
         assert map_response_format(TextResponseFormat()) == {"type": "text"}
@@ -169,25 +176,35 @@ class TestMapResponseFormat:
     def test_json_object(self) -> None:
         assert map_response_format(JsonObjectResponseFormat()) == {"type": "json_object"}
 
-    def test_json_schema_minimal(self) -> None:
-        rf = JsonSchemaResponseFormat(name="test", json_schema={"type": "object"})
-        result = map_response_format(rf)
-        assert result == {
-            "type": "json_schema",
-            "json_schema": {"name": "test", "schema": {"type": "object"}},
-        }
-
-    def test_json_schema_full(self) -> None:
+    def test_json_schema_minimal(self, mock_add_additional_properties_false: MagicMock) -> None:
         rf = JsonSchemaResponseFormat(
             name="test",
-            json_schema={"type": "object"},
+            json_schema={"type": "object", "additionalProperties": False},
+        )
+        result = map_response_format(rf)
+        mock_add_additional_properties_false.assert_called_once()
+        assert result == {
+            "type": "json_schema",
+            "json_schema": {"name": "test", "schema": {"type": "object", "additionalProperties": False}},
+        }
+
+    def test_json_schema_full(self, mock_add_additional_properties_false: MagicMock) -> None:
+        rf = JsonSchemaResponseFormat(
+            name="test",
+            json_schema={"type": "object", "additionalProperties": False},
             description="A test",
             strict=True,
         )
         result = map_response_format(rf)
+        mock_add_additional_properties_false.assert_called_once()
         assert result == {
             "type": "json_schema",
-            "json_schema": {"name": "test", "schema": {"type": "object"}, "description": "A test", "strict": True},
+            "json_schema": {
+                "name": "test",
+                "schema": {"type": "object", "additionalProperties": False},
+                "description": "A test",
+                "strict": True,
+            },
         }
 
 

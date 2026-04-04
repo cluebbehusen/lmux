@@ -4,9 +4,10 @@ import copy
 import json
 import re
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from lmux.exceptions import UnsupportedFeatureError
+from lmux.schema import add_additional_properties_false
 from lmux.types import (
     AssistantMessage,
     ChatChunk,
@@ -169,24 +170,6 @@ def map_tools(tools: list[Tool]) -> list["ToolParam"]:
     return result
 
 
-def _add_additional_properties_false(schema: dict[str, Any]) -> None:
-    """Recursively set ``additionalProperties: false`` on all object-typed nodes.
-
-    The Anthropic API requires this field on every ``object`` node in a
-    JSON Schema.  Many schema generators omit it, so we patch in-place before
-    sending to Anthropic.
-    """
-    if schema.get("type") == "object" and "additionalProperties" not in schema:
-        schema["additionalProperties"] = False
-    for value in schema.values():
-        if isinstance(value, dict):
-            _add_additional_properties_false(cast("dict[str, Any]", value))
-        elif isinstance(value, list):
-            for item in cast("list[Any]", value):
-                if isinstance(item, dict):
-                    _add_additional_properties_false(cast("dict[str, Any]", item))
-
-
 def map_response_format(rf: ResponseFormat) -> "OutputConfigParam | None":
     """Convert lmux ResponseFormat to Anthropic output_config dict, or None for text."""
     if isinstance(rf, TextResponseFormat):
@@ -195,7 +178,7 @@ def map_response_format(rf: ResponseFormat) -> "OutputConfigParam | None":
         msg = "JsonObjectResponseFormat is not supported by Anthropic; use JsonSchemaResponseFormat instead"
         raise UnsupportedFeatureError(msg, provider="anthropic")
     patched = copy.deepcopy(rf.json_schema)
-    _add_additional_properties_false(patched)
+    add_additional_properties_false(patched)
     schema_dict: JSONOutputFormatParam = {"type": "json_schema", "schema": patched}
     return {"format": schema_dict}
 
