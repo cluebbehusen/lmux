@@ -16,9 +16,9 @@ _PRICING: dict[str, ModelPricing] = {
     "amazon.nova-2-lite-v1": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(0.3),
-                output_cost_per_token=per_million_tokens(2.5),
-                cache_read_cost_per_token=per_million_tokens(0.075),
+                input_cost_per_token=per_million_tokens(0.33),
+                output_cost_per_token=per_million_tokens(2.75),
+                cache_read_cost_per_token=per_million_tokens(0.0825),
             ),
         ],
     ),
@@ -26,15 +26,15 @@ _PRICING: dict[str, ModelPricing] = {
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.3),
-                output_cost_per_token=per_million_tokens(2.5),
+                output_cost_per_token=per_million_tokens(2.8),
             ),
         ],
     ),
     "amazon.nova-2-pro-v1": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(1.25),
-                output_cost_per_token=per_million_tokens(10.0),
+                input_cost_per_token=per_million_tokens(1.375),
+                output_cost_per_token=per_million_tokens(11.0),
             ),
         ],
     ),
@@ -119,6 +119,181 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.5),
                 output_cost_per_token=per_million_tokens(1.5),
+            ),
+        ],
+    ),
+    "apac.amazon.nova-2-lite-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.33),
+                output_cost_per_token=per_million_tokens(2.75),
+                cache_read_cost_per_token=per_million_tokens(0.0825),
+            ),
+        ],
+    ),
+    "apac.amazon.nova-2-omni-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.3),
+                output_cost_per_token=per_million_tokens(2.8),
+            ),
+        ],
+    ),
+    "apac.amazon.nova-2-pro-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.375),
+                output_cost_per_token=per_million_tokens(11.0),
+            ),
+        ],
+    ),
+    "au.amazon.nova-2-lite-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.33),
+                output_cost_per_token=per_million_tokens(2.75),
+                cache_read_cost_per_token=per_million_tokens(0.0825),
+            ),
+        ],
+    ),
+    "au.amazon.nova-2-omni-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.3),
+                output_cost_per_token=per_million_tokens(2.8),
+            ),
+        ],
+    ),
+    "au.amazon.nova-2-pro-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.375),
+                output_cost_per_token=per_million_tokens(11.0),
+            ),
+        ],
+    ),
+    "ca.amazon.nova-2-lite-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.33),
+                output_cost_per_token=per_million_tokens(2.75),
+                cache_read_cost_per_token=per_million_tokens(0.0825),
+            ),
+        ],
+    ),
+    "ca.amazon.nova-2-omni-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.3),
+                output_cost_per_token=per_million_tokens(2.8),
+            ),
+        ],
+    ),
+    "ca.amazon.nova-2-pro-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.375),
+                output_cost_per_token=per_million_tokens(11.0),
+            ),
+        ],
+    ),
+    "eu.amazon.nova-2-lite-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.33),
+                output_cost_per_token=per_million_tokens(2.75),
+                cache_read_cost_per_token=per_million_tokens(0.0825),
+            ),
+        ],
+    ),
+    "eu.amazon.nova-2-omni-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.3),
+                output_cost_per_token=per_million_tokens(2.8),
+            ),
+        ],
+    ),
+    "eu.amazon.nova-2-pro-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.375),
+                output_cost_per_token=per_million_tokens(11.0),
+            ),
+        ],
+    ),
+    "global.amazon.nova-2-lite-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.3),
+                output_cost_per_token=per_million_tokens(2.5),
+                cache_read_cost_per_token=per_million_tokens(0.075),
+            ),
+        ],
+    ),
+    "global.amazon.nova-2-omni-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.3),
+                output_cost_per_token=per_million_tokens(2.5),
+            ),
+        ],
+    ),
+    "global.amazon.nova-2-pro-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.0),
+            ),
+        ],
+    ),
+    "jp.amazon.nova-2-lite-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.33),
+                output_cost_per_token=per_million_tokens(2.75),
+                cache_read_cost_per_token=per_million_tokens(0.0825),
+            ),
+        ],
+    ),
+    "jp.amazon.nova-2-omni-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.3),
+                output_cost_per_token=per_million_tokens(2.8),
+            ),
+        ],
+    ),
+    "jp.amazon.nova-2-pro-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.375),
+                output_cost_per_token=per_million_tokens(11.0),
+            ),
+        ],
+    ),
+    "us.amazon.nova-2-lite-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.33),
+                output_cost_per_token=per_million_tokens(2.75),
+                cache_read_cost_per_token=per_million_tokens(0.0825),
+            ),
+        ],
+    ),
+    "us.amazon.nova-2-omni-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.3),
+                output_cost_per_token=per_million_tokens(2.8),
+            ),
+        ],
+    ),
+    "us.amazon.nova-2-pro-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.375),
+                output_cost_per_token=per_million_tokens(11.0),
             ),
         ],
     ),
@@ -229,10 +404,10 @@ _PRICING: dict[str, ModelPricing] = {
     "anthropic.claude-haiku-4-5-v1": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(1.0),
-                output_cost_per_token=per_million_tokens(5.0),
-                cache_read_cost_per_token=per_million_tokens(0.1),
-                cache_creation_cost_per_token=per_million_tokens(1.25),
+                input_cost_per_token=per_million_tokens(1.1),
+                output_cost_per_token=per_million_tokens(5.5),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(1.375),
             ),
         ],
     ),
@@ -257,26 +432,26 @@ _PRICING: dict[str, ModelPricing] = {
     "anthropic.claude-opus-4-5-v1": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(5.0),
-                output_cost_per_token=per_million_tokens(25.0),
-                cache_read_cost_per_token=per_million_tokens(0.5),
-                cache_creation_cost_per_token=per_million_tokens(6.25),
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
             ),
         ],
     ),
     "anthropic.claude-opus-4-6-v1": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(5.0),
-                output_cost_per_token=per_million_tokens(25.0),
-                cache_read_cost_per_token=per_million_tokens(0.5),
-                cache_creation_cost_per_token=per_million_tokens(6.25),
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
             ),
             PricingTier(
-                input_cost_per_token=per_million_tokens(5.0),
-                output_cost_per_token=per_million_tokens(25.0),
-                cache_read_cost_per_token=per_million_tokens(0.5),
-                cache_creation_cost_per_token=per_million_tokens(6.25),
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
                 min_input_tokens=200000,
             ),
         ],
@@ -294,16 +469,16 @@ _PRICING: dict[str, ModelPricing] = {
     "anthropic.claude-sonnet-4-5-v1": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(3.0),
-                output_cost_per_token=per_million_tokens(15.0),
-                cache_read_cost_per_token=per_million_tokens(0.3),
-                cache_creation_cost_per_token=per_million_tokens(3.75),
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
             ),
             PricingTier(
-                input_cost_per_token=per_million_tokens(6.0),
-                output_cost_per_token=per_million_tokens(22.5),
-                cache_read_cost_per_token=per_million_tokens(0.6),
-                cache_creation_cost_per_token=per_million_tokens(7.5),
+                input_cost_per_token=per_million_tokens(6.6),
+                output_cost_per_token=per_million_tokens(24.75),
+                cache_read_cost_per_token=per_million_tokens(0.66),
+                cache_creation_cost_per_token=per_million_tokens(8.25),
                 min_input_tokens=200000,
             ),
         ],
@@ -311,16 +486,16 @@ _PRICING: dict[str, ModelPricing] = {
     "anthropic.claude-sonnet-4-6-v1": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(3.0),
-                output_cost_per_token=per_million_tokens(15.0),
-                cache_read_cost_per_token=per_million_tokens(0.3),
-                cache_creation_cost_per_token=per_million_tokens(3.75),
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
             ),
             PricingTier(
-                input_cost_per_token=per_million_tokens(3.0),
-                output_cost_per_token=per_million_tokens(15.0),
-                cache_read_cost_per_token=per_million_tokens(0.3),
-                cache_creation_cost_per_token=per_million_tokens(3.75),
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
                 min_input_tokens=200000,
             ),
         ],
@@ -347,6 +522,622 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(8.0),
                 output_cost_per_token=per_million_tokens(24.0),
+            ),
+        ],
+    ),
+    "apac.anthropic.claude-haiku-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.1),
+                output_cost_per_token=per_million_tokens(5.5),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(1.375),
+            ),
+        ],
+    ),
+    "apac.anthropic.claude-opus-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+        ],
+    ),
+    "apac.anthropic.claude-opus-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "apac.anthropic.claude-sonnet-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.6),
+                output_cost_per_token=per_million_tokens(24.75),
+                cache_read_cost_per_token=per_million_tokens(0.66),
+                cache_creation_cost_per_token=per_million_tokens(8.25),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "apac.anthropic.claude-sonnet-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "apac.anthropic.claude-sonnet-4-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                cache_creation_cost_per_token=per_million_tokens(7.5),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "au.anthropic.claude-haiku-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.1),
+                output_cost_per_token=per_million_tokens(5.5),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(1.375),
+            ),
+        ],
+    ),
+    "au.anthropic.claude-opus-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+        ],
+    ),
+    "au.anthropic.claude-opus-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "au.anthropic.claude-sonnet-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.6),
+                output_cost_per_token=per_million_tokens(24.75),
+                cache_read_cost_per_token=per_million_tokens(0.66),
+                cache_creation_cost_per_token=per_million_tokens(8.25),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "au.anthropic.claude-sonnet-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "au.anthropic.claude-sonnet-4-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                cache_creation_cost_per_token=per_million_tokens(7.5),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "ca.anthropic.claude-haiku-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.1),
+                output_cost_per_token=per_million_tokens(5.5),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(1.375),
+            ),
+        ],
+    ),
+    "ca.anthropic.claude-opus-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+        ],
+    ),
+    "ca.anthropic.claude-opus-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "ca.anthropic.claude-sonnet-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.6),
+                output_cost_per_token=per_million_tokens(24.75),
+                cache_read_cost_per_token=per_million_tokens(0.66),
+                cache_creation_cost_per_token=per_million_tokens(8.25),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "ca.anthropic.claude-sonnet-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "ca.anthropic.claude-sonnet-4-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                cache_creation_cost_per_token=per_million_tokens(7.5),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "eu.anthropic.claude-haiku-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.1),
+                output_cost_per_token=per_million_tokens(5.5),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(1.375),
+            ),
+        ],
+    ),
+    "eu.anthropic.claude-opus-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+        ],
+    ),
+    "eu.anthropic.claude-opus-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "eu.anthropic.claude-sonnet-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.6),
+                output_cost_per_token=per_million_tokens(24.75),
+                cache_read_cost_per_token=per_million_tokens(0.66),
+                cache_creation_cost_per_token=per_million_tokens(8.25),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "eu.anthropic.claude-sonnet-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "eu.anthropic.claude-sonnet-4-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                cache_creation_cost_per_token=per_million_tokens(7.5),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "global.anthropic.claude-haiku-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.0),
+                output_cost_per_token=per_million_tokens(5.0),
+                cache_read_cost_per_token=per_million_tokens(0.1),
+                cache_creation_cost_per_token=per_million_tokens(1.25),
+            ),
+        ],
+    ),
+    "global.anthropic.claude-opus-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.0),
+                output_cost_per_token=per_million_tokens(25.0),
+                cache_read_cost_per_token=per_million_tokens(0.5),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
+            ),
+        ],
+    ),
+    "global.anthropic.claude-opus-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.0),
+                output_cost_per_token=per_million_tokens(25.0),
+                cache_read_cost_per_token=per_million_tokens(0.5),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.0),
+                output_cost_per_token=per_million_tokens(25.0),
+                cache_read_cost_per_token=per_million_tokens(0.5),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "global.anthropic.claude-sonnet-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                cache_creation_cost_per_token=per_million_tokens(7.5),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "global.anthropic.claude-sonnet-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "global.anthropic.claude-sonnet-4-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                cache_creation_cost_per_token=per_million_tokens(7.5),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "jp.anthropic.claude-haiku-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.1),
+                output_cost_per_token=per_million_tokens(5.5),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(1.375),
+            ),
+        ],
+    ),
+    "jp.anthropic.claude-opus-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+        ],
+    ),
+    "jp.anthropic.claude-opus-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "jp.anthropic.claude-sonnet-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.6),
+                output_cost_per_token=per_million_tokens(24.75),
+                cache_read_cost_per_token=per_million_tokens(0.66),
+                cache_creation_cost_per_token=per_million_tokens(8.25),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "jp.anthropic.claude-sonnet-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "jp.anthropic.claude-sonnet-4-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                cache_creation_cost_per_token=per_million_tokens(7.5),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "us.anthropic.claude-haiku-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.1),
+                output_cost_per_token=per_million_tokens(5.5),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(1.375),
+            ),
+        ],
+    ),
+    "us.anthropic.claude-opus-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+        ],
+    ),
+    "us.anthropic.claude-opus-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "us.anthropic.claude-sonnet-4-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.6),
+                output_cost_per_token=per_million_tokens(24.75),
+                cache_read_cost_per_token=per_million_tokens(0.66),
+                cache_creation_cost_per_token=per_million_tokens(8.25),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "us.anthropic.claude-sonnet-4-6-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+                min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "us.anthropic.claude-sonnet-4-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                cache_creation_cost_per_token=per_million_tokens(7.5),
+                min_input_tokens=200000,
             ),
         ],
     ),
