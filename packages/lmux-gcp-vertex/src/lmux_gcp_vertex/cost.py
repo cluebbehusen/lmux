@@ -190,12 +190,6 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(15.0),
                 cache_read_cost_per_token=per_million_tokens(0.3),
             ),
-            PricingTier(
-                input_cost_per_token=per_million_tokens(6.0),
-                output_cost_per_token=per_million_tokens(22.5),
-                cache_read_cost_per_token=per_million_tokens(0.6),
-                min_input_tokens=200_000,
-            ),
         ],
     ),
     "claude-opus-4-1": ModelPricing(
@@ -222,12 +216,6 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(3.0),
                 output_cost_per_token=per_million_tokens(15.0),
                 cache_read_cost_per_token=per_million_tokens(0.3),
-            ),
-            PricingTier(
-                input_cost_per_token=per_million_tokens(6.0),
-                output_cost_per_token=per_million_tokens(22.5),
-                cache_read_cost_per_token=per_million_tokens(0.6),
-                min_input_tokens=200_000,
             ),
         ],
     ),
