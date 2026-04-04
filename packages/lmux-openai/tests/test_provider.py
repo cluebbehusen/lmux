@@ -1,5 +1,6 @@
 """Tests for OpenAI provider."""
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -135,6 +136,7 @@ def mock_async_client() -> MagicMock:
     mock.chat.completions.create = AsyncMock()
     mock.embeddings.create = AsyncMock()
     mock.responses.create = AsyncMock()
+    mock.close = AsyncMock()
     return mock
 
 
@@ -797,6 +799,33 @@ class TestClientManagement:
         with pytest.raises(ProviderError, match="connection refused"):
             await provider.achat("gpt-4o", [UserMessage(content="Hi")])
 
+    @pytest.fixture
+    def mock_get_running_loop(self, mocker: MockerFixture) -> MagicMock:
+        return mocker.patch("lmux_openai.provider.asyncio.get_running_loop")
+
+    async def test_achat_recreates_client_on_new_event_loop(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: MagicMock,
+        chat_completion: ChatCompletion,
+        mock_get_running_loop: MagicMock,
+    ) -> None:
+        mock_async_client.chat.completions.create.return_value = chat_completion
+        provider = OpenAIProvider(auth=fake_auth)
+
+        loop1 = asyncio.new_event_loop()
+        loop2 = asyncio.new_event_loop()
+        mock_get_running_loop.side_effect = [loop1, loop2]
+
+        await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        await provider.achat("gpt-4o", [UserMessage(content="Hi again")])
+
+        assert mock_async_create.call_count == 2
+        assert mock_get_running_loop.call_count == 2
+        loop1.close()
+        loop2.close()
+
 
 # MARK: Provider Params Kwargs
 
@@ -907,6 +936,32 @@ class TestRegisterPricing:
         result = sync_provider.chat("totally-unknown-model", [UserMessage(content="Hi")])
 
         assert result.cost is None
+
+
+# MARK: Aclose
+
+
+class TestAclose:
+    async def test_aclose_closes_client(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: MagicMock,
+        chat_completion: ChatCompletion,
+    ) -> None:
+        mock_async_client.chat.completions.create.return_value = chat_completion
+        provider = OpenAIProvider(auth=fake_auth)
+
+        await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        await provider.aclose()
+
+        mock_async_create.assert_called_once()
+        mock_async_client.close.assert_awaited_once()
+        assert provider._async_client is None  # pyright: ignore[reportPrivateUsage]
+
+    async def test_aclose_noop_when_no_client(self, fake_auth: FakeAuth) -> None:
+        provider = OpenAIProvider(auth=fake_auth)
+        await provider.aclose()
 
 
 # MARK: Preload

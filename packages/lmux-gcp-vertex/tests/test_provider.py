@@ -1,5 +1,6 @@
 """Tests for Google Vertex AI provider."""
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -125,7 +126,9 @@ def embed_response() -> MagicMock:
 
 @pytest.fixture
 def mock_client() -> MagicMock:
-    return MagicMock()
+    mock = MagicMock()
+    mock.aio.aclose = AsyncMock()
+    return mock
 
 
 @pytest.fixture
@@ -714,6 +717,33 @@ class TestClientManagement:
         with pytest.raises(ProviderError, match="connection refused"):
             await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
+    @pytest.fixture
+    def mock_get_running_loop(self, mocker: MockerFixture) -> MagicMock:
+        return mocker.patch("lmux_gcp_vertex.provider.asyncio.get_running_loop")
+
+    async def test_achat_recreates_client_on_new_event_loop(
+        self,
+        fake_auth: FakeAuth,
+        mock_create: MagicMock,
+        mock_client: MagicMock,
+        generate_response: MagicMock,
+        mock_get_running_loop: MagicMock,
+    ) -> None:
+        mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
+        provider = GCPVertexProvider(auth=fake_auth)
+
+        loop1 = asyncio.new_event_loop()
+        loop2 = asyncio.new_event_loop()
+        mock_get_running_loop.side_effect = [loop1, loop2]
+
+        await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi again")])
+
+        assert mock_create.call_count == 2
+        assert mock_get_running_loop.call_count == 2
+        loop1.close()
+        loop2.close()
+
 
 # MARK: Register Pricing
 
@@ -1053,6 +1083,32 @@ class TestProviderParamsKwargs:
 
         config = mock_client.models.generate_content.call_args.kwargs["config"]
         assert "tools" not in config
+
+
+# MARK: Aclose
+
+
+class TestAclose:
+    async def test_aclose_closes_client(
+        self,
+        fake_auth: FakeAuth,
+        mock_create: MagicMock,
+        mock_client: MagicMock,
+        generate_response: MagicMock,
+    ) -> None:
+        mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
+        provider = GCPVertexProvider(auth=fake_auth)
+
+        await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        await provider.aclose()
+
+        mock_create.assert_called_once()
+        mock_client.aio.aclose.assert_awaited_once()
+        assert provider._client is None  # pyright: ignore[reportPrivateUsage]
+
+    async def test_aclose_noop_when_no_client(self, fake_auth: FakeAuth) -> None:
+        provider = GCPVertexProvider(auth=fake_auth)
+        await provider.aclose()
 
 
 # MARK: Preload

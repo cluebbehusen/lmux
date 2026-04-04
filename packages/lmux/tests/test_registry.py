@@ -2,12 +2,13 @@
 
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Literal
+from unittest.mock import AsyncMock
 
 import pytest
 
 from lmux.exceptions import InvalidRequestError, UnsupportedFeatureError
 from lmux.mock import MockProvider
-from lmux.protocols import CompletionProvider, EmbeddingProvider
+from lmux.protocols import AsyncCloseable, CompletionProvider, EmbeddingProvider
 from lmux.registry import Registry
 from lmux.types import (
     BaseProviderParams,
@@ -424,6 +425,30 @@ class RecordingProvider(CompletionProvider[FakeParams]):
     ) -> AsyncIterator[ChatChunk]:
         self.last_params = provider_params  # pragma: no cover
         yield ChatChunk(delta="ok")  # pragma: no cover
+
+
+class _CloseableProvider(MockProvider, AsyncCloseable):
+    async def aclose(self) -> None: ...  # pragma: no cover
+
+
+class TestAclose:
+    async def test_closes_closeable_providers(self) -> None:
+        mock = MockProvider()
+        reg = Registry()
+        reg.register("mock", mock)
+        # MockProvider doesn't implement AsyncCloseable, so this should be a no-op
+        await reg.aclose()
+
+    async def test_closes_async_closeable_provider(self) -> None:
+        prov = _CloseableProvider()
+        prov.aclose = AsyncMock()
+        reg = Registry()
+        reg.register("closeable", prov)
+        reg.register("mock", MockProvider())
+
+        await reg.aclose()
+
+        prov.aclose.assert_awaited_once()
 
 
 class TestProviderParamsResolution:

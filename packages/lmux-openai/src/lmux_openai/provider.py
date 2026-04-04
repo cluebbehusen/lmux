@@ -1,5 +1,6 @@
 """OpenAI provider implementation."""
 
+import asyncio
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -61,6 +62,7 @@ class OpenAIProvider(
         self._max_retries = max_retries
         self._sync_client: openai.OpenAI | None = None
         self._async_client: openai.AsyncOpenAI | None = None
+        self._async_loop: asyncio.AbstractEventLoop | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
     # MARK: Pricing
@@ -85,14 +87,23 @@ class OpenAIProvider(
         return self._sync_client
 
     async def _get_async_client(self) -> "openai.AsyncOpenAI":
-        if self._async_client is None:
+        loop = asyncio.get_running_loop()
+        if self._async_client is None or self._async_loop is not loop:
             self._async_client = create_async_client(
                 api_key=await self._auth.aget_credentials(),
                 base_url=self._base_url,
                 timeout=self._timeout,
                 max_retries=self._max_retries,
             )
+            self._async_loop = loop
         return self._async_client
+
+    async def aclose(self) -> None:
+        """Close the underlying async HTTP client."""
+        if self._async_client is not None:
+            await self._async_client.close()
+            self._async_client = None
+            self._async_loop = None
 
     # MARK: Chat
 
