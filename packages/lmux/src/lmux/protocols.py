@@ -140,3 +140,10 @@ class PricingProvider(Protocol):
     """Protocol for providers that support custom model pricing registration."""
 
     def register_pricing(self, model: str, pricing: ModelPricing) -> None: ...
+
+
+@runtime_checkable
+class AsyncCloseable(Protocol):
+    """Protocol for providers that hold async resources (e.g. HTTP clients) that should be closed."""
+
+    async def aclose(self) -> None: ...

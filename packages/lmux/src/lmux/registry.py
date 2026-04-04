@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from typing import Any, Literal
 
 from lmux.exceptions import InvalidRequestError, UnsupportedFeatureError
-from lmux.protocols import CompletionProvider, EmbeddingProvider, ResponsesProvider
+from lmux.protocols import AsyncCloseable, CompletionProvider, EmbeddingProvider, ResponsesProvider
 from lmux.types import (
     BaseProviderParams,
     ChatChunk,
@@ -291,3 +291,9 @@ class Registry:
         return await provider.acreate_response(
             bare_model, input, provider_params=self._resolve_params(prefix, provider_params)
         )
+
+    async def aclose(self) -> None:
+        """Close all registered providers that implement :class:`AsyncCloseable`."""
+        for provider in self._providers.values():
+            if isinstance(provider, AsyncCloseable):
+                await provider.aclose()

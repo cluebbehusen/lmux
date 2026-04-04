@@ -4,6 +4,7 @@ Since Azure AI Foundry uses the ``openai`` SDK (``AzureOpenAI``), the SDK types
 are identical to those used by the OpenAI provider.
 """
 
+import copy
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -152,7 +153,7 @@ def map_response_format(
         return {"type": "text"}
     if isinstance(rf, JsonObjectResponseFormat):
         return {"type": "json_object"}
-    patched = rf.json_schema.copy()
+    patched = copy.deepcopy(rf.json_schema)
     _add_additional_properties_false(patched)
     schema_dict: JSONSchema = {"name": rf.name, "schema": patched}
     if rf.description is not None:

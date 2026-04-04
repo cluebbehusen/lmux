@@ -1,6 +1,7 @@
 """Internal mappers between lmux types and Bedrock Converse API types."""
 
 import base64
+import copy
 import json
 import re
 from collections.abc import Callable, Sequence
@@ -191,7 +192,7 @@ def map_response_format(rf: ResponseFormat) -> dict[str, object] | None:
         msg = "JsonObjectResponseFormat is not supported by Bedrock; use JsonSchemaResponseFormat instead"
         raise UnsupportedFeatureError(msg, provider="aws-bedrock")
 
-    patched = rf.json_schema.copy()
+    patched = copy.deepcopy(rf.json_schema)
     _add_additional_properties_false(patched)
     json_schema: dict[str, str] = {
         "schema": json.dumps(patched, sort_keys=True),

@@ -1,5 +1,6 @@
 """Tests for Anthropic provider."""
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -126,6 +127,7 @@ def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> Anthropic
 def mock_async_client() -> MagicMock:
     mock = MagicMock()
     mock.messages.create = AsyncMock()
+    mock.close = AsyncMock()
     return mock
 
 
@@ -266,7 +268,9 @@ class TestChat:
         sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], response_format=rf)
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
-        assert call_kwargs["output_config"] == {"format": {"type": "json_schema", "schema": {"type": "object"}}}
+        assert call_kwargs["output_config"] == {
+            "format": {"type": "json_schema", "schema": {"type": "object", "additionalProperties": False}}
+        }
 
     def test_chat_text_response_format_is_noop(
         self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
@@ -825,6 +829,33 @@ class TestClientManagement:
         with pytest.raises(ProviderError, match="connection refused"):
             await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
+    @pytest.fixture
+    def mock_get_running_loop(self, mocker: MockerFixture) -> MagicMock:
+        return mocker.patch("lmux_anthropic.provider.asyncio.get_running_loop")
+
+    async def test_achat_recreates_client_on_new_event_loop(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: MagicMock,
+        message_response: MagicMock,
+        mock_get_running_loop: MagicMock,
+    ) -> None:
+        mock_async_client.messages.create.return_value = message_response
+        provider = AnthropicProvider(auth=fake_auth)
+
+        loop1 = asyncio.new_event_loop()
+        loop2 = asyncio.new_event_loop()
+        mock_get_running_loop.side_effect = [loop1, loop2]
+
+        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
+
+        assert mock_async_create.call_count == 2
+        assert mock_get_running_loop.call_count == 2
+        loop1.close()
+        loop2.close()
+
 
 # MARK: Provider Params Kwargs
 
@@ -931,6 +962,32 @@ class TestCustomDefaultMaxTokens:
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["max_tokens"] == 8192
+
+
+# MARK: Aclose
+
+
+class TestAclose:
+    async def test_aclose_closes_client(
+        self,
+        fake_auth: FakeAuth,
+        mock_async_create: MagicMock,
+        mock_async_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_async_client.messages.create.return_value = message_response
+        provider = AnthropicProvider(auth=fake_auth)
+
+        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        await provider.aclose()
+
+        mock_async_create.assert_called_once()
+        mock_async_client.close.assert_awaited_once()
+        assert provider._async_client is None  # pyright: ignore[reportPrivateUsage]
+
+    async def test_aclose_noop_when_no_client(self, fake_auth: FakeAuth) -> None:
+        provider = AnthropicProvider(auth=fake_auth)
+        await provider.aclose()
 
 
 # MARK: Preload

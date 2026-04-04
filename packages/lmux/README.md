@@ -42,7 +42,7 @@ You don't need to install this directly; provider packages (e.g., `lmux-openai`)
 ## Protocols
 
 ```python
-from lmux import CompletionProvider, EmbeddingProvider, ResponsesProvider, PricingProvider
+from lmux import CompletionProvider, EmbeddingProvider, ResponsesProvider, PricingProvider, AsyncCloseable
 ```
 
 - `CompletionProvider[ParamsT]`: `chat`, `achat`, `chat_stream`, `achat_stream`
@@ -50,6 +50,7 @@ from lmux import CompletionProvider, EmbeddingProvider, ResponsesProvider, Prici
 - `ResponsesProvider[ParamsT]`: `create_response`, `acreate_response`
 - `PricingProvider`: `register_pricing`
 - `AuthProvider[AuthT]`: `get_credentials`, `aget_credentials`
+- `AsyncCloseable`: `aclose`
 
 All are `@runtime_checkable`, so you can use `isinstance()` to check support.
 
@@ -66,6 +67,9 @@ registry.register("anthropic", anthropic_provider)
 
 response = registry.chat("openai/gpt-4o", messages)
 response = registry.chat("anthropic/claude-sonnet-4-20250514", messages)
+
+# Close all providers that implement AsyncCloseable
+await registry.aclose()
 ```
 
 ## Exceptions

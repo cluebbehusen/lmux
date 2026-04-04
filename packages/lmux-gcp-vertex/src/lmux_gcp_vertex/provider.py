@@ -1,5 +1,6 @@
 """GCP Vertex AI provider implementation."""
 
+import asyncio
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -58,6 +59,7 @@ class GCPVertexProvider(
         self._location = location
         self._vertexai = vertexai
         self._client: Client | None = None
+        self._async_loop: asyncio.AbstractEventLoop | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
     # MARK: Pricing
@@ -87,7 +89,9 @@ class GCPVertexProvider(
         return self._client
 
     async def _aget_client(self) -> "Client":
-        if self._client is None:
+        loop = asyncio.get_running_loop()
+        if self._client is None or self._async_loop is not loop:
+            self._client = None
             auth_result = await self._auth.aget_credentials()
             credentials, api_key = (None, auth_result) if isinstance(auth_result, str) else (auth_result, None)
             self._client = create_client(
@@ -97,7 +101,15 @@ class GCPVertexProvider(
                 credentials=credentials,
                 api_key=api_key,
             )
+            self._async_loop = loop
         return self._client
+
+    async def aclose(self) -> None:
+        """Close the underlying async HTTP client."""
+        if self._client is not None:
+            await self._client.aio.aclose()
+            self._client = None
+            self._async_loop = None
 
     # MARK: Chat
 

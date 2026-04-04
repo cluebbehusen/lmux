@@ -13,6 +13,7 @@ from lmux.exceptions import (
 )
 from lmux.mock import MockProvider
 from lmux.protocols import (
+    AsyncCloseable,
     AuthProvider,
     CompletionProvider,
     EmbeddingProvider,
@@ -57,6 +58,7 @@ from lmux.types import (
 
 __all__ = [
     "AssistantMessage",
+    "AsyncCloseable",
     "AuthProvider",
     "AuthenticationError",
     "BaseProviderParams",

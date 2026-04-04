@@ -65,6 +65,20 @@ Every method has an async counterpart: `achat`, `achat_stream`, `aembed`, `acrea
 response = await provider.achat("gpt-4o", [UserMessage(content="Hello")])
 ```
 
+### Resource Cleanup
+
+Providers that cache async HTTP clients implement `AsyncCloseable`. In long-running or serverless environments, close these when done:
+
+```python
+# Close a single provider
+await provider.aclose()
+
+# Close all providers via the registry
+await registry.aclose()
+```
+
+Providers also detect event loop changes (e.g. in AWS Lambda) and automatically recreate their async clients when needed.
+
 ### Embeddings
 
 ```python
@@ -177,10 +191,10 @@ response = registry.chat("my-provider/my-model", messages)
   import lmux_openai
   lmux_openai.preload()  # eagerly imports the openai SDK
   ```
-- **Protocols**: Providers implement `CompletionProvider`, `EmbeddingProvider`, and/or `ResponsesProvider`. Check support at runtime with `isinstance()`.
+- **Protocols**: Providers implement `CompletionProvider`, `EmbeddingProvider`, `ResponsesProvider`, and/or `AsyncCloseable`. Check support at runtime with `isinstance()`.
 - **Standardized inputs and outputs**: Same message types and response shapes across all providers.
 - **Cost ownership**: Each provider owns its pricing data and calculation. Core provides utilities, not a database.
-- **Serverless-friendly**: Lazy SDK loading and no global state keep cold starts fast.
+- **Serverless-friendly**: Lazy SDK loading, no global state, and automatic event loop detection keep cold starts fast and avoid stale client issues.
 
 ## Development
 
