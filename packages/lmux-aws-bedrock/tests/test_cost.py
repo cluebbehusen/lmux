@@ -61,14 +61,14 @@ class TestCalculateBedrockCost:
         assert exact_cost is not None
         assert cost.total_cost == pytest.approx(exact_cost.total_cost)
 
-    def test_large_context_uses_flat_pricing(self) -> None:
-        """Claude models use flat pricing regardless of input token count."""
+    def test_long_context_tier(self) -> None:
+        """Claude Sonnet 4.5 on Bedrock uses higher pricing above 200K threshold."""
         usage = Usage(input_tokens=300_000, output_tokens=1000)
         cost = calculate_bedrock_cost("anthropic.claude-sonnet-4-5-v1", usage)
         assert cost is not None
-        # No tiered pricing — base rate applies even above 200K
-        assert cost.input_cost == pytest.approx(300_000 * 3.0 / 1_000_000)
-        assert cost.output_cost == pytest.approx(1000 * 15.0 / 1_000_000)
+        # Above 200K threshold, uses long-context tier pricing
+        assert cost.input_cost == pytest.approx(300_000 * 6.0 / 1_000_000)
+        assert cost.output_cost == pytest.approx(1000 * 22.5 / 1_000_000)
 
     def test_region_none_uses_default(self) -> None:
         usage = Usage(input_tokens=1000, output_tokens=500)

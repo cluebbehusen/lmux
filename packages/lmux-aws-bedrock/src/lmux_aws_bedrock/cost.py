@@ -292,6 +292,13 @@ _PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.3),
                 cache_creation_cost_per_token=per_million_tokens(3.75),
             ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(6.0),
+                output_cost_per_token=per_million_tokens(22.5),
+                cache_read_cost_per_token=per_million_tokens(0.6),
+                cache_creation_cost_per_token=per_million_tokens(7.5),
+                min_input_tokens=200_000,
+            ),
         ],
     ),
     "anthropic.claude-sonnet-4-6-v1": ModelPricing(
