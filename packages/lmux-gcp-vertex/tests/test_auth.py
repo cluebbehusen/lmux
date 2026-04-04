@@ -39,7 +39,7 @@ class TestGCPVertexADCAuthProvider:
     def test_custom_scopes(self, mock_google_auth_default: MagicMock) -> None:
         custom_scopes = ["https://www.googleapis.com/auth/bigquery"]
         provider = GCPVertexADCAuthProvider(scopes=custom_scopes)
-        provider.get_credentials()
+        _ = provider.get_credentials()
 
         mock_google_auth_default.assert_called_once_with(scopes=custom_scopes)
 
@@ -77,7 +77,7 @@ class TestGCPVertexServiceAccountAuthProvider:
     def test_custom_scopes(self, mock_from_service_account_file: MagicMock) -> None:
         custom_scopes = ["https://www.googleapis.com/auth/bigquery"]
         provider = GCPVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json", scopes=custom_scopes)
-        provider.get_credentials()
+        _ = provider.get_credentials()
 
         mock_from_service_account_file.assert_called_once_with("/path/to/key.json", scopes=custom_scopes)
 
@@ -105,7 +105,7 @@ class TestGCPVertexAPIKeyAuthProvider:
         monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         provider = GCPVertexAPIKeyAuthProvider()
         with pytest.raises(AuthenticationError, match="GOOGLE_API_KEY environment variable is not set"):
-            provider.get_credentials()
+            _ = provider.get_credentials()
 
     def test_explicit_key_takes_precedence_over_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("GOOGLE_API_KEY", "env-key")

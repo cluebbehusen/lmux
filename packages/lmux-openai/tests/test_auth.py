@@ -16,13 +16,13 @@ class TestOpenAIEnvAuthProvider:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         provider = OpenAIEnvAuthProvider()
         with pytest.raises(AuthenticationError, match="OPENAI_API_KEY"):
-            provider.get_credentials()
+            _ = provider.get_credentials()
 
     def test_error_has_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         provider = OpenAIEnvAuthProvider()
         with pytest.raises(AuthenticationError) as exc_info:
-            provider.get_credentials()
+            _ = provider.get_credentials()
         assert exc_info.value.provider == "openai"
 
     async def test_aget_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -34,4 +34,4 @@ class TestOpenAIEnvAuthProvider:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         provider = OpenAIEnvAuthProvider()
         with pytest.raises(AuthenticationError):
-            await provider.aget_credentials()
+            _ = await provider.aget_credentials()

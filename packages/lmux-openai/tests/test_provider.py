@@ -127,6 +127,7 @@ def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> Magi
 
 @pytest.fixture
 def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> OpenAIProvider:
+    mock_sync_create.assert_not_called()
     return OpenAIProvider(auth=fake_auth)
 
 
@@ -147,6 +148,7 @@ def mock_async_create(mock_async_client: MagicMock, mocker: MockerFixture) -> Ma
 
 @pytest.fixture
 def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> OpenAIProvider:
+    mock_async_create.assert_not_called()
     return OpenAIProvider(auth=fake_auth)
 
 
@@ -207,7 +209,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gpt-4o",
             [UserMessage(content="Hi")],
             temperature=0.5,
@@ -232,7 +234,7 @@ class TestChat:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
         tools = [Tool(function=FunctionDefinition(name="get_weather"))]
-        sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], tools=tools)
+        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], tools=tools)
 
         mock_sync_client.chat.completions.create.assert_called_once_with(
             model="gpt-4o",
@@ -246,7 +248,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat())
+        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat())
 
         mock_sync_client.chat.completions.create.assert_called_once_with(
             model="gpt-4o",
@@ -260,7 +262,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gpt-4o",
             [UserMessage(content="Hi")],
             provider_params=OpenAIParams(service_tier="flex", seed=42, user="u1"),
@@ -280,7 +282,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "o3",
             [UserMessage(content="Hi")],
             provider_params=OpenAIParams(reasoning_effort="high"),
@@ -298,7 +300,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "o3",
             [UserMessage(content="Hi")],
             reasoning_effort="high",
@@ -317,7 +319,7 @@ class TestChat:
         mock_sync_client.chat.completions.create.side_effect = bad_request_error
 
         with pytest.raises(InvalidRequestError):
-            sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
+            _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
 
     def test_chat_cost_calculated(
         self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
@@ -352,7 +354,7 @@ class TestAchat:
         mock_async_client.chat.completions.create.side_effect = auth_error
 
         with pytest.raises(AuthenticationError):
-            await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
+            _ = await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
 
 
 # MARK: ChatStream
@@ -395,7 +397,7 @@ class TestChatStream:
         mock_sync_client.chat.completions.create.side_effect = server_error
 
         with pytest.raises(ProviderError):
-            list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
+            _ = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
 
     def test_stream_exception_during_iteration(
         self,
@@ -411,7 +413,7 @@ class TestChatStream:
         mock_sync_client.chat.completions.create.return_value = _failing_iter()
 
         with pytest.raises(ProviderError, match="test error"):
-            list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
+            _ = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
 
 
 # MARK: AchatStream
@@ -491,7 +493,7 @@ class TestEmbed:
     ) -> None:
         mock_sync_client.embeddings.create.return_value = embedding_response
 
-        sync_provider.embed("text-embedding-3-small", ["hello", "world"])
+        _ = sync_provider.embed("text-embedding-3-small", ["hello", "world"])
 
         mock_sync_client.embeddings.create.assert_called_once_with(
             model="text-embedding-3-small", input=["hello", "world"]
@@ -505,7 +507,7 @@ class TestEmbed:
     ) -> None:
         mock_sync_client.embeddings.create.return_value = embedding_response
 
-        sync_provider.embed("text-embedding-3-small", "hello", dimensions=256)
+        _ = sync_provider.embed("text-embedding-3-small", "hello", dimensions=256)
 
         mock_sync_client.embeddings.create.assert_called_once_with(
             model="text-embedding-3-small", input="hello", dimensions=256
@@ -517,7 +519,7 @@ class TestEmbed:
         mock_sync_client.embeddings.create.side_effect = bad_request_error
 
         with pytest.raises(InvalidRequestError):
-            sync_provider.embed("text-embedding-3-small", "hello")
+            _ = sync_provider.embed("text-embedding-3-small", "hello")
 
     async def test_aembed(
         self,
@@ -541,7 +543,7 @@ class TestEmbed:
     ) -> None:
         mock_sync_client.embeddings.create.return_value = embedding_response
 
-        sync_provider.embed("text-embedding-3-small", "hello", provider_params=OpenAIParams(user="u1"))
+        _ = sync_provider.embed("text-embedding-3-small", "hello", provider_params=OpenAIParams(user="u1"))
 
         mock_sync_client.embeddings.create.assert_called_once_with(
             model="text-embedding-3-small", input="hello", user="u1"
@@ -555,7 +557,7 @@ class TestEmbed:
     ) -> None:
         mock_async_client.embeddings.create.return_value = embedding_response
 
-        await async_provider.aembed("text-embedding-3-small", "hello", provider_params=OpenAIParams(user="u1"))
+        _ = await async_provider.aembed("text-embedding-3-small", "hello", provider_params=OpenAIParams(user="u1"))
 
         mock_async_client.embeddings.create.assert_awaited_once_with(
             model="text-embedding-3-small", input="hello", user="u1"
@@ -569,7 +571,7 @@ class TestEmbed:
     ) -> None:
         mock_async_client.embeddings.create.return_value = embedding_response
 
-        await async_provider.aembed("text-embedding-3-small", "hello", dimensions=256)
+        _ = await async_provider.aembed("text-embedding-3-small", "hello", dimensions=256)
 
         mock_async_client.embeddings.create.assert_awaited_once_with(
             model="text-embedding-3-small", input="hello", dimensions=256
@@ -581,7 +583,7 @@ class TestEmbed:
         mock_async_client.embeddings.create.side_effect = bad_request_error
 
         with pytest.raises(InvalidRequestError):
-            await async_provider.aembed("text-embedding-3-small", "hello")
+            _ = await async_provider.aembed("text-embedding-3-small", "hello")
 
 
 # MARK: CreateResponse
@@ -604,7 +606,7 @@ class TestCreateResponse:
     ) -> None:
         mock_sync_client.responses.create.return_value = responses_mock
 
-        sync_provider.create_response("gpt-4o", "Hello", provider_params=OpenAIParams(service_tier="flex"))
+        _ = sync_provider.create_response("gpt-4o", "Hello", provider_params=OpenAIParams(service_tier="flex"))
 
         mock_sync_client.responses.create.assert_called_once_with(
             model="gpt-4o", input="Hello", stream=False, service_tier="flex"
@@ -616,7 +618,7 @@ class TestCreateResponse:
         mock_sync_client.responses.create.side_effect = not_found_error
 
         with pytest.raises(NotFoundError):
-            sync_provider.create_response("gpt-4o", "Hello")
+            _ = sync_provider.create_response("gpt-4o", "Hello")
 
     async def test_acreate_response(
         self, async_provider: OpenAIProvider, mock_async_client: MagicMock, responses_mock: MagicMock
@@ -633,7 +635,7 @@ class TestCreateResponse:
     ) -> None:
         mock_async_client.responses.create.return_value = responses_mock
 
-        await async_provider.acreate_response("gpt-4o", "Hello", provider_params=OpenAIParams(service_tier="flex"))
+        _ = await async_provider.acreate_response("gpt-4o", "Hello", provider_params=OpenAIParams(service_tier="flex"))
 
         mock_async_client.responses.create.assert_awaited_once_with(
             model="gpt-4o", input="Hello", stream=False, service_tier="flex"
@@ -645,14 +647,14 @@ class TestCreateResponse:
         mock_async_client.responses.create.side_effect = not_found_error
 
         with pytest.raises(NotFoundError):
-            await async_provider.acreate_response("gpt-4o", "Hello")
+            _ = await async_provider.acreate_response("gpt-4o", "Hello")
 
     def test_create_response_with_reasoning_effort(
         self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
     ) -> None:
         mock_sync_client.responses.create.return_value = responses_mock
 
-        sync_provider.create_response("o3", "Think hard", provider_params=OpenAIParams(reasoning_effort="high"))
+        _ = sync_provider.create_response("o3", "Think hard", provider_params=OpenAIParams(reasoning_effort="high"))
 
         call_kwargs = mock_sync_client.responses.create.call_args.kwargs
         assert call_kwargs["reasoning"] == {"effort": "high"}
@@ -663,7 +665,7 @@ class TestCreateResponse:
     ) -> None:
         mock_sync_client.responses.create.return_value = responses_mock
 
-        sync_provider.create_response("gpt-4o", "Hello", provider_params=OpenAIParams())
+        _ = sync_provider.create_response("gpt-4o", "Hello", provider_params=OpenAIParams())
 
         call_kwargs = mock_sync_client.responses.create.call_args.kwargs
         assert "reasoning" not in call_kwargs
@@ -678,8 +680,8 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
-        sync_provider.chat("gpt-4o", [UserMessage(content="Hi again")])
+        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi again")])
 
         assert mock_sync_client.chat.completions.create.call_count == 2
 
@@ -688,8 +690,8 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.chat.completions.create.return_value = chat_completion
 
-        await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
-        await async_provider.achat("gpt-4o", [UserMessage(content="Hi again")])
+        _ = await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        _ = await async_provider.achat("gpt-4o", [UserMessage(content="Hi again")])
 
         assert mock_async_client.chat.completions.create.call_count == 2
 
@@ -702,7 +704,7 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
         provider = OpenAIProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once_with(
             api_key="sk-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
@@ -717,7 +719,7 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
         provider = OpenAIProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once_with(api_key="sk-fake-key", base_url=None, timeout=30.0, max_retries=5)
 
@@ -730,8 +732,8 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
         provider = OpenAIProvider(auth=fake_auth)
-        provider.chat("gpt-4o", [UserMessage(content="Hi")])
-        provider.chat("gpt-4o", [UserMessage(content="Hi again")])
+        _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        _ = provider.chat("gpt-4o", [UserMessage(content="Hi again")])
 
         mock_sync_create.assert_called_once()
 
@@ -744,8 +746,8 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.chat.completions.create.return_value = chat_completion
         provider = OpenAIProvider(auth=fake_auth)
-        await provider.achat("gpt-4o", [UserMessage(content="Hi")])
-        await provider.achat("gpt-4o", [UserMessage(content="Hi again")])
+        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi again")])
 
         mock_async_create.assert_called_once()
 
@@ -758,7 +760,7 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.chat.completions.create.return_value = chat_completion
         provider = OpenAIProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
 
         mock_async_create.assert_called_once_with(
             api_key="sk-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
@@ -773,7 +775,7 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.chat.completions.create.return_value = chat_completion
         provider = OpenAIProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
 
         mock_async_create.assert_called_once_with(api_key="sk-fake-key", base_url=None, timeout=30.0, max_retries=5)
 
@@ -786,7 +788,7 @@ class TestClientManagement:
         provider = OpenAIProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
-            provider.chat("gpt-4o", [UserMessage(content="Hi")])
+            _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
 
     async def test_async_client_init_failure_mapped(
         self,
@@ -797,7 +799,7 @@ class TestClientManagement:
         provider = OpenAIProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
-            await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+            _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
 
     @pytest.fixture
     def mock_get_running_loop(self, mocker: MockerFixture) -> MagicMock:
@@ -818,8 +820,8 @@ class TestClientManagement:
         loop2 = asyncio.new_event_loop()
         mock_get_running_loop.side_effect = [loop1, loop2]
 
-        await provider.achat("gpt-4o", [UserMessage(content="Hi")])
-        await provider.achat("gpt-4o", [UserMessage(content="Hi again")])
+        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi again")])
 
         assert mock_async_create.call_count == 2
         assert mock_get_running_loop.call_count == 2
@@ -836,7 +838,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], provider_params=OpenAIParams())
+        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], provider_params=OpenAIParams())
 
         call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
         assert "service_tier" not in call_kwargs
@@ -850,7 +852,7 @@ class TestProviderParamsKwargs:
         mock_sync_client.chat.completions.create.return_value = chat_completion
         params = OpenAIParams(service_tier="auto", reasoning_effort="low", seed=42, user="u1")
 
-        sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], provider_params=params)
+        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], provider_params=params)
 
         call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["service_tier"] == "auto"
@@ -863,9 +865,7 @@ class TestProviderParamsKwargs:
 
 
 class TestRegisterPricing:
-    def test_custom_pricing_for_unknown_model(
-        self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
+    def test_custom_pricing_for_unknown_model(self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock) -> None:
         """Custom pricing populates cost for models not in built-in PRICING."""
         # Use a model name not in built-in pricing
         custom_completion = ChatCompletion(
@@ -952,7 +952,7 @@ class TestAclose:
         mock_async_client.chat.completions.create.return_value = chat_completion
         provider = OpenAIProvider(auth=fake_auth)
 
-        await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
         await provider.aclose()
 
         mock_async_create.assert_called_once()

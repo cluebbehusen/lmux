@@ -99,13 +99,13 @@ docstring-code-line-length = 80
 [tool.basedpyright]
 pythonVersion = "3.13"
 pythonPlatform = "All"
-typeCheckingMode = "strict"
+typeCheckingMode = "recommended"
 include = ["packages/*/src/**", "packages/*/tests/**", "scripts/**"]
 exclude = ["**/__pycache__", "**/.venv"]
 reportMissingTypeStubs = false
 reportUnknownMemberType = false
-reportUnusedImport = "error"
-reportUnusedVariable = "error"
+reportAny = false
+reportExplicitAny = false
 reportUnnecessaryTypeIgnoreComment = "error"
 
 # ── Pytest ────────────────────────────────────────────────────

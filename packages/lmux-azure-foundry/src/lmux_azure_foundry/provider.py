@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
     import openai
@@ -72,10 +72,10 @@ class AzureFoundryProvider(
         max_retries: int | None = None,
     ) -> None:
         self._auth: AuthProvider[AzureFoundryCredential] = auth or AzureFoundryKeyAuthProvider()
-        self._endpoint = endpoint
-        self._api_version = api_version
-        self._timeout = timeout
-        self._max_retries = max_retries
+        self._endpoint: str = endpoint
+        self._api_version: str = api_version
+        self._timeout: float | None = timeout
+        self._max_retries: int | None = max_retries
         self._sync_client: openai.AzureOpenAI | None = None
         self._async_client: openai.AsyncAzureOpenAI | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -83,6 +83,7 @@ class AzureFoundryProvider(
 
     # MARK: Pricing
 
+    @override
     def register_pricing(self, model: str, pricing: ModelPricing) -> None:
         self._custom_pricing[model] = pricing
 
@@ -127,7 +128,8 @@ class AzureFoundryProvider(
 
     # MARK: Chat
 
-    def chat(  # noqa: PLR0913
+    @override
+    def chat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -161,7 +163,8 @@ class AzureFoundryProvider(
         response = map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
         return self._apply_multipliers(response, provider_params)
 
-    async def achat(  # noqa: PLR0913
+    @override
+    async def achat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -195,7 +198,8 @@ class AzureFoundryProvider(
         response = map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
         return self._apply_multipliers(response, provider_params)
 
-    def chat_stream(  # noqa: PLR0913
+    @override
+    def chat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -239,7 +243,8 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_azure_foundry_error(e) from e
 
-    async def achat_stream(  # noqa: PLR0913
+    @override
+    async def achat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -285,10 +290,11 @@ class AzureFoundryProvider(
 
     # MARK: Embeddings
 
+    @override
     def embed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: AzureFoundryParams | None = None,
@@ -304,10 +310,11 @@ class AzureFoundryProvider(
         result = map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
         return self._apply_embedding_multipliers(result, provider_params)
 
+    @override
     async def aembed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: AzureFoundryParams | None = None,

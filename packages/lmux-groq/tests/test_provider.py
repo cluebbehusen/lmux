@@ -101,6 +101,7 @@ def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> Magi
 
 @pytest.fixture
 def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> GroqProvider:
+    assert mock_sync_create is not None
     return GroqProvider(auth=fake_auth)
 
 
@@ -119,6 +120,7 @@ def mock_async_create(mock_async_client: MagicMock, mocker: MockerFixture) -> Ma
 
 @pytest.fixture
 def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> GroqProvider:
+    assert mock_async_create is not None
     return GroqProvider(auth=fake_auth)
 
 
@@ -170,7 +172,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "llama-3.3-70b-versatile",
             [UserMessage(content="Hi")],
             temperature=0.5,
@@ -195,7 +197,7 @@ class TestChat:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
         tools = [Tool(function=FunctionDefinition(name="get_weather"))]
-        sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], tools=tools)
+        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], tools=tools)
 
         mock_sync_client.chat.completions.create.assert_called_once_with(
             model="llama-3.3-70b-versatile",
@@ -209,7 +211,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "llama-3.3-70b-versatile",
             [UserMessage(content="Hi")],
             response_format=JsonObjectResponseFormat(),
@@ -227,7 +229,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "llama-3.3-70b-versatile",
             [UserMessage(content="Hi")],
             provider_params=GroqParams(service_tier="flex", seed=42, user="u1"),
@@ -247,7 +249,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], reasoning_effort="medium")
+        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], reasoning_effort="medium")
 
         call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["reasoning_effort"] == "medium"
@@ -258,7 +260,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "llama-3.3-70b-versatile",
             [UserMessage(content="Hi")],
             provider_params=GroqParams(reasoning_effort="high"),
@@ -273,7 +275,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "qwen/qwen3-32b",
             [UserMessage(content="Hi")],
             provider_params=GroqParams(reasoning_effort="none"),
@@ -289,7 +291,7 @@ class TestChat:
         mock_sync_client.chat.completions.create.side_effect = bad_request_error
 
         with pytest.raises(InvalidRequestError):
-            sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+            _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
     def test_chat_cost_calculated(
         self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
@@ -323,7 +325,7 @@ class TestAchat:
         mock_async_client.chat.completions.create.side_effect = auth_error
 
         with pytest.raises(AuthenticationError):
-            await async_provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+            _ = await async_provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
 
 # MARK: ChatStream
@@ -366,7 +368,7 @@ class TestChatStream:
         mock_sync_client.chat.completions.create.side_effect = server_error
 
         with pytest.raises(ProviderError):
-            list(sync_provider.chat_stream("llama-3.3-70b-versatile", [UserMessage(content="Hi")]))
+            _ = list(sync_provider.chat_stream("llama-3.3-70b-versatile", [UserMessage(content="Hi")]))
 
     def test_stream_exception_during_iteration(
         self,
@@ -382,7 +384,7 @@ class TestChatStream:
         mock_sync_client.chat.completions.create.return_value = _failing_iter()
 
         with pytest.raises(ProviderError, match="test error"):
-            list(sync_provider.chat_stream("llama-3.3-70b-versatile", [UserMessage(content="Hi")]))
+            _ = list(sync_provider.chat_stream("llama-3.3-70b-versatile", [UserMessage(content="Hi")]))
 
 
 # MARK: AchatStream
@@ -446,8 +448,8 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
+        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
 
         assert mock_sync_client.chat.completions.create.call_count == 2
 
@@ -456,8 +458,8 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.chat.completions.create.return_value = chat_completion
 
-        await async_provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        await async_provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
+        _ = await async_provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        _ = await async_provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
 
         assert mock_async_client.chat.completions.create.call_count == 2
 
@@ -470,7 +472,7 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        _ = provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once_with(
             api_key="gsk-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
@@ -485,7 +487,7 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        _ = provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once_with(api_key="gsk-fake-key", base_url=None, timeout=30.0, max_retries=5)
 
@@ -498,8 +500,8 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth)
-        provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
+        _ = provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        _ = provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
 
         mock_sync_create.assert_called_once()
 
@@ -512,8 +514,8 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth)
-        await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
+        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
 
         mock_async_create.assert_called_once()
 
@@ -526,7 +528,7 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
         mock_async_create.assert_called_once_with(
             api_key="gsk-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
@@ -541,7 +543,7 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
         mock_async_create.assert_called_once_with(api_key="gsk-fake-key", base_url=None, timeout=30.0, max_retries=5)
 
@@ -554,7 +556,7 @@ class TestClientManagement:
         provider = GroqProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
-            provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+            _ = provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
     async def test_async_client_init_failure_mapped(
         self,
@@ -565,7 +567,7 @@ class TestClientManagement:
         provider = GroqProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
-            await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+            _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
 
     @pytest.fixture
     def mock_get_running_loop(self, mocker: MockerFixture) -> MagicMock:
@@ -586,8 +588,8 @@ class TestClientManagement:
         loop2 = asyncio.new_event_loop()
         mock_get_running_loop.side_effect = [loop1, loop2]
 
-        await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
+        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
 
         assert mock_async_create.call_count == 2
         assert mock_get_running_loop.call_count == 2
@@ -604,7 +606,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_sync_client.chat.completions.create.return_value = chat_completion
 
-        sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], provider_params=GroqParams())
+        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], provider_params=GroqParams())
 
         call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
         assert "service_tier" not in call_kwargs
@@ -617,7 +619,7 @@ class TestProviderParamsKwargs:
         mock_sync_client.chat.completions.create.return_value = chat_completion
         params = GroqParams(service_tier="auto", seed=42, user="u1")
 
-        sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], provider_params=params)
+        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], provider_params=params)
 
         call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["service_tier"] == "auto"
@@ -711,7 +713,7 @@ class TestAclose:
         mock_async_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth)
 
-        await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
         await provider.aclose()
 
         mock_async_create.assert_called_once()

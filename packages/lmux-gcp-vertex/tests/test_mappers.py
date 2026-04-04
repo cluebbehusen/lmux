@@ -46,7 +46,7 @@ from lmux_gcp_vertex._mappers import (
 
 @pytest.fixture
 def noop_cost_fn() -> Any:  # noqa: ANN401
-    def _fn(model: str, usage: Usage) -> Cost:
+    def _fn(_model: str, _usage: Usage) -> Cost:
         return Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0)
 
     return _fn
@@ -54,7 +54,7 @@ def noop_cost_fn() -> Any:  # noqa: ANN401
 
 @pytest.fixture
 def none_cost_fn() -> Any:  # noqa: ANN401
-    def _fn(model: str, usage: Usage) -> None:
+    def _fn(_model: str, _usage: Usage) -> None:
         return None
 
     return _fn

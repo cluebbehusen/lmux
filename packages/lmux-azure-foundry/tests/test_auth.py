@@ -44,13 +44,13 @@ class TestAzureFoundryKeyAuthProvider:
         monkeypatch.delenv("AZURE_FOUNDRY_API_KEY", raising=False)
         provider = AzureFoundryKeyAuthProvider()
         with pytest.raises(AuthenticationError, match="AZURE_FOUNDRY_API_KEY"):
-            provider.get_credentials()
+            _ = provider.get_credentials()
 
     def test_error_has_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("AZURE_FOUNDRY_API_KEY", raising=False)
         provider = AzureFoundryKeyAuthProvider()
         with pytest.raises(AuthenticationError) as exc_info:
-            provider.get_credentials()
+            _ = provider.get_credentials()
         assert exc_info.value.provider == "azure-foundry"
 
     async def test_aget_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,7 +62,7 @@ class TestAzureFoundryKeyAuthProvider:
         monkeypatch.delenv("AZURE_FOUNDRY_API_KEY", raising=False)
         provider = AzureFoundryKeyAuthProvider()
         with pytest.raises(AuthenticationError):
-            await provider.aget_credentials()
+            _ = await provider.aget_credentials()
 
 
 # MARK: AzureFoundryTokenAuthProvider
@@ -94,7 +94,7 @@ class TestAzureFoundryTokenAuthProvider:
 
     def test_custom_scopes(self, mock_credential_cls: MagicMock, mock_get_provider: MagicMock) -> None:
         provider = AzureFoundryTokenAuthProvider(scopes=("https://custom.scope/.default",))
-        provider.get_credentials()
+        _ = provider.get_credentials()
 
         mock_get_provider.assert_called_once_with(mock_credential_cls.return_value, "https://custom.scope/.default")
 
@@ -115,3 +115,4 @@ class TestAzureFoundryTokenAuthProvider:
         result = await provider.aget_credentials()
 
         assert result is mock_token_fn
+        mock_credential_cls.assert_called_once()

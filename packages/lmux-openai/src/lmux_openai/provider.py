@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
     import openai
@@ -57,9 +57,9 @@ class OpenAIProvider(
         max_retries: int | None = None,
     ) -> None:
         self._auth: AuthProvider[str] = auth or OpenAIEnvAuthProvider()
-        self._base_url = base_url
-        self._timeout = timeout
-        self._max_retries = max_retries
+        self._base_url: str | None = base_url
+        self._timeout: float | None = timeout
+        self._max_retries: int | None = max_retries
         self._sync_client: openai.OpenAI | None = None
         self._async_client: openai.AsyncOpenAI | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -67,6 +67,7 @@ class OpenAIProvider(
 
     # MARK: Pricing
 
+    @override
     def register_pricing(self, model: str, pricing: ModelPricing) -> None:
         self._custom_pricing[model] = pricing
 
@@ -107,7 +108,8 @@ class OpenAIProvider(
 
     # MARK: Chat
 
-    def chat(  # noqa: PLR0913
+    @override
+    def chat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -140,7 +142,8 @@ class OpenAIProvider(
             raise map_openai_error(e) from e
         return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
 
-    async def achat(  # noqa: PLR0913
+    @override
+    async def achat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -173,7 +176,8 @@ class OpenAIProvider(
             raise map_openai_error(e) from e
         return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
 
-    def chat_stream(  # noqa: PLR0913
+    @override
+    def chat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -215,7 +219,8 @@ class OpenAIProvider(
         except Exception as e:
             raise map_openai_error(e) from e
 
-    async def achat_stream(  # noqa: PLR0913
+    @override
+    async def achat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -259,10 +264,11 @@ class OpenAIProvider(
 
     # MARK: Embeddings
 
+    @override
     def embed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: OpenAIParams | None = None,
@@ -277,10 +283,11 @@ class OpenAIProvider(
             raise map_openai_error(e) from e
         return map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
 
+    @override
     async def aembed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: OpenAIParams | None = None,
@@ -297,10 +304,11 @@ class OpenAIProvider(
 
     # MARK: Responses API
 
+    @override
     def create_response(
         self,
         model: str,
-        input: str | Sequence[ResponseInputItem],  # noqa: A002
+        input: str | Sequence[ResponseInputItem],
         *,
         provider_params: OpenAIParams | None = None,
     ) -> ResponseResponse:
@@ -312,10 +320,11 @@ class OpenAIProvider(
             raise map_openai_error(e) from e
         return map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
 
+    @override
     async def acreate_response(
         self,
         model: str,
-        input: str | Sequence[ResponseInputItem],  # noqa: A002
+        input: str | Sequence[ResponseInputItem],
         *,
         provider_params: OpenAIParams | None = None,
     ) -> ResponseResponse:

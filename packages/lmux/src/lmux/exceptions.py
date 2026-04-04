@@ -12,8 +12,8 @@ class LmuxError(Exception):
         status_code: int | None = None,
     ) -> None:
         super().__init__(message)
-        self.provider = provider
-        self.status_code = status_code
+        self.provider: str | None = provider
+        self.status_code: int | None = status_code
 
 
 class AuthenticationError(LmuxError):
@@ -32,7 +32,7 @@ class RateLimitError(LmuxError):
         retry_after: float | None = None,
     ) -> None:
         super().__init__(message, provider=provider, status_code=status_code)
-        self.retry_after = retry_after
+        self.retry_after: float | None = retry_after
 
 
 class InvalidRequestError(LmuxError):

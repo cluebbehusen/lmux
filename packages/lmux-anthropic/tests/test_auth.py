@@ -16,7 +16,7 @@ class TestAnthropicEnvAuthProvider:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         provider = AnthropicEnvAuthProvider()
         with pytest.raises(AuthenticationError, match="ANTHROPIC_API_KEY") as exc_info:
-            provider.get_credentials()
+            _ = provider.get_credentials()
         assert exc_info.value.provider == "anthropic"
 
     async def test_aget_credentials_returns_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:

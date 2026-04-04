@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
     from google.auth.credentials import Credentials
@@ -55,15 +55,16 @@ class GCPVertexProvider(
         vertexai: bool = True,
     ) -> None:
         self._auth: GCPVertexAuth = auth or GCPVertexADCAuthProvider()
-        self._project = project
-        self._location = location
-        self._vertexai = vertexai
+        self._project: str | None = project
+        self._location: str | None = location
+        self._vertexai: bool = vertexai
         self._client: Client | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
     # MARK: Pricing
 
+    @override
     def register_pricing(self, model: str, pricing: ModelPricing) -> None:
         self._custom_pricing[model] = pricing
 
@@ -113,7 +114,8 @@ class GCPVertexProvider(
 
     # MARK: Chat
 
-    def chat(  # noqa: PLR0913
+    @override
+    def chat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -142,7 +144,8 @@ class GCPVertexProvider(
             raise map_gcp_vertex_error(e) from e
         return map_generate_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
-    async def achat(  # noqa: PLR0913
+    @override
+    async def achat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -171,7 +174,8 @@ class GCPVertexProvider(
             raise map_gcp_vertex_error(e) from e
         return map_generate_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
-    def chat_stream(  # noqa: PLR0913
+    @override
+    def chat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -208,7 +212,8 @@ class GCPVertexProvider(
         except Exception as e:
             raise map_gcp_vertex_error(e) from e
 
-    async def achat_stream(  # noqa: PLR0913
+    @override
+    async def achat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -243,10 +248,11 @@ class GCPVertexProvider(
 
     # MARK: Embeddings
 
+    @override
     def embed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: GCPVertexParams | None = None,
@@ -260,10 +266,11 @@ class GCPVertexProvider(
             raise map_gcp_vertex_error(e) from e
         return map_embed_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
+    @override
     async def aembed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: GCPVertexParams | None = None,

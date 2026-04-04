@@ -74,11 +74,11 @@ class TestModelPricing:
 
     def test_empty_tiers_rejected(self) -> None:
         with pytest.raises(ValueError, match="tiers must not be empty"):
-            ModelPricing(tiers=[])
+            _ = ModelPricing(tiers=[])
 
     def test_missing_base_tier_rejected(self) -> None:
         with pytest.raises(ValueError, match="first tier must have min_input_tokens == 0"):
-            ModelPricing(
+            _ = ModelPricing(
                 tiers=[
                     PricingTier(input_cost_per_token=0.000006, output_cost_per_token=0.00003, min_input_tokens=200_000)
                 ]
@@ -86,7 +86,7 @@ class TestModelPricing:
 
     def test_unordered_tiers_rejected(self) -> None:
         with pytest.raises(ValueError, match="tiers must be ordered by strictly ascending min_input_tokens"):
-            ModelPricing(
+            _ = ModelPricing(
                 tiers=[
                     PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015),
                     PricingTier(input_cost_per_token=0.000006, output_cost_per_token=0.00003, min_input_tokens=200_000),
@@ -96,7 +96,7 @@ class TestModelPricing:
 
     def test_duplicate_thresholds_rejected(self) -> None:
         with pytest.raises(ValueError, match="tiers must be ordered by strictly ascending min_input_tokens"):
-            ModelPricing(
+            _ = ModelPricing(
                 tiers=[
                     PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015),
                     PricingTier(input_cost_per_token=0.000006, output_cost_per_token=0.00003, min_input_tokens=200_000),
