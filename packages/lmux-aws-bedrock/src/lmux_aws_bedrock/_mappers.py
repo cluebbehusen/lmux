@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     )
 
 from lmux.exceptions import UnsupportedFeatureError
+from lmux.schema import add_additional_properties_false
 from lmux.types import (
     AssistantMessage,
     ChatChunk,
@@ -166,24 +167,6 @@ def map_tools(tools: list[Tool]) -> "ToolConfigurationTypeDef":
     return {"tools": tool_specs}
 
 
-def _add_additional_properties_false(schema: dict[str, Any]) -> None:
-    """Recursively set ``additionalProperties: false`` on all object-typed nodes.
-
-    Bedrock's Converse API requires this field on every ``object`` node in a
-    JSON Schema.  Many schema generators omit it, so we patch in-place before
-    sending to Bedrock.
-    """
-    if schema.get("type") == "object" and "additionalProperties" not in schema:
-        schema["additionalProperties"] = False
-    for value in schema.values():
-        if isinstance(value, dict):
-            _add_additional_properties_false(cast("dict[str, Any]", value))
-        elif isinstance(value, list):
-            for item in cast("list[Any]", value):
-                if isinstance(item, dict):
-                    _add_additional_properties_false(cast("dict[str, Any]", item))
-
-
 def map_response_format(rf: ResponseFormat) -> dict[str, object] | None:
     """Convert lmux ResponseFormat to Bedrock ``outputConfig`` fields."""
     if isinstance(rf, TextResponseFormat):
@@ -193,7 +176,7 @@ def map_response_format(rf: ResponseFormat) -> dict[str, object] | None:
         raise UnsupportedFeatureError(msg, provider="aws-bedrock")
 
     patched = copy.deepcopy(rf.json_schema)
-    _add_additional_properties_false(patched)
+    add_additional_properties_false(patched)
     json_schema: dict[str, str] = {
         "schema": json.dumps(patched, sort_keys=True),
         "name": rf.name,

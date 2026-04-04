@@ -1,6 +1,7 @@
 """Tests for Azure AI Foundry type mappers."""
 
 from typing import TYPE_CHECKING, Any
+from unittest.mock import MagicMock
 
 import pytest
 from openai.types.chat import ChatCompletion, ChatCompletionChunk, ChatCompletionMessage, ChatCompletionMessageToolCall
@@ -12,6 +13,7 @@ from openai.types.completion_usage import CompletionTokensDetails, CompletionUsa
 from openai.types.create_embedding_response import CreateEmbeddingResponse
 from openai.types.create_embedding_response import Usage as EmbUsage
 from openai.types.embedding import Embedding
+from pytest_mock import MockerFixture
 
 if TYPE_CHECKING:
     from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCallUnion
@@ -171,6 +173,11 @@ class TestMapTools:
 # MARK: map_response_format
 
 
+@pytest.fixture
+def mock_add_additional_properties_false(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_azure_foundry._mappers.add_additional_properties_false")
+
+
 class TestMapResponseFormat:
     def test_text(self) -> None:
         assert map_response_format(TextResponseFormat()) == {"type": "text"}
@@ -178,22 +185,27 @@ class TestMapResponseFormat:
     def test_json_object(self) -> None:
         assert map_response_format(JsonObjectResponseFormat()) == {"type": "json_object"}
 
-    def test_json_schema_minimal(self) -> None:
-        rf = JsonSchemaResponseFormat(name="test", json_schema={"type": "object"})
+    def test_json_schema_minimal(self, mock_add_additional_properties_false: MagicMock) -> None:
+        rf = JsonSchemaResponseFormat(
+            name="test",
+            json_schema={"type": "object", "additionalProperties": False},
+        )
         result = map_response_format(rf)
+        mock_add_additional_properties_false.assert_called_once()
         assert result == {
             "type": "json_schema",
             "json_schema": {"name": "test", "schema": {"type": "object", "additionalProperties": False}},
         }
 
-    def test_json_schema_full(self) -> None:
+    def test_json_schema_full(self, mock_add_additional_properties_false: MagicMock) -> None:
         rf = JsonSchemaResponseFormat(
             name="test",
-            json_schema={"type": "object"},
+            json_schema={"type": "object", "additionalProperties": False},
             description="A test",
             strict=True,
         )
         result = map_response_format(rf)
+        mock_add_additional_properties_false.assert_called_once()
         assert result == {
             "type": "json_schema",
             "json_schema": {
@@ -203,29 +215,6 @@ class TestMapResponseFormat:
                 "strict": True,
             },
         }
-
-    def test_json_schema_nested_objects_get_additional_properties(self) -> None:
-        rf = JsonSchemaResponseFormat(
-            name="nested",
-            json_schema={
-                "type": "object",
-                "properties": {
-                    "address": {
-                        "type": "object",
-                        "properties": {"street": {"type": "string"}},
-                    },
-                    "status": {"type": "string", "enum": ["active", "inactive"]},
-                },
-                "anyOf": [
-                    {"type": "object", "properties": {"name": {"type": "string"}}},
-                ],
-            },
-        )
-        result = map_response_format(rf)
-        schema: dict[str, Any] = result["json_schema"]["schema"]  # pyright: ignore[reportGeneralTypeIssues, reportTypedDictNotRequiredAccess, reportUnknownVariableType]
-        assert schema["additionalProperties"] is False
-        assert schema["properties"]["address"]["additionalProperties"] is False
-        assert schema["anyOf"][0]["additionalProperties"] is False
 
 
 # MARK: map_chat_completion
