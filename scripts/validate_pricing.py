@@ -14,20 +14,16 @@ Usage::
     python scripts/validate_pricing.py --provider openai  # single provider
 """
 
-from __future__ import annotations
-
 import argparse
 import importlib
 import json
 import sys
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -291,24 +287,24 @@ def _extract_genai_base_price(value: object) -> Decimal | None:
     if isinstance(value, (int, float)):
         return Decimal(str(value))
     if isinstance(value, dict):
-        base = value.get("base")
+        base: object = value.get("base")
         if base is not None:
-            return Decimal(str(base))
+            return Decimal(str(base))  # pyright: ignore[reportUnknownArgumentType]
     return None
 
 
 def _resolve_genai_prices(prices_data: object) -> dict[str, object] | None:
     """Resolve genai-prices data to a flat dict, handling conditional price lists."""
-    if isinstance(prices_data, list):
-        if not prices_data:
+    target: object = prices_data
+    if isinstance(target, list):
+        if not target:
             return None
-        last_entry: dict[str, object] = prices_data[-1]
-        if "prices" in last_entry:
-            nested = last_entry["prices"]
-            return nested if isinstance(nested, dict) else None
-        return last_entry
-    if isinstance(prices_data, dict):
-        return prices_data
+        last_entry = target[-1]
+        if not isinstance(last_entry, dict):
+            return None
+        target = last_entry.get("prices", last_entry)
+    if isinstance(target, dict):
+        return dict(target)  # pyright: ignore[reportUnknownArgumentType]
     return None
 
 
@@ -474,7 +470,7 @@ def compare_calculated_costs(
             if expected_total == 0:
                 continue
 
-            actual_total = lmux_cost.total_cost  # pyright: ignore[reportAttributeAccessIssue]
+            actual_total: float = lmux_cost.total_cost  # pyright: ignore[reportAttributeAccessIssue]
             pct = abs(Decimal(str(actual_total)) - Decimal(str(expected_total))) / Decimal(str(expected_total)) * 100
             if pct <= tolerance_pct:
                 continue
@@ -522,10 +518,9 @@ def print_report(
             has_issues = True
             _print(f"  {'!' * 3} PRICE MISMATCHES {'!' * 3}")
             for m in report.mismatches:
-                _print(
-                    f"    {m.model:40s} {m.field:12s}  lmux={m.lmux_value:>10.4f}  "
-                    f"ext={m.external_value:>10.4f}  diff={m.pct_diff:>6.2f}%"
-                )
+                lmux_s = f"lmux={m.lmux_value:>10.4f}"
+                ext_s = f"ext={m.external_value:>10.4f}"
+                _print(f"    {m.model:40s} {m.field:12s}  {lmux_s}  {ext_s}  diff={m.pct_diff:>6.2f}%")
 
         if report.missing_from_source:
             _print(f"  Not found in {report.source_name}:")
@@ -537,10 +532,9 @@ def print_report(
             has_issues = True
             _print(f"\n  {'!' * 3} CALCULATED COST MISMATCHES vs {source_name} {'!' * 3}")
             for m in mismatches:
-                _print(
-                    f"    {m.model:55s}  lmux=${m.lmux_value:>12.8f}  "
-                    f"ext=${m.external_value:>12.8f}  diff={m.pct_diff:>6.2f}%"
-                )
+                lmux_s = f"lmux=${m.lmux_value:>12.8f}"
+                ext_s = f"ext=${m.external_value:>12.8f}"
+                _print(f"    {m.model:55s}  {lmux_s}  {ext_s}  diff={m.pct_diff:>6.2f}%")
 
     if not has_issues:
         _print("\n  All prices verified against external sources.")
