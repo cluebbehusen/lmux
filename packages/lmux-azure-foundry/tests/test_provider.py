@@ -140,6 +140,7 @@ def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> Magi
 
 @pytest.fixture
 def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> AzureFoundryProvider:
+    assert mock_sync_create  # fixture activates the patch
     return AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
 
 
@@ -159,6 +160,7 @@ def mock_async_create(mock_async_client: MagicMock, mocker: MockerFixture) -> Ma
 
 @pytest.fixture
 def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> AzureFoundryProvider:
+    assert mock_async_create  # fixture activates the patch
     return AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
 
 
@@ -363,6 +365,7 @@ class TestChat:
         provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
         with pytest.raises(AuthenticationError):
             provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        failing_sync_create.assert_called_once()
 
     def test_chat_cost_calculated(
         self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
@@ -474,6 +477,7 @@ class TestAchat:
         provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
         with pytest.raises(AuthenticationError):
             await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        failing_async_create.assert_called_once()
 
     async def test_achat_exception_mapping(
         self,
@@ -553,6 +557,7 @@ class TestChatStream:
         provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
         with pytest.raises(ProviderError):
             list(provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
+        failing_sync_create_server.assert_called_once()
 
     def test_stream_exception_on_create(
         self,
@@ -645,6 +650,7 @@ class TestAchatStream:
         with pytest.raises(ProviderError):
             async for _ in provider.achat_stream("gpt-4o", [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
+        failing_async_create_server.assert_called_once()
 
     async def test_exception_on_create(
         self,
@@ -745,6 +751,7 @@ class TestEmbed:
         provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
         with pytest.raises(InvalidRequestError):
             provider.embed("text-embedding-3-small", "hello")
+        failing_sync_create_bad_request.assert_called_once()
 
     async def test_aembed_client_creation_error_mapped(
         self,
@@ -754,6 +761,7 @@ class TestEmbed:
         provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
         with pytest.raises(InvalidRequestError):
             await provider.aembed("text-embedding-3-small", "hello")
+        failing_async_create_bad_request.assert_called_once()
 
     def test_embed_exception_mapping(
         self,

@@ -120,6 +120,7 @@ def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> Magi
 
 @pytest.fixture
 def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> AnthropicProvider:
+    assert mock_sync_create  # fixture activates the patch
     return AnthropicProvider(auth=fake_auth)
 
 
@@ -138,6 +139,7 @@ def mock_async_create(mock_async_client: MagicMock, mocker: MockerFixture) -> Ma
 
 @pytest.fixture
 def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> AnthropicProvider:
+    assert mock_async_create  # fixture activates the patch
     return AnthropicProvider(auth=fake_auth)
 
 
@@ -960,6 +962,7 @@ class TestCustomDefaultMaxTokens:
         provider = AnthropicProvider(auth=fake_auth, default_max_tokens=8192)
         provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
+        mock_sync_create.assert_called_once()
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["max_tokens"] == 8192
 

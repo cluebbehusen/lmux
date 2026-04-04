@@ -33,9 +33,9 @@ class FakeAuth:
     """Fake auth provider for testing."""
 
     def __init__(self, async_session: MagicMock | None = None) -> None:
-        self.async_session = async_session or MagicMock()
-        self.get_credentials_calls = 0
-        self.aget_credentials_calls = 0
+        self.async_session: MagicMock = async_session or MagicMock()
+        self.get_credentials_calls: int = 0
+        self.aget_credentials_calls: int = 0
 
     def get_credentials(self) -> MagicMock:
         self.get_credentials_calls += 1
@@ -94,7 +94,9 @@ def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> Magi
 
 @pytest.fixture
 def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> BedrockProvider:
-    return BedrockProvider(auth=fake_auth)
+    provider = BedrockProvider(auth=fake_auth)
+    mock_sync_create.assert_not_called()  # client created lazily, not at init
+    return provider
 
 
 @pytest.fixture
@@ -117,7 +119,9 @@ def mock_async_create(mock_async_client_ctx: AsyncMock, mocker: MockerFixture) -
 
 @pytest.fixture
 def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> BedrockProvider:
-    return BedrockProvider(auth=fake_auth)
+    provider = BedrockProvider(auth=fake_auth)
+    mock_async_create.assert_not_called()  # client created lazily, not at init
+    return provider
 
 
 @pytest.fixture
@@ -917,4 +921,5 @@ class TestPreload:
         preload()  # should not raise; aiobotocore is installed in dev
 
     def test_preload_without_aiobotocore(self, mock_missing_aiobotocore: None) -> None:
+        assert mock_missing_aiobotocore is None  # side-effect fixture: patches sys.modules
         preload()  # should not raise when aiobotocore is missing

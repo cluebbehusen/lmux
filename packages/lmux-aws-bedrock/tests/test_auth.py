@@ -39,6 +39,7 @@ class TestBedrockEnvAuthProvider:
         mock_aiobotocore_get_session.assert_called_once_with()
 
     async def test_aget_raises_import_error(self, mock_missing_aiobotocore: None) -> None:
+        assert mock_missing_aiobotocore is None  # side-effect fixture: patches sys.modules
         provider = BedrockEnvAuthProvider()
 
         with pytest.raises(ImportError, match=r"\[async\] extra group is required for async operations.*"):
@@ -86,6 +87,7 @@ class TestBedrockSessionAuthProvider:
         )
 
     async def test_aget_raises_import_error(self, mock_missing_aiobotocore: None) -> None:
+        assert mock_missing_aiobotocore is None  # side-effect fixture: patches sys.modules
         provider = BedrockSessionAuthProvider()
 
         with pytest.raises(ImportError, match=r"\[async\] extra group is required for async operations.*"):

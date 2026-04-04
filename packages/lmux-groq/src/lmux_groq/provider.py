@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
     import groq
@@ -41,9 +41,9 @@ class GroqProvider(
         max_retries: int | None = None,
     ) -> None:
         self._auth: AuthProvider[str] = auth or GroqEnvAuthProvider()
-        self._base_url = base_url
-        self._timeout = timeout
-        self._max_retries = max_retries
+        self._base_url: str | None = base_url
+        self._timeout: float | None = timeout
+        self._max_retries: int | None = max_retries
         self._sync_client: groq.Groq | None = None
         self._async_client: groq.AsyncGroq | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -51,6 +51,7 @@ class GroqProvider(
 
     # MARK: Pricing
 
+    @override
     def register_pricing(self, model: str, pricing: ModelPricing) -> None:
         self._custom_pricing[model] = pricing
 
@@ -91,7 +92,8 @@ class GroqProvider(
 
     # MARK: Chat
 
-    def chat(  # noqa: PLR0913
+    @override
+    def chat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -124,7 +126,8 @@ class GroqProvider(
             raise map_groq_error(e) from e
         return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
 
-    async def achat(  # noqa: PLR0913
+    @override
+    async def achat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -157,7 +160,8 @@ class GroqProvider(
             raise map_groq_error(e) from e
         return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
 
-    def chat_stream(  # noqa: PLR0913
+    @override
+    def chat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -199,7 +203,8 @@ class GroqProvider(
         except Exception as e:
             raise map_groq_error(e) from e
 
-    async def achat_stream(  # noqa: PLR0913
+    @override
+    async def achat_stream(
         self,
         model: str,
         messages: Sequence[Message],

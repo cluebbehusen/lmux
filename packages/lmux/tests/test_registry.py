@@ -1,7 +1,7 @@
 """Tests for the prefix-based routing registry."""
 
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import Literal
+from typing import Literal, override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -192,7 +192,8 @@ class TestAcreateResponse:
 class CompletionOnlyProvider(CompletionProvider[None]):
     """A provider that only supports chat, not embed or responses."""
 
-    def chat(  # noqa: PLR0913
+    @override
+    def chat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -210,7 +211,8 @@ class CompletionOnlyProvider(CompletionProvider[None]):
             content="ok", usage=Usage(input_tokens=1, output_tokens=1), cost=None, model=model, provider="test"
         )
 
-    async def achat(  # noqa: PLR0913
+    @override
+    async def achat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -228,7 +230,8 @@ class CompletionOnlyProvider(CompletionProvider[None]):
             content="ok", usage=Usage(input_tokens=1, output_tokens=1), cost=None, model=model, provider="test"
         )
 
-    def chat_stream(  # noqa: PLR0913
+    @override
+    def chat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -244,7 +247,8 @@ class CompletionOnlyProvider(CompletionProvider[None]):
     ) -> Iterator[ChatChunk]:
         yield ChatChunk(delta="ok")  # pragma: no cover
 
-    async def achat_stream(  # noqa: PLR0913
+    @override
+    async def achat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -264,10 +268,11 @@ class CompletionOnlyProvider(CompletionProvider[None]):
 class EmbeddingOnlyProvider(EmbeddingProvider[None]):
     """A provider that only supports embed, not chat or responses."""
 
+    @override
     def embed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: None = None,
@@ -276,10 +281,11 @@ class EmbeddingOnlyProvider(EmbeddingProvider[None]):
             embeddings=[[0.1]], usage=Usage(input_tokens=1, output_tokens=0), cost=None, model=model, provider="test"
         )
 
+    @override
     async def aembed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: None = None,
@@ -353,7 +359,8 @@ class RecordingProvider(CompletionProvider[FakeParams]):
     last_params: BaseProviderParams | None = None
     last_reasoning_effort: Literal["low", "medium", "high"] | None = None
 
-    def chat(  # noqa: PLR0913
+    @override
+    def chat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -373,7 +380,8 @@ class RecordingProvider(CompletionProvider[FakeParams]):
             content="ok", usage=Usage(input_tokens=1, output_tokens=1), cost=None, model=model, provider="rec"
         )
 
-    async def achat(  # noqa: PLR0913
+    @override
+    async def achat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -392,7 +400,8 @@ class RecordingProvider(CompletionProvider[FakeParams]):
             content="ok", usage=Usage(input_tokens=1, output_tokens=1), cost=None, model=model, provider="rec"
         )
 
-    def chat_stream(  # noqa: PLR0913
+    @override
+    def chat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -409,7 +418,8 @@ class RecordingProvider(CompletionProvider[FakeParams]):
         self.last_params = provider_params  # pragma: no cover
         yield ChatChunk(delta="ok")  # pragma: no cover
 
-    async def achat_stream(  # noqa: PLR0913
+    @override
+    async def achat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -428,6 +438,7 @@ class RecordingProvider(CompletionProvider[FakeParams]):
 
 
 class _CloseableProvider(MockProvider, AsyncCloseable):
+    @override
     async def aclose(self) -> None: ...  # pragma: no cover
 
 

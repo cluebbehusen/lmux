@@ -115,3 +115,4 @@ class TestAzureFoundryTokenAuthProvider:
         result = await provider.aget_credentials()
 
         assert result is mock_token_fn
+        mock_credential_cls.assert_called_once()

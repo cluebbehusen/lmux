@@ -101,6 +101,7 @@ def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> Magi
 
 @pytest.fixture
 def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> GroqProvider:
+    assert mock_sync_create is not None
     return GroqProvider(auth=fake_auth)
 
 
@@ -119,6 +120,7 @@ def mock_async_create(mock_async_client: MagicMock, mocker: MockerFixture) -> Ma
 
 @pytest.fixture
 def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> GroqProvider:
+    assert mock_async_create is not None
     return GroqProvider(auth=fake_auth)
 
 

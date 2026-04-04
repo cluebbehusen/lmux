@@ -3,7 +3,7 @@
 import json
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import AbstractAsyncContextManager
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
     import boto3
@@ -55,14 +55,15 @@ class BedrockProvider(
         endpoint_url: str | None = None,
     ) -> None:
         self._auth: AuthProvider[boto3.Session, AioSession] = auth or BedrockEnvAuthProvider()
-        self._region = region
-        self._endpoint_url = endpoint_url
+        self._region: str | None = region
+        self._endpoint_url: str | None = endpoint_url
         self._sync_client: BedrockRuntimeClient | None = None
         self._async_session: AioSession | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
     # MARK: Pricing
 
+    @override
     def register_pricing(self, model: str, pricing: ModelPricing) -> None:
         self._custom_pricing[model] = pricing
 
@@ -92,7 +93,8 @@ class BedrockProvider(
 
     # MARK: Chat
 
-    def chat(  # noqa: PLR0913
+    @override
+    def chat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -125,7 +127,8 @@ class BedrockProvider(
             raise map_bedrock_error(e) from e
         return map_converse_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
-    async def achat(  # noqa: PLR0913
+    @override
+    async def achat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -158,7 +161,8 @@ class BedrockProvider(
             raise map_bedrock_error(e) from e
         return map_converse_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
-    def chat_stream(  # noqa: PLR0913
+    @override
+    def chat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -201,7 +205,8 @@ class BedrockProvider(
         except Exception as e:
             raise map_bedrock_error(e) from e
 
-    async def achat_stream(  # noqa: PLR0913
+    @override
+    async def achat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -242,10 +247,11 @@ class BedrockProvider(
 
     # MARK: Embeddings
 
+    @override
     def embed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: BedrockParams | None = None,
@@ -286,10 +292,11 @@ class BedrockProvider(
             provider=PROVIDER_NAME,
         )
 
+    @override
     async def aembed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: BedrockParams | None = None,

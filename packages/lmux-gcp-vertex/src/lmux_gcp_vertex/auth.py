@@ -37,7 +37,7 @@ class GCPVertexADCAuthProvider:
     """
 
     def __init__(self, *, scopes: list[str] | None = None) -> None:
-        self._scopes = scopes or ["https://www.googleapis.com/auth/cloud-platform"]
+        self._scopes: list[str] = scopes or ["https://www.googleapis.com/auth/cloud-platform"]
 
     def get_credentials(self) -> "Credentials":
         import google.auth  # noqa: PLC0415
@@ -64,8 +64,8 @@ class GCPVertexServiceAccountAuthProvider:
         service_account_file: str,
         scopes: list[str] | None = None,
     ) -> None:
-        self._service_account_file = service_account_file
-        self._scopes = scopes or ["https://www.googleapis.com/auth/cloud-platform"]
+        self._service_account_file: str = service_account_file
+        self._scopes: list[str] = scopes or ["https://www.googleapis.com/auth/cloud-platform"]
 
     def get_credentials(self) -> "Credentials":
         from google.oauth2 import service_account  # noqa: PLC0415
@@ -86,8 +86,8 @@ class GCPVertexAPIKeyAuthProvider:
     """
 
     def __init__(self, *, api_key: str | None = None, env_var: str = "GOOGLE_API_KEY") -> None:
-        self._api_key = api_key
-        self._env_var = env_var
+        self._api_key: str | None = api_key
+        self._env_var: str = env_var
 
     def get_credentials(self) -> str:
         if self._api_key is not None:

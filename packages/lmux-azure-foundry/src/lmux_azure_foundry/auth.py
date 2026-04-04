@@ -73,7 +73,7 @@ class AzureFoundryTokenAuthProvider:
         *,
         scopes: tuple[str, ...] = (DEFAULT_SCOPE,),
     ) -> None:
-        self._scopes = scopes
+        self._scopes: tuple[str, ...] = scopes
         self._token_provider: Callable[[], str] | None = None
 
     def _ensure_token_provider(self) -> Callable[[], str]:

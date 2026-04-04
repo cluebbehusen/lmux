@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
     import anthropic
@@ -50,10 +50,10 @@ class AnthropicProvider(
         default_max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> None:
         self._auth: AuthProvider[str] = auth or AnthropicEnvAuthProvider()
-        self._base_url = base_url
-        self._timeout = timeout
-        self._max_retries = max_retries
-        self._default_max_tokens = default_max_tokens
+        self._base_url: str | None = base_url
+        self._timeout: float | None = timeout
+        self._max_retries: int | None = max_retries
+        self._default_max_tokens: int = default_max_tokens
         self._sync_client: anthropic.Anthropic | None = None
         self._async_client: anthropic.AsyncAnthropic | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -61,6 +61,7 @@ class AnthropicProvider(
 
     # MARK: Pricing
 
+    @override
     def register_pricing(self, model: str, pricing: ModelPricing) -> None:
         self._custom_pricing[model] = pricing
 
@@ -101,7 +102,8 @@ class AnthropicProvider(
 
     # MARK: Chat
 
-    def chat(  # noqa: PLR0913
+    @override
+    def chat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -135,7 +137,8 @@ class AnthropicProvider(
         response = map_message_response(message, PROVIDER_NAME, self._calculate_cost)
         return self._apply_multipliers(response, provider_params)
 
-    async def achat(  # noqa: PLR0913
+    @override
+    async def achat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -169,7 +172,8 @@ class AnthropicProvider(
         response = map_message_response(message, PROVIDER_NAME, self._calculate_cost)
         return self._apply_multipliers(response, provider_params)
 
-    def chat_stream(  # noqa: PLR0913
+    @override
+    def chat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -226,7 +230,8 @@ class AnthropicProvider(
         except Exception as e:
             raise map_anthropic_error(e) from e
 
-    async def achat_stream(  # noqa: PLR0913
+    @override
+    async def achat_stream(
         self,
         model: str,
         messages: Sequence[Message],

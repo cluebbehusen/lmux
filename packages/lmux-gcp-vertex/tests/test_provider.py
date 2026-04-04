@@ -138,11 +138,13 @@ def mock_create(mock_client: MagicMock, mocker: MockerFixture) -> MagicMock:
 
 @pytest.fixture
 def sync_provider(fake_auth: FakeAuth, mock_create: MagicMock) -> GCPVertexProvider:
+    mock_create.assert_not_called()
     return GCPVertexProvider(auth=fake_auth)
 
 
 @pytest.fixture
 def async_provider(fake_auth: FakeAuth, mock_create: MagicMock) -> GCPVertexProvider:
+    mock_create.assert_not_called()
     return GCPVertexProvider(auth=fake_auth)
 
 

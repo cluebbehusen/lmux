@@ -4,7 +4,7 @@
 
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, override
 
 from lmux.cost import ModelPricing
 from lmux.exceptions import LmuxError
@@ -52,21 +52,22 @@ class MockProvider(
         response_responses: list[ResponseResponse] | None = None,
         errors: list[LmuxError] | None = None,
     ) -> None:
-        self._chat_responses = chat_responses or []
-        self._chat_stream_responses = chat_stream_responses or []
-        self._embed_responses = embed_responses or []
-        self._response_responses = response_responses or []
-        self._errors = errors or []
-        self._error_index = 0
-        self._chat_index = 0
-        self._chat_stream_index = 0
-        self._embed_index = 0
-        self._response_index = 0
+        self._chat_responses: list[ChatResponse] = chat_responses or []
+        self._chat_stream_responses: list[list[ChatChunk]] = chat_stream_responses or []
+        self._embed_responses: list[EmbeddingResponse] = embed_responses or []
+        self._response_responses: list[ResponseResponse] = response_responses or []
+        self._errors: list[LmuxError] = errors or []
+        self._error_index: int = 0
+        self._chat_index: int = 0
+        self._chat_stream_index: int = 0
+        self._embed_index: int = 0
+        self._response_index: int = 0
         self._custom_pricing: dict[str, ModelPricing] = {}
         self.calls: list[MockCallRecord] = []
 
     # MARK: PricingProvider
 
+    @override
     def register_pricing(self, model: str, pricing: ModelPricing) -> None:
         self._custom_pricing[model] = pricing
 
@@ -110,7 +111,8 @@ class MockProvider(
 
     # MARK: CompletionProvider[None]
 
-    def chat(  # noqa: PLR0913
+    @override
+    def chat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -128,7 +130,8 @@ class MockProvider(
         self.calls.append(MockCallRecord(method="chat", model=model, messages=messages))
         return self._next_chat()
 
-    async def achat(  # noqa: PLR0913
+    @override
+    async def achat(
         self,
         model: str,
         messages: Sequence[Message],
@@ -146,7 +149,8 @@ class MockProvider(
         self.calls.append(MockCallRecord(method="achat", model=model, messages=messages))
         return self._next_chat()
 
-    def chat_stream(  # noqa: PLR0913
+    @override
+    def chat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -164,7 +168,8 @@ class MockProvider(
         self.calls.append(MockCallRecord(method="chat_stream", model=model, messages=messages))
         yield from self._next_chat_stream()
 
-    async def achat_stream(  # noqa: PLR0913
+    @override
+    async def achat_stream(
         self,
         model: str,
         messages: Sequence[Message],
@@ -185,10 +190,11 @@ class MockProvider(
 
     # MARK: EmbeddingProvider[None]
 
+    @override
     def embed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: None = None,
@@ -197,10 +203,11 @@ class MockProvider(
         self.calls.append(MockCallRecord(method="embed", model=model, text=input))
         return self._next_embed()
 
+    @override
     async def aembed(
         self,
         model: str,
-        input: str | list[str],  # noqa: A002
+        input: str | list[str],
         *,
         dimensions: int | None = None,
         provider_params: None = None,
@@ -211,10 +218,11 @@ class MockProvider(
 
     # MARK: ResponsesProvider[None]
 
+    @override
     def create_response(
         self,
         model: str,
-        input: str | Sequence[ResponseInputItem],  # noqa: A002
+        input: str | Sequence[ResponseInputItem],
         *,
         provider_params: None = None,
     ) -> ResponseResponse:
@@ -222,10 +230,11 @@ class MockProvider(
         self.calls.append(MockCallRecord(method="create_response", model=model, input_data=input))
         return self._next_response()
 
+    @override
     async def acreate_response(
         self,
         model: str,
-        input: str | Sequence[ResponseInputItem],  # noqa: A002
+        input: str | Sequence[ResponseInputItem],
         *,
         provider_params: None = None,
     ) -> ResponseResponse:

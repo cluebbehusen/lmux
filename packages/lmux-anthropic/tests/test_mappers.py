@@ -1,5 +1,6 @@
 """Tests for Anthropic type mappers."""
 
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -45,7 +46,7 @@ from lmux_anthropic._mappers import (
 
 @pytest.fixture
 def cost_fn() -> CostCalculator:
-    def _cost_fn(model: str, usage: Usage) -> Cost:
+    def _cost_fn(_model: str, _usage: Usage) -> Cost:
         return Cost(input_cost=0.01, output_cost=0.02, total_cost=0.03)
 
     return _cost_fn
@@ -53,7 +54,7 @@ def cost_fn() -> CostCalculator:
 
 @pytest.fixture
 def none_cost_fn() -> CostCalculator:
-    def _cost_fn(model: str, usage: Usage) -> None:
+    def _cost_fn(_model: str, _usage: Usage) -> None:
         return None
 
     return _cost_fn
@@ -282,6 +283,57 @@ class TestMapResponseFormat:
                 "schema": {"type": "object", "additionalProperties": False, "properties": {}},
             }
         }
+
+    def test_json_schema_patches_nested_objects(self) -> None:
+        rf = JsonSchemaResponseFormat(
+            name="test",
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "inner": {
+                        "type": "object",
+                        "properties": {"value": {"type": "string"}},
+                    }
+                },
+            },
+        )
+        result = map_response_format(rf)
+        assert result is not None
+        fmt = cast("dict[str, Any]", cast("object", result["format"]))  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        schema = cast("dict[str, Any]", fmt["schema"])
+        assert schema["additionalProperties"] is False
+        assert schema["properties"]["inner"]["additionalProperties"] is False
+
+    def test_json_schema_patches_objects_inside_arrays(self) -> None:
+        rf = JsonSchemaResponseFormat(
+            name="test",
+            json_schema={
+                "type": "object",
+                "anyOf": [
+                    {"type": "object", "properties": {"a": {"type": "string"}}},
+                    {"type": "object", "properties": {"b": {"type": "string"}}},
+                ],
+                "required": ["a"],  # list of non-dict items to cover the skip branch
+            },
+        )
+        result = map_response_format(rf)
+        assert result is not None
+        fmt = cast("dict[str, Any]", cast("object", result["format"]))  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        schema = cast("dict[str, Any]", fmt["schema"])
+        assert schema["additionalProperties"] is False
+        assert schema["anyOf"][0]["additionalProperties"] is False
+        assert schema["anyOf"][1]["additionalProperties"] is False
+
+    def test_json_schema_preserves_existing_additional_properties(self) -> None:
+        rf = JsonSchemaResponseFormat(
+            name="test",
+            json_schema={"type": "object", "additionalProperties": True},
+        )
+        result = map_response_format(rf)
+        assert result is not None
+        fmt = cast("dict[str, Any]", cast("object", result["format"]))  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        schema = cast("dict[str, Any]", fmt["schema"])
+        assert schema["additionalProperties"] is True
 
 
 # MARK: map_message_response
