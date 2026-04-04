@@ -287,7 +287,7 @@ def _extract_genai_base_price(value: object) -> Decimal | None:
     if isinstance(value, (int, float)):
         return Decimal(str(value))
     if isinstance(value, dict):
-        base: object = value.get("base")
+        base: object = value.get("base")  # pyright: ignore[reportUnknownVariableType]
         if base is not None:
             return Decimal(str(base))  # pyright: ignore[reportUnknownArgumentType]
     return None
@@ -299,10 +299,10 @@ def _resolve_genai_prices(prices_data: object) -> dict[str, object] | None:
     if isinstance(target, list):
         if not target:
             return None
-        last_entry = target[-1]
+        last_entry: object = target[-1]  # pyright: ignore[reportUnknownVariableType]
         if not isinstance(last_entry, dict):
             return None
-        target = last_entry.get("prices", last_entry)
+        target = last_entry.get("prices", last_entry)  # pyright: ignore[reportUnknownVariableType]
     if isinstance(target, dict):
         return dict(target)  # pyright: ignore[reportUnknownArgumentType]
     return None
@@ -470,8 +470,8 @@ def compare_calculated_costs(
             if expected_total == 0:
                 continue
 
-            actual_total: float = lmux_cost.total_cost  # pyright: ignore[reportAttributeAccessIssue]
-            pct = abs(Decimal(str(actual_total)) - Decimal(str(expected_total))) / Decimal(str(expected_total)) * 100
+            actual_total: float = lmux_cost.total_cost  # pyright: ignore[reportAttributeAccessIssue, reportUnknownVariableType]
+            pct = abs(Decimal(str(actual_total)) - Decimal(str(expected_total))) / Decimal(str(expected_total)) * 100  # pyright: ignore[reportUnknownArgumentType]
             if pct <= tolerance_pct:
                 continue
 
@@ -481,7 +481,7 @@ def compare_calculated_costs(
                 Mismatch(
                     model=f"{model_id} ({in_tok:,}in/{out_tok:,}out/{cache_tok:,}cache){tier_note}",
                     field="total_cost",
-                    lmux_value=Decimal(str(round(actual_total, 8))),
+                    lmux_value=Decimal(str(round(actual_total, 8))),  # pyright: ignore[reportUnknownArgumentType]
                     external_value=Decimal(str(round(expected_total, 8))),
                     pct_diff=pct,
                 )
