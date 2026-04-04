@@ -576,13 +576,6 @@ def compare_tiered_prices(
 # ---------------------------------------------------------------------------
 
 
-def _get_tiered_models(module_name: str) -> set[str]:
-    """Return set of model IDs that have multi-tier pricing."""
-    mod = importlib.import_module(module_name)
-    pricing_dict: dict[str, Any] = mod._PRICING
-    return {model_id for model_id, mp in pricing_dict.items() if len(mp.tiers) > 1}
-
-
 def _find_provider_calc_fn(module_name: str) -> Callable[[str, object], object] | None:
     """Find the provider-specific calculate function (e.g. calculate_openai_cost)."""
     mod = importlib.import_module(module_name)
@@ -593,11 +586,32 @@ def _find_provider_calc_fn(module_name: str) -> Callable[[str, object], object] 
     return None
 
 
+def _resolve_ext_price(
+    model_id: str,
+    input_tokens: int,
+    base_price: PricePoint,
+    external_tiered: dict[str, TieredPricing] | None,
+) -> PricePoint:
+    """Pick the right external PricePoint for a given input token count, considering tiers."""
+    if external_tiered is None:
+        return base_price
+    tiered = external_tiered.get(model_id)
+    if tiered is None:
+        return base_price
+    # Pick highest tier whose threshold is exceeded (same logic as lmux's _resolve_tier)
+    best = base_price
+    for threshold, pp in tiered.tiers:
+        if input_tokens > threshold:
+            best = pp
+    return best
+
+
 def compare_calculated_costs(
     module_name: str,
     lmux_prices: dict[str, PricePoint],
     external_prices: dict[str, PricePoint],
     tolerance_pct: Decimal,
+    external_tiered: dict[str, TieredPricing] | None = None,
 ) -> list[Mismatch]:
     """Compare lmux's calculate_*_cost() output against external prices for sample usage scenarios."""
     calc_fn = _find_provider_calc_fn(module_name)
@@ -606,7 +620,6 @@ def compare_calculated_costs(
 
     from lmux.types import Usage  # noqa: PLC0415
 
-    tiered_models = _get_tiered_models(module_name)
     mismatches: list[Mismatch] = []
     scenarios = [
         (1000, 500, 0),
@@ -617,7 +630,6 @@ def compare_calculated_costs(
     for model_id in lmux_prices:
         if model_id not in external_prices:
             continue
-        ext = external_prices[model_id]
 
         for in_tok, out_tok, cache_tok in scenarios:
             usage = Usage(
@@ -629,6 +641,7 @@ def compare_calculated_costs(
             if lmux_cost is None:
                 continue
 
+            ext = _resolve_ext_price(model_id, in_tok, external_prices[model_id], external_tiered)
             billable_input = in_tok - cache_tok
             expected_input_cost = float(ext.input) / MILLION * billable_input
             expected_output_cost = float(ext.output) / MILLION * out_tok
@@ -642,11 +655,9 @@ def compare_calculated_costs(
             if pct <= tolerance_pct:
                 continue
 
-            is_tiered = model_id in tiered_models
-            tier_note = " [TIERED]" if is_tiered and actual_total > expected_total else ""
             mismatches.append(
                 Mismatch(
-                    model=f"{model_id} ({in_tok:,}in/{out_tok:,}out/{cache_tok:,}cache){tier_note}",
+                    model=f"{model_id} ({in_tok:,}in/{out_tok:,}out/{cache_tok:,}cache)",
                     field="total_cost",
                     lmux_value=Decimal(str(round(actual_total, 8))),  # pyright: ignore[reportUnknownArgumentType]
                     external_value=Decimal(str(round(expected_total, 8))),
@@ -809,15 +820,18 @@ def _validate_provider(
 
     lmux_tiered = extract_lmux_tiered_pricing(spec.module)
 
+    ext_tiered: dict[str, TieredPricing] | None = None
     if ext_data.litellm is not None:
         ext_prices = _lookup_all(litellm_lookup, ext_data.litellm, model_ids, spec.litellm_prefixes)
         reports.append(_compare_against_source("LiteLLM", ext_prices, lmux_prices, tolerance))
-        if not skip_calculated and ext_prices:
-            calc_mismatches["LiteLLM"] = compare_calculated_costs(spec.module, lmux_prices, ext_prices, tolerance)
         # Tiered pricing comparison (LiteLLM only — OpenRouter/genai-prices lack tier data)
         if lmux_tiered:
             ext_tiered = _litellm_lookup_tiered(ext_data.litellm, lmux_tiered, spec.litellm_prefixes)
             reports.append(compare_tiered_prices(lmux_tiered, ext_tiered, tolerance))
+        if not skip_calculated and ext_prices:
+            calc_mismatches["LiteLLM"] = compare_calculated_costs(
+                spec.module, lmux_prices, ext_prices, tolerance, ext_tiered
+            )
 
     if ext_data.openrouter is not None:
         ext_prices = _lookup_all(openrouter_lookup, ext_data.openrouter, model_ids, spec.openrouter_prefixes)
