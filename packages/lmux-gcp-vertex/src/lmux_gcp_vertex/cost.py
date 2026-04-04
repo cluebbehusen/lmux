@@ -326,6 +326,76 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    # ── DeepSeek (via Vertex AI) ─────────────────────────────────
+    "deepseek-v3-2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.56),
+                output_cost_per_token=per_million_tokens(1.68),
+                cache_read_cost_per_token=per_million_tokens(0.056),
+            ),
+        ],
+    ),
+    "deepseek-v3-1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.60),
+                output_cost_per_token=per_million_tokens(1.70),
+                cache_read_cost_per_token=per_million_tokens(0.06),
+            ),
+        ],
+    ),
+    "deepseek-r1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.35),
+                output_cost_per_token=per_million_tokens(5.40),
+            ),
+        ],
+    ),
+    "deepseek-ocr": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.30),
+                output_cost_per_token=per_million_tokens(1.20),
+            ),
+        ],
+    ),
+    # ── Meta Llama (additional, via Vertex AI) ────────────────
+    "llama-3.1-405b": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(16.00),
+            ),
+        ],
+    ),
+    # ── Mistral (additional, via Vertex AI) ───────────────────
+    "mistral-ocr": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.0005),
+                output_cost_per_token=per_million_tokens(0.0005),
+            ),
+        ],
+    ),
+    # ── Google Gemini (additional) ────────────────────────────
+    "gemini-2.5-flash-image": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.30),
+                output_cost_per_token=per_million_tokens(2.50),
+            ),
+        ],
+    ),
+    "gemini-2.5-pro-computer-use-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+            ),
+        ],
+    ),
     # ── Embedding models ───────────────────────────────────────
     "gemini-embedding-2-preview": ModelPricing(
         tiers=[

@@ -1451,6 +1451,14 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "mistral.pixtral-large-2502": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(6.0),
+            ),
+        ],
+    ),
     "mistral.mixtral-8x7b-instruct-v0:1": ModelPricing(
         tiers=[
             PricingTier(
