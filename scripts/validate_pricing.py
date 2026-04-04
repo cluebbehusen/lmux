@@ -194,14 +194,25 @@ def _litellm_entry_to_price(entry: dict[str, object]) -> PricePoint | None:
     )
 
 
+_BEDROCK_VERSION_SUFFIX = re.compile(r"-v\d+$")
+
+
 def _litellm_build_candidates(model_id: str, provider_prefixes: list[str]) -> list[str]:
     """Build candidate keys to try when looking up a model in LiteLLM."""
+    base_ids = [model_id]
+    # Strip Bedrock version suffix (e.g. -v1) to match date-versioned LiteLLM keys
+    # e.g. anthropic.claude-sonnet-4-v1 → anthropic.claude-sonnet-4
+    stripped = _BEDROCK_VERSION_SUFFIX.sub("", model_id)
+    if stripped != model_id:
+        base_ids.append(stripped)
+
     candidates: list[str] = []
-    for pfx in provider_prefixes:
-        sep = "" if pfx.endswith("/") or pfx == "" else "/"
-        candidates.append(f"{pfx}{sep}{model_id}")
-    if model_id not in candidates:
-        candidates.append(model_id)
+    for mid in base_ids:
+        for pfx in provider_prefixes:
+            sep = "" if pfx.endswith("/") or pfx == "" else "/"
+            candidates.append(f"{pfx}{sep}{mid}")
+        if mid not in candidates:
+            candidates.append(mid)
     # Also try with :0 suffix (common in Bedrock model IDs)
     candidates += [c + ":0" for c in candidates if not c.endswith(":0")]
     return candidates
@@ -221,7 +232,12 @@ def _litellm_find_entry(
             return data[candidate]
 
     # Case-insensitive fallback
-    model_lower = model_id.lower()
+    # Build model ID variants to try as prefixes (original + stripped version suffix)
+    model_variants = [model_id.lower()]
+    stripped = _BEDROCK_VERSION_SUFFIX.sub("", model_id).lower()
+    if stripped != model_variants[0]:
+        model_variants.append(stripped)
+
     for key, entry in data.items():
         key_lower = key.lower()
         for candidate in candidates:
@@ -230,10 +246,29 @@ def _litellm_find_entry(
         for pfx in provider_prefixes:
             sep = "" if pfx.endswith("/") or pfx == "" else "/"
             full_prefix = f"{pfx}{sep}".lower()
-            if key_lower.startswith(full_prefix) and key_lower[len(full_prefix) :].startswith(model_lower):
+            key_suffix = key_lower[len(full_prefix) :]
+            if not key_lower.startswith(full_prefix):
+                continue
+            for variant in model_variants:
+                if not key_suffix.startswith(variant):
+                    continue
+                # For stripped variants, ensure the remainder is a date/version separator
+                # (e.g. -20250514) not another model component (e.g. -6 in sonnet-4-6)
+                remainder = key_suffix[len(variant) :]
+                is_stripped = variant != model_variants[0]
+                if is_stripped and remainder and not _is_date_suffix(remainder):
+                    continue
                 return entry
 
     return None
+
+
+_DATE_SUFFIX = re.compile(r"^(-\d{8}|-v\d|:)")
+
+
+def _is_date_suffix(remainder: str) -> bool:
+    """Check if a key remainder starts with a date-like pattern (-YYYYMMDD or -v or :)."""
+    return bool(_DATE_SUFFIX.match(remainder))
 
 
 def litellm_lookup(
