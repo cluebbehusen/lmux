@@ -50,7 +50,7 @@ class TestCalculateGCPVertexCost:
         usage = Usage(input_tokens=1000, output_tokens=0)
         cost = calculate_gcp_vertex_cost("text-embedding-005", usage)
         assert cost is not None
-        assert cost.input_cost == pytest.approx(1000 * 0.025 / 1_000_000)
+        assert cost.input_cost == pytest.approx(1000 * 0.10 / 1_000_000)
         assert cost.output_cost == 0.0
 
     def test_gemini_embedding_model(self) -> None:

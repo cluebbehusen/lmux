@@ -334,7 +334,7 @@ _PRICING: dict[str, ModelPricing] = {
     "text-embedding-005": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(0.025),
+                input_cost_per_token=per_million_tokens(0.10),
                 output_cost_per_token=0.0,
             ),
         ],
@@ -342,7 +342,7 @@ _PRICING: dict[str, ModelPricing] = {
     "text-embedding-004": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(0.025),
+                input_cost_per_token=per_million_tokens(0.10),
                 output_cost_per_token=0.0,
             ),
         ],
@@ -350,7 +350,7 @@ _PRICING: dict[str, ModelPricing] = {
     "text-multilingual-embedding-002": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(0.025),
+                input_cost_per_token=per_million_tokens(0.10),
                 output_cost_per_token=0.0,
             ),
         ],
