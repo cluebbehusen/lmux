@@ -837,13 +837,17 @@ def _validate_provider(
         ext_prices = _lookup_all(openrouter_lookup, ext_data.openrouter, model_ids, spec.openrouter_prefixes)
         reports.append(_compare_against_source("OpenRouter", ext_prices, lmux_prices, tolerance))
         if not skip_calculated and ext_prices:
-            calc_mismatches["OpenRouter"] = compare_calculated_costs(spec.module, lmux_prices, ext_prices, tolerance)
+            calc_mismatches["OpenRouter"] = compare_calculated_costs(
+                spec.module, lmux_prices, ext_prices, tolerance, ext_tiered
+            )
 
     if ext_data.genai is not None:
         ext_prices = _lookup_all(genai_prices_lookup, ext_data.genai, model_ids, spec.genai_provider)
         reports.append(_compare_against_source("genai-prices", ext_prices, lmux_prices, tolerance))
         if not skip_calculated and ext_prices:
-            calc_mismatches["genai-prices"] = compare_calculated_costs(spec.module, lmux_prices, ext_prices, tolerance)
+            calc_mismatches["genai-prices"] = compare_calculated_costs(
+                spec.module, lmux_prices, ext_prices, tolerance, ext_tiered
+            )
 
     return print_report(spec.name, reports, calc_mismatches)
 
