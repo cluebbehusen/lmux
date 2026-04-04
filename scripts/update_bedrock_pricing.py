@@ -139,6 +139,9 @@ PROVIDER_GROUPS: list[tuple[str, str]] = [
 # Embedding models (output_cost_per_token = 0.0)
 EMBEDDING_PREFIXES = ("amazon.titan-embed", "amazon.nova-embed", "cohere.embed")
 
+# Cross-region inference profile prefixes (excluding "global." which gets its own pricing)
+INFERENCE_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.")
+
 # ── Data structures ──────────────────────────────────────────────────────────
 
 
@@ -304,8 +307,12 @@ def _set_dimension(mp: ModelPrices, dim_name: str, price: Decimal) -> None:
         mp.cache_write_cost = price
 
 
-def parse_amazon_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
-    """Parse non-mantle entries from AmazonBedrock API for Amazon + legacy models."""
+def parse_amazon_models(data: dict[str, Any]) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
+    """Parse non-mantle entries from AmazonBedrock API for Amazon + legacy models.
+
+    Returns (default_pricing, global_pricing) where global_pricing contains only
+    models that have cross-region global inference profile pricing.
+    """
     products = data.get("products", {})
     terms = data.get("terms", {}).get("OnDemand", {})
 
@@ -334,18 +341,29 @@ def parse_amazon_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
         price_per_m = price * 1000  # per 1K tokens -> per-M
         collected.setdefault(model_id, {}).setdefault(dimension, {})[_is_global_usagetype(ut)] = price_per_m
 
-    # Build result: prefer global prices when available
+    # Build result: separate default (non-global) and global pricing
     result: dict[str, ModelPrices] = {}
+    global_result: dict[str, ModelPrices] = {}
     for model_id, dims in collected.items():
-        mp = ModelPrices()
+        default_mp = ModelPrices()
+        global_mp = ModelPrices()
+        has_global = False
         for dim_name, prices_by_scope in dims.items():
-            price = prices_by_scope.get(True) or prices_by_scope.get(False)
+            non_global_price = prices_by_scope.get(False)
+            global_price = prices_by_scope.get(True)
+            # Default uses non-global price, falls back to global
+            price = non_global_price if non_global_price is not None else global_price
             if price is not None:
-                _set_dimension(mp, dim_name, price)
-        if mp.input_cost is not None:
-            result[model_id] = mp
+                _set_dimension(default_mp, dim_name, price)
+            if global_price is not None:
+                _set_dimension(global_mp, dim_name, global_price)
+                has_global = True
+        if default_mp.input_cost is not None:
+            result[model_id] = default_mp
+        if has_global and global_mp.input_cost is not None:
+            global_result[model_id] = global_mp
 
-    return result
+    return result, global_result
 
 
 # ── Parsing: AmazonBedrockFoundationModels ───────────────────────────────────
@@ -413,8 +431,12 @@ def _is_global_fm(usagetype: str) -> bool:
     return "_Global" in dim_part and "_Batch" not in dim_part
 
 
-def parse_foundation_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
-    """Parse AmazonBedrockFoundationModels API. Prices are per million tokens."""
+def parse_foundation_models(data: dict[str, Any]) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
+    """Parse AmazonBedrockFoundationModels API. Prices are per million tokens.
+
+    Returns (default_pricing, global_pricing) where global_pricing contains only
+    models that have cross-region global inference profile pricing.
+    """
     products = data.get("products", {})
     terms = data.get("terms", {}).get("OnDemand", {})
 
@@ -457,20 +479,42 @@ def parse_foundation_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
 
 def _build_fm_result(
     collected: dict[str, dict[tuple[str, bool, bool], Decimal]],
-) -> dict[str, ModelPrices]:
-    """Build ModelPrices from collected Foundation Models data, preferring Global prices."""
+) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
+    """Build ModelPrices from collected Foundation Models data.
+
+    Returns (default_pricing, global_pricing) where default uses non-global prices
+    (falling back to global), and global_pricing contains only models with global pricing.
+    """
     result: dict[str, ModelPrices] = {}
+    global_result: dict[str, ModelPrices] = {}
     for model_id, prices in collected.items():
-        mp = ModelPrices()
+        default_mp = ModelPrices()
+        global_mp = ModelPrices()
+        has_global = False
         for dim_name in ("input", "output", "cache_read", "cache_write"):
-            std = prices.get((dim_name, False, True)) or prices.get((dim_name, False, False))
-            lctx = prices.get((dim_name, True, True)) or prices.get((dim_name, True, False))
+            # Standard tier: prefer non-global, fall back to global
+            non_global_std = prices.get((dim_name, False, False))
+            global_std = prices.get((dim_name, False, True))
+            std = non_global_std if non_global_std is not None else global_std
             if std is not None:
-                _set_dimension(mp, dim_name, std)
-            _set_fm_lctx(mp, dim_name, lctx)
-        if mp.input_cost is not None:
-            result[model_id] = mp
-    return result
+                _set_dimension(default_mp, dim_name, std)
+            if global_std is not None:
+                _set_dimension(global_mp, dim_name, global_std)
+                has_global = True
+
+            # Long-context tier: same pattern
+            non_global_lctx = prices.get((dim_name, True, False))
+            global_lctx = prices.get((dim_name, True, True))
+            lctx = non_global_lctx if non_global_lctx is not None else global_lctx
+            _set_fm_lctx(default_mp, dim_name, lctx)
+            if global_lctx is not None:
+                _set_fm_lctx(global_mp, dim_name, global_lctx)
+
+        if default_mp.input_cost is not None:
+            result[model_id] = default_mp
+        if has_global and global_mp.input_cost is not None:
+            global_result[model_id] = global_mp
+    return result, global_result
 
 
 def _set_fm_lctx(mp: ModelPrices, dim_name: str, price: Decimal | None) -> None:
@@ -514,6 +558,26 @@ def merge_pricing(
     return result
 
 
+def expand_inference_profiles(
+    default: dict[str, ModelPrices],
+    global_prices: dict[str, ModelPrices],
+) -> dict[str, ModelPrices]:
+    """Expand models with inference profiles into prefixed variants.
+
+    For each model with global pricing, emits:
+    - bare model ID with non-global (direct invoke) price
+    - global.{model_id} with global price
+    - {prefix}{model_id} for each regional prefix with non-global price
+    """
+    result = dict(default)
+    for model_id, gp in global_prices.items():
+        result[f"global.{model_id}"] = gp
+        if model_id in default:
+            for prefix in INFERENCE_PROFILE_PREFIXES:
+                result[f"{prefix}{model_id}"] = default[model_id]
+    return result
+
+
 # ── Regional pricing ─────────────────────────────────────────────────────────
 
 
@@ -544,10 +608,19 @@ def _prices_differ(a: ModelPrices, b: ModelPrices) -> bool:
 # ── Code generation ──────────────────────────────────────────────────────────
 
 
+def _strip_profile_prefix(model_id: str) -> str:
+    """Strip inference profile prefix (us., eu., global., etc.) from a model ID."""
+    for pfx in ("global.", *INFERENCE_PROFILE_PREFIXES):
+        if model_id.startswith(pfx):
+            return model_id[len(pfx) :]
+    return model_id
+
+
 def _get_provider_group(model_id: str) -> str:
     """Get the provider group name for a model ID."""
+    bare_id = _strip_profile_prefix(model_id)
     for prefix, group_name in PROVIDER_GROUPS:
-        if model_id.startswith(prefix):
+        if bare_id.startswith(prefix):
             return group_name
     return "Other"
 
@@ -784,8 +857,8 @@ def _fetch_regional_diffs(
             continue
 
         reg_mantle = parse_mantle_models(reg_bedrock)
-        reg_amazon = parse_amazon_models(reg_bedrock)
-        reg_foundation = parse_foundation_models(reg_fm)
+        reg_amazon, _ = parse_amazon_models(reg_bedrock)
+        reg_foundation, _ = parse_foundation_models(reg_fm)
         reg_merged = merge_pricing(reg_mantle, reg_amazon, reg_foundation)
 
         diffs = compute_regional_diffs(default_pricing, reg_merged)
@@ -835,22 +908,27 @@ def main() -> None:
     _info(f"  Found {len(mantle)} mantle models")
 
     _info("Parsing Amazon models (Nova/Titan/legacy)...")
-    amazon = parse_amazon_models(bedrock_data)
-    _info(f"  Found {len(amazon)} Amazon/legacy models")
+    amazon, amazon_global = parse_amazon_models(bedrock_data)
+    _info(f"  Found {len(amazon)} Amazon/legacy models ({len(amazon_global)} with global pricing)")
 
     _info("Parsing Foundation Models (Claude/Cohere/etc)...")
-    foundation = parse_foundation_models(fm_data)
-    _info(f"  Found {len(foundation)} Foundation Models")
+    foundation, foundation_global = parse_foundation_models(fm_data)
+    _info(f"  Found {len(foundation)} Foundation Models ({len(foundation_global)} with global pricing)")
 
     # Merge
     default_pricing = merge_pricing(mantle, amazon, foundation)
-    _info(f"Total models after merge: {len(default_pricing)}")
+    global_pricing: dict[str, ModelPrices] = {**amazon_global, **foundation_global}
+    _info(f"Total models after merge: {len(default_pricing)} ({len(global_pricing)} with global pricing)")
 
-    # Regional pricing
+    # Expand inference profile variants for models with global pricing
+    expanded_pricing = expand_inference_profiles(default_pricing, global_pricing)
+    _info(f"Total entries after inference profile expansion: {len(expanded_pricing)}")
+
+    # Regional pricing (compared against unexpanded default)
     regional_diffs = _fetch_regional_diffs(args, default_pricing)
 
     # Generate code
-    code = generate_cost_py(default_pricing, regional_diffs)
+    code = generate_cost_py(expanded_pricing, regional_diffs)
 
     if args.write:
         _ = COST_PY_PATH.write_text(code)

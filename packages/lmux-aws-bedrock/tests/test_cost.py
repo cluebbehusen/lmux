@@ -67,8 +67,8 @@ class TestCalculateBedrockCost:
         cost = calculate_bedrock_cost("anthropic.claude-sonnet-4-5-v1", usage)
         assert cost is not None
         # Above 200K threshold, uses long-context tier pricing
-        assert cost.input_cost == pytest.approx(300_000 * 6.0 / 1_000_000)
-        assert cost.output_cost == pytest.approx(1000 * 22.5 / 1_000_000)
+        assert cost.input_cost == pytest.approx(300_000 * 6.6 / 1_000_000)
+        assert cost.output_cost == pytest.approx(1000 * 24.75 / 1_000_000)
 
     def test_region_none_uses_default(self) -> None:
         usage = Usage(input_tokens=1000, output_tokens=500)
@@ -103,6 +103,49 @@ class TestCalculateBedrockCost:
         assert cost is not None
         assert cost_default is not None
         assert cost.total_cost == pytest.approx(cost_default.total_cost)
+
+    def test_inference_profile_us_prefix(self) -> None:
+        """us. prefixed inference profile IDs match and use non-global pricing."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_bedrock_cost("us.anthropic.claude-opus-4-6-v1", usage)
+        bare_cost = calculate_bedrock_cost("anthropic.claude-opus-4-6-v1", usage)
+        assert cost is not None
+        assert bare_cost is not None
+        assert cost.total_cost == pytest.approx(bare_cost.total_cost)
+
+    def test_inference_profile_eu_prefix(self) -> None:
+        """eu. prefixed inference profile IDs match and use non-global pricing."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_bedrock_cost("eu.anthropic.claude-opus-4-6-v1", usage)
+        bare_cost = calculate_bedrock_cost("anthropic.claude-opus-4-6-v1", usage)
+        assert cost is not None
+        assert bare_cost is not None
+        assert cost.total_cost == pytest.approx(bare_cost.total_cost)
+
+    def test_inference_profile_global_prefix(self) -> None:
+        """global. prefixed inference profile IDs use global (cheaper) pricing."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_bedrock_cost("global.anthropic.claude-opus-4-6-v1", usage)
+        bare_cost = calculate_bedrock_cost("anthropic.claude-opus-4-6-v1", usage)
+        assert cost is not None
+        assert bare_cost is not None
+        # Global pricing is cheaper than non-global
+        assert cost.total_cost < bare_cost.total_cost
+
+    def test_inference_profile_prefix_matching_with_version(self) -> None:
+        """Inference profile IDs with version suffixes match via prefix."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_bedrock_cost("us.anthropic.claude-opus-4-6-v1:0", usage)
+        base_cost = calculate_bedrock_cost("us.anthropic.claude-opus-4-6-v1", usage)
+        assert cost is not None
+        assert base_cost is not None
+        assert cost.total_cost == pytest.approx(base_cost.total_cost)
+
+    def test_inference_profile_model_without_profiles(self) -> None:
+        """Models without inference profiles return None for prefixed IDs."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_bedrock_cost("us.meta.llama3-1-70b-instruct-v1", usage)
+        assert cost is None
 
     def test_regional_pricing_exact_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Regional pricing returns different cost when region has overrides."""
