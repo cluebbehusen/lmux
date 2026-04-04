@@ -89,6 +89,13 @@ PROVIDER_SPECS: list[ProviderSpec] = [
         ["google/"],
     ),
     ProviderSpec(
+        "lmux_aws_bedrock.cost",
+        "aws-bedrock",
+        ["bedrock/", ""],
+        "aws",
+        [],
+    ),
+    ProviderSpec(
         "lmux_azure_foundry.cost",
         "azure-foundry",
         ["azure/", "azure/global/", "azure/global-standard/", "azure_ai/", "azure_ai/global/", ""],
@@ -166,6 +173,9 @@ def litellm_lookup(
         candidates.append(f"{pfx}{sep}{model_id}")
     if model_id not in candidates:
         candidates.append(model_id)
+
+    # Also try with :0 suffix (common in Bedrock model IDs)
+    candidates += [c + ":0" for c in candidates if not c.endswith(":0")]
 
     # Exact match
     for candidate in candidates:
