@@ -160,7 +160,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "anthropic.claude-sonnet-4",
             [UserMessage(content="Hi")],
             temperature=0.5,
@@ -181,7 +181,7 @@ class TestChat:
         mock_sync_client.converse.return_value = converse_response
 
         tools = [Tool(function=FunctionDefinition(name="get_weather"))]
-        sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], tools=tools)
+        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], tools=tools)
 
         mock_sync_client.converse.assert_called_once_with(
             modelId="anthropic.claude-sonnet-4",
@@ -206,7 +206,7 @@ class TestChat:
 
     def test_chat_json_object_raises(self, sync_provider: BedrockProvider) -> None:
         with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat is not supported"):
-            sync_provider.chat(
+            _ = sync_provider.chat(
                 "anthropic.claude-sonnet-4", [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat()
             )
 
@@ -215,7 +215,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "anthropic.claude-sonnet-4",
             [UserMessage(content="Hi")],
             response_format=JsonSchemaResponseFormat(
@@ -254,7 +254,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "anthropic.claude-sonnet-4",
             [UserMessage(content="Hi")],
             provider_params=BedrockParams(
@@ -274,14 +274,14 @@ class TestChat:
         mock_sync_client.converse.side_effect = server_error
 
         with pytest.raises(ProviderError):
-            sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+            _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
 
     def test_chat_with_system_message(
         self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "anthropic.claude-sonnet-4",
             [SystemMessage(content="Be helpful."), UserMessage(content="Hi")],
         )
@@ -297,7 +297,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
 
-        sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], stop="STOP")
+        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], stop="STOP")
 
         call_kwargs = mock_sync_client.converse.call_args.kwargs
         assert call_kwargs["inferenceConfig"]["stopSequences"] == ["STOP"]
@@ -307,7 +307,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
 
-        sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], reasoning_effort="medium")
+        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], reasoning_effort="medium")
 
         call_kwargs = mock_sync_client.converse.call_args.kwargs
         assert call_kwargs["additionalModelRequestFields"]["thinking"] == {
@@ -320,7 +320,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "anthropic.claude-sonnet-4",
             [UserMessage(content="Hi")],
             reasoning_effort="high",
@@ -337,7 +337,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "anthropic.claude-sonnet-4",
             [UserMessage(content="Hi")],
             reasoning_effort="high",
@@ -359,7 +359,7 @@ class TestChat:
         fields: dict[str, Any] = {"some_field": "value"}
         params = BedrockParams(additional_model_request_fields=fields)
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "anthropic.claude-sonnet-4",
             [UserMessage(content="Hi")],
             reasoning_effort="high",
@@ -392,7 +392,7 @@ class TestAchat:
         mock_async_client.converse.side_effect = server_error
 
         with pytest.raises(ProviderError):
-            await async_provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+            _ = await async_provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
 
 
 # MARK: ChatStream
@@ -439,7 +439,7 @@ class TestChatStream:
         mock_sync_client.converse_stream.side_effect = server_error
 
         with pytest.raises(ProviderError):
-            list(sync_provider.chat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]))
+            _ = list(sync_provider.chat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]))
 
     def test_stream_exception_during_iteration(
         self,
@@ -455,7 +455,7 @@ class TestChatStream:
         mock_sync_client.converse_stream.return_value = {"stream": _failing_iter()}
 
         with pytest.raises(ProviderError, match="test error"):
-            list(sync_provider.chat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]))
+            _ = list(sync_provider.chat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]))
 
     def test_stream_chunk_without_usage_has_no_cost(
         self,
@@ -585,7 +585,7 @@ class TestEmbed:
     ) -> None:
         mock_sync_client.invoke_model.return_value = embedding_invoke_response
 
-        sync_provider.embed("amazon.titan-embed-text-v2", "hello", dimensions=256)
+        _ = sync_provider.embed("amazon.titan-embed-text-v2", "hello", dimensions=256)
 
         mock_sync_client.invoke_model.assert_called_once_with(
             modelId="amazon.titan-embed-text-v2",
@@ -599,7 +599,7 @@ class TestEmbed:
         mock_sync_client.invoke_model.side_effect = server_error
 
         with pytest.raises(ProviderError):
-            sync_provider.embed("amazon.titan-embed-text-v2", "hello")
+            _ = sync_provider.embed("amazon.titan-embed-text-v2", "hello")
 
     def test_embed_client_init_failure_mapped(
         self,
@@ -610,7 +610,7 @@ class TestEmbed:
         provider = BedrockProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
-            provider.embed("amazon.titan-embed-text-v2", "hello")
+            _ = provider.embed("amazon.titan-embed-text-v2", "hello")
 
 
 # MARK: Aembed
@@ -664,7 +664,7 @@ class TestAembed:
         mock_body.read.return_value = json.dumps({"embedding": [0.1, 0.2, 0.3], "inputTextTokenCount": 5}).encode()
         mock_async_client.invoke_model.return_value = {"body": mock_body}
 
-        await async_provider.aembed("amazon.titan-embed-text-v2", "hello", dimensions=256)
+        _ = await async_provider.aembed("amazon.titan-embed-text-v2", "hello", dimensions=256)
 
         mock_async_client.invoke_model.assert_awaited_once_with(
             modelId="amazon.titan-embed-text-v2",
@@ -678,7 +678,7 @@ class TestAembed:
         mock_async_client.invoke_model.side_effect = server_error
 
         with pytest.raises(ProviderError):
-            await async_provider.aembed("amazon.titan-embed-text-v2", "hello")
+            _ = await async_provider.aembed("amazon.titan-embed-text-v2", "hello")
 
 
 # MARK: Client Management
@@ -690,8 +690,8 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
 
-        sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-        sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi again")])
+        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi again")])
 
         assert mock_sync_client.converse.call_count == 2
 
@@ -704,7 +704,7 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
         provider = BedrockProvider(auth=fake_auth, region="us-west-2")
-        provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+        _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once()
         call_kwargs = mock_sync_create.call_args.kwargs
@@ -719,7 +719,7 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
         provider = BedrockProvider(auth=fake_auth, endpoint_url="https://custom.bedrock.endpoint")
-        provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+        _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once()
         call_kwargs = mock_sync_create.call_args.kwargs
@@ -734,8 +734,8 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
         provider = BedrockProvider(auth=fake_auth)
-        provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-        provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi again")])
+        _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+        _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi again")])
 
         mock_sync_create.assert_called_once()
 
@@ -748,8 +748,8 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.converse.return_value = converse_response
         provider = BedrockProvider(auth=fake_auth)
-        await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-        await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi again")])
+        _ = await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+        _ = await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi again")])
 
         assert fake_auth.aget_credentials_calls == 1
         assert mock_async_create.call_count == 2
@@ -763,7 +763,7 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.converse.return_value = converse_response
         provider = BedrockProvider(auth=fake_auth, region="eu-west-1")
-        await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+        _ = await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
 
         mock_async_create.assert_called_once_with(fake_auth.async_session, region_name="eu-west-1", endpoint_url=None)
 
@@ -776,7 +776,7 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.converse.return_value = converse_response
         provider = BedrockProvider(auth=fake_auth, endpoint_url="https://custom.endpoint")
-        await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+        _ = await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
 
         mock_async_create.assert_called_once_with(
             fake_auth.async_session,
@@ -793,7 +793,7 @@ class TestClientManagement:
         provider = BedrockProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
-            provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+            _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
 
     def test_no_region_no_endpoint_defaults_to_none(
         self,
@@ -804,7 +804,7 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
         provider = BedrockProvider(auth=fake_auth)
-        provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+        _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once()
         call_kwargs = mock_sync_create.call_args.kwargs
@@ -880,7 +880,9 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_sync_client.converse.return_value = converse_response
 
-        sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], provider_params=BedrockParams())
+        _ = sync_provider.chat(
+            "anthropic.claude-sonnet-4", [UserMessage(content="Hi")], provider_params=BedrockParams()
+        )
 
         call_kwargs = mock_sync_client.converse.call_args.kwargs
         assert "guardrailConfig" not in call_kwargs
@@ -897,7 +899,7 @@ class TestProviderParamsKwargs:
             additional_model_request_fields={"custom_field": "value"},
             additional_model_response_field_paths=["$.path.to.field"],
         )
-        sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], provider_params=params)
+        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], provider_params=params)
 
         call_kwargs = mock_sync_client.converse.call_args.kwargs
         assert call_kwargs["guardrailConfig"] == {

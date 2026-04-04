@@ -79,7 +79,7 @@ class TestMockChat:
     def test_records_calls(self, chat_response: ChatResponse) -> None:
         provider = MockProvider(chat_responses=[chat_response])
         messages = [UserMessage(content="Hi")]
-        provider.chat("gpt-4o", messages)
+        _ = provider.chat("gpt-4o", messages)
         assert len(provider.calls) == 1
         assert provider.calls[0].method == "chat"
         assert provider.calls[0].model == "gpt-4o"
@@ -88,7 +88,7 @@ class TestMockChat:
     def test_raises_error_when_no_responses(self) -> None:
         provider = MockProvider()
         with pytest.raises(IndexError, match="No chat responses configured"):
-            provider.chat("m", [UserMessage(content="Hi")])
+            _ = provider.chat("m", [UserMessage(content="Hi")])
 
 
 class TestMockAchat:
@@ -99,7 +99,7 @@ class TestMockAchat:
 
     async def test_records_calls(self, chat_response: ChatResponse) -> None:
         provider = MockProvider(chat_responses=[chat_response])
-        await provider.achat("m", [UserMessage(content="Hi")])
+        _ = await provider.achat("m", [UserMessage(content="Hi")])
         assert provider.calls[0].method == "achat"
 
 
@@ -111,13 +111,13 @@ class TestMockChatStream:
 
     def test_records_calls(self, chat_chunks: list[ChatChunk]) -> None:
         provider = MockProvider(chat_stream_responses=[chat_chunks])
-        list(provider.chat_stream("m", [UserMessage(content="Hi")]))
+        _ = list(provider.chat_stream("m", [UserMessage(content="Hi")]))
         assert provider.calls[0].method == "chat_stream"
 
     def test_raises_error_when_no_responses(self) -> None:
         provider = MockProvider()
         with pytest.raises(IndexError, match="No chat stream responses configured"):
-            list(provider.chat_stream("m", [UserMessage(content="Hi")]))
+            _ = list(provider.chat_stream("m", [UserMessage(content="Hi")]))
 
 
 class TestMockAchatStream:
@@ -140,14 +140,14 @@ class TestMockEmbed:
 
     def test_records_calls(self, embed_response: EmbeddingResponse) -> None:
         provider = MockProvider(embed_responses=[embed_response])
-        provider.embed("test-embed", ["hello", "world"])
+        _ = provider.embed("test-embed", ["hello", "world"])
         assert provider.calls[0].method == "embed"
         assert provider.calls[0].text == ["hello", "world"]
 
     def test_raises_error_when_no_responses(self) -> None:
         provider = MockProvider()
         with pytest.raises(IndexError, match="No embed responses configured"):
-            provider.embed("m", "hello")
+            _ = provider.embed("m", "hello")
 
     async def test_aembed(self, embed_response: EmbeddingResponse) -> None:
         provider = MockProvider(embed_responses=[embed_response])
@@ -164,14 +164,14 @@ class TestMockCreateResponse:
 
     def test_records_calls(self, response_response: ResponseResponse) -> None:
         provider = MockProvider(response_responses=[response_response])
-        provider.create_response("test-model", "Hi")
+        _ = provider.create_response("test-model", "Hi")
         assert provider.calls[0].method == "create_response"
         assert provider.calls[0].input_data == "Hi"
 
     def test_raises_error_when_no_responses(self) -> None:
         provider = MockProvider()
         with pytest.raises(IndexError, match="No response responses configured"):
-            provider.create_response("m", "Hi")
+            _ = provider.create_response("m", "Hi")
 
     async def test_acreate_response(self, response_response: ResponseResponse) -> None:
         provider = MockProvider(response_responses=[response_response])
@@ -185,13 +185,13 @@ class TestMockErrors:
         error = ProviderError("boom", provider="mock")
         provider = MockProvider(chat_responses=[chat_response], errors=[error])
         with pytest.raises(ProviderError, match="boom"):
-            provider.chat("m", [UserMessage(content="Hi")])
+            _ = provider.chat("m", [UserMessage(content="Hi")])
 
     def test_error_then_success(self, chat_response: ChatResponse) -> None:
         error = ProviderError("boom", provider="mock")
         provider = MockProvider(chat_responses=[chat_response], errors=[error])
         with pytest.raises(ProviderError):
-            provider.chat("m", [UserMessage(content="Hi")])
+            _ = provider.chat("m", [UserMessage(content="Hi")])
         # Second call succeeds because errors are exhausted
         result = provider.chat("m", [UserMessage(content="Hi")])
         assert result == chat_response
@@ -204,7 +204,7 @@ class TestMockErrors:
             errors=[error],
         )
         with pytest.raises(ProviderError):
-            provider.embed("m", "hello")
+            _ = provider.embed("m", "hello")
         # Next call to any method succeeds
         result = provider.chat("m", [UserMessage(content="Hi")])
         assert result == chat_response
@@ -213,7 +213,7 @@ class TestMockErrors:
         error = ProviderError("boom", provider="mock")
         provider = MockProvider(chat_responses=[chat_response], errors=[error])
         with pytest.raises(LmuxError):
-            await provider.achat("m", [UserMessage(content="Hi")])
+            _ = await provider.achat("m", [UserMessage(content="Hi")])
 
 
 class TestRegisterPricing:

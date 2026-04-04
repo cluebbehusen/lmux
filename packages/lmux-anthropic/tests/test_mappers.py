@@ -268,7 +268,7 @@ class TestMapResponseFormat:
 
     def test_json_object_raises(self) -> None:
         with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat is not supported"):
-            map_response_format(JsonObjectResponseFormat())
+            _ = map_response_format(JsonObjectResponseFormat())
 
     def test_json_schema(self, mock_add_additional_properties_false: MagicMock) -> None:
         rf = JsonSchemaResponseFormat(

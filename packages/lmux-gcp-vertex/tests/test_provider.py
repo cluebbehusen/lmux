@@ -183,7 +183,7 @@ class TestChat:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             temperature=0.5,
@@ -204,7 +204,7 @@ class TestChat:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], stop="STOP")
+        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], stop="STOP")
 
         call_kwargs = mock_client.models.generate_content.call_args.kwargs
         assert call_kwargs["config"]["stop_sequences"] == ["STOP"]
@@ -215,7 +215,7 @@ class TestChat:
         mock_client.models.generate_content.return_value = generate_response
 
         tools = [Tool(function=FunctionDefinition(name="get_weather"))]
-        sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], tools=tools)
+        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], tools=tools)
 
         call_kwargs = mock_client.models.generate_content.call_args.kwargs
         assert call_kwargs["config"]["tools"] == [{"function_declarations": [{"name": "get_weather"}]}]
@@ -238,7 +238,9 @@ class TestChat:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat())
+        _ = sync_provider.chat(
+            "gemini-2.0-flash", [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat()
+        )
 
         call_kwargs = mock_client.models.generate_content.call_args.kwargs
         assert call_kwargs["config"]["response_mime_type"] == "application/json"
@@ -249,7 +251,7 @@ class TestChat:
         mock_client.models.generate_content.return_value = generate_response
 
         rf = JsonSchemaResponseFormat(name="test", json_schema={"type": "object"})
-        sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], response_format=rf)
+        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], response_format=rf)
 
         call_kwargs = mock_client.models.generate_content.call_args.kwargs
         assert call_kwargs["config"]["response_mime_type"] == "application/json"
@@ -260,7 +262,7 @@ class TestChat:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(
@@ -281,7 +283,7 @@ class TestChat:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], reasoning_effort="medium")
+        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], reasoning_effort="medium")
 
         call_kwargs = mock_client.models.generate_content.call_args.kwargs
         assert call_kwargs["config"]["thinking_config"] == {"thinking_budget": 8192, "include_thoughts": True}
@@ -292,14 +294,14 @@ class TestChat:
         mock_client.models.generate_content.side_effect = server_error
 
         with pytest.raises(ProviderError):
-            sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
+            _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
     def test_chat_with_system_message(
         self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [SystemMessage(content="Be helpful."), UserMessage(content="Hi")],
         )
@@ -331,7 +333,7 @@ class TestAchat:
         mock_client.aio.models.generate_content = AsyncMock(side_effect=server_error)
 
         with pytest.raises(ProviderError):
-            await async_provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
+            _ = await async_provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
 
 # MARK: ChatStream
@@ -391,7 +393,7 @@ class TestChatStream:
         mock_client.models.generate_content_stream.side_effect = server_error
 
         with pytest.raises(ProviderError):
-            list(sync_provider.chat_stream("gemini-2.0-flash", [UserMessage(content="Hi")]))
+            _ = list(sync_provider.chat_stream("gemini-2.0-flash", [UserMessage(content="Hi")]))
 
     def test_stream_exception_during_iteration(
         self,
@@ -406,7 +408,7 @@ class TestChatStream:
         mock_client.models.generate_content_stream.return_value = _failing_iter()
 
         with pytest.raises(ProviderError, match="test error"):
-            list(sync_provider.chat_stream("gemini-2.0-flash", [UserMessage(content="Hi")]))
+            _ = list(sync_provider.chat_stream("gemini-2.0-flash", [UserMessage(content="Hi")]))
 
 
 # MARK: AchatStream
@@ -502,7 +504,7 @@ class TestEmbed:
     ) -> None:
         mock_client.models.embed_content.return_value = embed_response
 
-        sync_provider.embed("text-embedding-005", "hello", dimensions=256)
+        _ = sync_provider.embed("text-embedding-005", "hello", dimensions=256)
 
         mock_client.models.embed_content.assert_called_once_with(
             model="text-embedding-005", contents=["hello"], config={"output_dimensionality": 256}
@@ -516,7 +518,9 @@ class TestEmbed:
     ) -> None:
         mock_client.models.embed_content.return_value = embed_response
 
-        sync_provider.embed("text-embedding-005", "hello", provider_params=GCPVertexParams(task_type="RETRIEVAL_QUERY"))
+        _ = sync_provider.embed(
+            "text-embedding-005", "hello", provider_params=GCPVertexParams(task_type="RETRIEVAL_QUERY")
+        )
 
         mock_client.models.embed_content.assert_called_once_with(
             model="text-embedding-005", contents=["hello"], config={"task_type": "RETRIEVAL_QUERY"}
@@ -530,7 +534,7 @@ class TestEmbed:
     ) -> None:
         mock_client.models.embed_content.return_value = embed_response
 
-        sync_provider.embed(
+        _ = sync_provider.embed(
             "text-embedding-005",
             "hello",
             dimensions=256,
@@ -549,7 +553,7 @@ class TestEmbed:
         mock_client.models.embed_content.side_effect = server_error
 
         with pytest.raises(ProviderError):
-            sync_provider.embed("text-embedding-005", "hello")
+            _ = sync_provider.embed("text-embedding-005", "hello")
 
 
 # MARK: Aembed
@@ -593,7 +597,7 @@ class TestAembed:
         mock_client.aio.models.embed_content = AsyncMock(side_effect=server_error)
 
         with pytest.raises(ProviderError):
-            await async_provider.aembed("text-embedding-005", "hello")
+            _ = await async_provider.aembed("text-embedding-005", "hello")
 
 
 # MARK: Client Management
@@ -609,8 +613,8 @@ class TestClientManagement:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
-        sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi again")])
+        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi again")])
 
         mock_create.assert_called_once()
 
@@ -623,7 +627,7 @@ class TestClientManagement:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
         provider = GCPVertexProvider(auth=fake_auth, project="my-project", location="us-central1")
-        provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
@@ -640,7 +644,7 @@ class TestClientManagement:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
         provider = GCPVertexProvider(auth=fake_api_key_auth, vertexai=False)
-        provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
@@ -657,7 +661,7 @@ class TestClientManagement:
     ) -> None:
         mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
         provider = GCPVertexProvider(auth=fake_api_key_auth, vertexai=False)
-        await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
@@ -673,8 +677,8 @@ class TestClientManagement:
     ) -> None:
         mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
         provider = GCPVertexProvider(auth=fake_auth)
-        await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
-        await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi again")])
+        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi again")])
 
         mock_create.assert_called_once()
 
@@ -687,7 +691,7 @@ class TestClientManagement:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
         provider = GCPVertexProvider(auth=fake_auth)
-        provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         mock_create.assert_called_once()
         call_kwargs = mock_create.call_args.kwargs
@@ -706,7 +710,7 @@ class TestClientManagement:
         provider = GCPVertexProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
-            provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
+            _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
     async def test_async_client_init_failure_mapped(
         self,
@@ -717,7 +721,7 @@ class TestClientManagement:
         provider = GCPVertexProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
-            await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
+            _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
     @pytest.fixture
     def mock_get_running_loop(self, mocker: MockerFixture) -> MagicMock:
@@ -738,8 +742,8 @@ class TestClientManagement:
         loop2 = asyncio.new_event_loop()
         mock_get_running_loop.side_effect = [loop1, loop2]
 
-        await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
-        await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi again")])
+        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi again")])
 
         assert mock_create.call_count == 2
         assert mock_get_running_loop.call_count == 2
@@ -802,7 +806,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], provider_params=GCPVertexParams())
+        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], provider_params=GCPVertexParams())
 
         call_kwargs = mock_client.models.generate_content.call_args.kwargs
         config = call_kwargs["config"]
@@ -826,7 +830,7 @@ class TestProviderParamsKwargs:
             labels={"env": "test"},
             thinking_config={"thinking_budget": 1024},
         )
-        sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], provider_params=params)
+        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], provider_params=params)
 
         call_kwargs = mock_client.models.generate_content.call_args.kwargs
         config = call_kwargs["config"]
@@ -842,7 +846,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(google_search=True),
@@ -856,7 +860,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(
@@ -877,7 +881,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(google_search=GoogleSearchConfig()),
@@ -891,7 +895,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(
@@ -907,7 +911,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(code_execution=True),
@@ -921,7 +925,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(
@@ -942,7 +946,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(google_search_retrieval=GoogleSearchRetrievalConfig()),
@@ -956,7 +960,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             tools=[Tool(function=FunctionDefinition(name="get_weather"))],
@@ -975,7 +979,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(google_search=True, code_execution=True),
@@ -989,7 +993,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(
@@ -1009,7 +1013,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(
@@ -1029,7 +1033,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(
@@ -1047,7 +1051,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(
@@ -1063,7 +1067,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(google_search=False),
@@ -1077,7 +1081,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             provider_params=GCPVertexParams(presence_penalty=0.5),
@@ -1101,7 +1105,7 @@ class TestAclose:
         mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
         provider = GCPVertexProvider(auth=fake_auth)
 
-        await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
         await provider.aclose()
 
         mock_create.assert_called_once()

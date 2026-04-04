@@ -191,7 +191,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "claude-sonnet-4-6",
             [UserMessage(content="Hi")],
             temperature=0.5,
@@ -215,7 +215,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
 
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["max_tokens"] == 4096
@@ -225,7 +225,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
 
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], max_tokens=200)
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], max_tokens=200)
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["max_tokens"] == 200
@@ -235,7 +235,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
 
-        sync_provider.chat("claude-sonnet-4-6", [SystemMessage(content="Be helpful."), UserMessage(content="Hi")])
+        _ = sync_provider.chat("claude-sonnet-4-6", [SystemMessage(content="Be helpful."), UserMessage(content="Hi")])
 
         mock_sync_client.messages.create.assert_called_once_with(
             model="claude-sonnet-4-6",
@@ -251,7 +251,7 @@ class TestChat:
         mock_sync_client.messages.create.return_value = message_response
 
         tools = [Tool(function=FunctionDefinition(name="get_weather"))]
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], tools=tools)
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], tools=tools)
 
         mock_sync_client.messages.create.assert_called_once_with(
             model="claude-sonnet-4-6",
@@ -267,7 +267,7 @@ class TestChat:
         mock_sync_client.messages.create.return_value = message_response
 
         rf = JsonSchemaResponseFormat(name="person", json_schema={"type": "object"})
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], response_format=rf)
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], response_format=rf)
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["output_config"] == {
@@ -279,14 +279,14 @@ class TestChat:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
 
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], response_format=TextResponseFormat())
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], response_format=TextResponseFormat())
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert "output_config" not in call_kwargs
 
     def test_chat_json_object_raises(self, sync_provider: AnthropicProvider) -> None:
         with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat is not supported"):
-            sync_provider.chat(
+            _ = sync_provider.chat(
                 "claude-sonnet-4-6", [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat()
             )
 
@@ -295,7 +295,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
 
-        sync_provider.chat(
+        _ = sync_provider.chat(
             "claude-sonnet-4-6",
             [UserMessage(content="Hi")],
             provider_params=AnthropicParams(
@@ -315,7 +315,7 @@ class TestChat:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
 
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], stop="STOP")
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], stop="STOP")
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["stop_sequences"] == ["STOP"]
@@ -326,7 +326,7 @@ class TestChat:
         mock_sync_client.messages.create.return_value = message_response
 
         # default max_tokens=4096, so medium (8192) gets capped to 4095
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="medium")
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="medium")
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 4095}
@@ -336,7 +336,9 @@ class TestChat:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
 
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="high", max_tokens=50000)
+        _ = sync_provider.chat(
+            "claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="high", max_tokens=50000
+        )
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 32768}
@@ -351,7 +353,7 @@ class TestChat:
         mock_sync_client.messages.create.side_effect = bad_request_error
 
         with pytest.raises(InvalidRequestError):
-            sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+            _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
     def test_chat_cost_calculated(
         self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
@@ -420,7 +422,7 @@ class TestAchat:
         mock_async_client.messages.create.side_effect = auth_error
 
         with pytest.raises(AuthenticationError):
-            await async_provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+            _ = await async_provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
 
 # MARK: ChatStream
@@ -525,7 +527,7 @@ class TestChatStream:
     ) -> None:
         mock_sync_client.messages.create.return_value = iter(stream_events)
 
-        list(sync_provider.chat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="medium"))
+        _ = list(sync_provider.chat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="medium"))
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 4095}
@@ -539,7 +541,7 @@ class TestChatStream:
         mock_sync_client.messages.create.side_effect = server_error
 
         with pytest.raises(ProviderError):
-            list(sync_provider.chat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")]))
+            _ = list(sync_provider.chat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")]))
 
     def test_stream_exception_during_iteration(
         self,
@@ -556,7 +558,7 @@ class TestChatStream:
         mock_sync_client.messages.create.return_value = _failing_iter()
 
         with pytest.raises(ProviderError, match="test error"):
-            list(sync_provider.chat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")]))
+            _ = list(sync_provider.chat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")]))
 
 
 # MARK: AchatStream
@@ -710,8 +712,8 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
 
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
 
         assert mock_sync_client.messages.create.call_count == 2
 
@@ -720,8 +722,8 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.messages.create.return_value = message_response
 
-        await async_provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
-        await async_provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
+        _ = await async_provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = await async_provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
 
         assert mock_async_client.messages.create.call_count == 2
 
@@ -734,7 +736,7 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once_with(
             api_key="sk-ant-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
@@ -749,7 +751,7 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once_with(api_key="sk-ant-fake-key", base_url=None, timeout=30.0, max_retries=5)
 
@@ -762,8 +764,8 @@ class TestClientManagement:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth)
-        provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
-        provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
+        _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
 
         mock_sync_create.assert_called_once()
 
@@ -776,8 +778,8 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth)
-        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
-        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
+        _ = await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
 
         mock_async_create.assert_called_once()
 
@@ -790,7 +792,7 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
         mock_async_create.assert_called_once_with(
             api_key="sk-ant-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
@@ -805,7 +807,7 @@ class TestClientManagement:
     ) -> None:
         mock_async_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
         mock_async_create.assert_called_once_with(api_key="sk-ant-fake-key", base_url=None, timeout=30.0, max_retries=5)
 
@@ -818,7 +820,7 @@ class TestClientManagement:
         provider = AnthropicProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
-            provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+            _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
     async def test_async_client_init_failure_mapped(
         self,
@@ -829,7 +831,7 @@ class TestClientManagement:
         provider = AnthropicProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
-            await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+            _ = await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
     @pytest.fixture
     def mock_get_running_loop(self, mocker: MockerFixture) -> MagicMock:
@@ -850,8 +852,8 @@ class TestClientManagement:
         loop2 = asyncio.new_event_loop()
         mock_get_running_loop.side_effect = [loop1, loop2]
 
-        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
-        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
+        _ = await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi again")])
 
         assert mock_async_create.call_count == 2
         assert mock_get_running_loop.call_count == 2
@@ -868,7 +870,7 @@ class TestProviderParamsKwargs:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
 
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], provider_params=AnthropicParams())
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], provider_params=AnthropicParams())
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert "thinking" not in call_kwargs
@@ -889,7 +891,7 @@ class TestProviderParamsKwargs:
             inference_geo="us",
         )
 
-        sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], provider_params=params)
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], provider_params=params)
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 5000}
@@ -960,7 +962,7 @@ class TestCustomDefaultMaxTokens:
     ) -> None:
         mock_sync_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth, default_max_tokens=8192)
-        provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once()
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
@@ -981,7 +983,7 @@ class TestAclose:
         mock_async_client.messages.create.return_value = message_response
         provider = AnthropicProvider(auth=fake_auth)
 
-        await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        _ = await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
         await provider.aclose()
 
         mock_async_create.assert_called_once()

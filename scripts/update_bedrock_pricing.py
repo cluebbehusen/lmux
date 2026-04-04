@@ -805,18 +805,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate Bedrock cost.py from the AWS Pricing API.",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--write",
         action="store_true",
         help="Write directly to cost.py (default: print to stdout)",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--regions",
         nargs="+",
         metavar="REGION",
         help="Include regional pricing overrides for these regions",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--all-regions",
         action="store_true",
         help="Include all available regions",
@@ -853,7 +853,7 @@ def main() -> None:
     code = generate_cost_py(default_pricing, regional_diffs)
 
     if args.write:
-        COST_PY_PATH.write_text(code)
+        _ = COST_PY_PATH.write_text(code)
         _info(f"Wrote {COST_PY_PATH}")
     else:
         print(code)  # noqa: T201

@@ -9,7 +9,7 @@ from lmux_azure_foundry.params import AzureFoundryParams
 class TestAzureFoundryParams:
     def test_invalid_reasoning_effort(self) -> None:
         with pytest.raises(ValidationError):
-            AzureFoundryParams(reasoning_effort="invalid")  # pyright: ignore[reportArgumentType]
+            _ = AzureFoundryParams(reasoning_effort="invalid")  # pyright: ignore[reportArgumentType]
 
     def test_defaults_all_none(self) -> None:
         params = AzureFoundryParams()
@@ -20,7 +20,7 @@ class TestAzureFoundryParams:
 
     def test_invalid_deployment_type(self) -> None:
         with pytest.raises(ValidationError):
-            AzureFoundryParams(deployment_type="invalid")  # pyright: ignore[reportArgumentType]
+            _ = AzureFoundryParams(deployment_type="invalid")  # pyright: ignore[reportArgumentType]
 
     def test_valid_deployment_types(self) -> None:
         assert AzureFoundryParams(deployment_type="global").deployment_type == "global"

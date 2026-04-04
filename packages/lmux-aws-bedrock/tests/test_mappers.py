@@ -97,7 +97,7 @@ class TestMapMessages:
     def test_user_message_multimodal_url_raises(self) -> None:
         parts: list[ContentPart] = [ImageContent(url="https://example.com/image.png")]
         with pytest.raises(UnsupportedFeatureError, match="base64 data URIs"):
-            map_messages([UserMessage(content=parts)])
+            _ = map_messages([UserMessage(content=parts)])
 
     def test_assistant_message_text(self) -> None:
         system, messages = map_messages([AssistantMessage(content="Hi!")])
@@ -254,7 +254,7 @@ class TestMapResponseFormat:
 
     def test_json_object_raises(self) -> None:
         with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat is not supported"):
-            map_response_format(JsonObjectResponseFormat())
+            _ = map_response_format(JsonObjectResponseFormat())
 
     def test_json_schema_returns_output_config(self, mock_add_additional_properties_false: MagicMock) -> None:
         rf = JsonSchemaResponseFormat(

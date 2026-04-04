@@ -17,4 +17,4 @@ class TestAnthropicParams:
 
     def test_invalid_service_tier_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            AnthropicParams(service_tier="invalid")  # pyright: ignore[reportArgumentType]
+            _ = AnthropicParams(service_tier="invalid")  # pyright: ignore[reportArgumentType]

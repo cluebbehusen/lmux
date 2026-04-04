@@ -102,11 +102,11 @@ class TestResolve:
 
     def test_missing_slash_raises(self, registry: Registry) -> None:
         with pytest.raises(InvalidRequestError, match="prefix/model"):
-            registry.chat("gpt-4o", [UserMessage(content="Hi")])
+            _ = registry.chat("gpt-4o", [UserMessage(content="Hi")])
 
     def test_unregistered_prefix_raises(self, registry: Registry) -> None:
         with pytest.raises(InvalidRequestError, match="No provider registered"):
-            registry.chat("unknown/gpt-4o", [UserMessage(content="Hi")])
+            _ = registry.chat("unknown/gpt-4o", [UserMessage(content="Hi")])
 
 
 # MARK: Chat
@@ -300,43 +300,43 @@ class TestUnsupportedFeature:
         reg = Registry()
         reg.register("test", CompletionOnlyProvider())
         with pytest.raises(UnsupportedFeatureError, match="does not support embeddings"):
-            reg.embed("test/model", "hello")
+            _ = reg.embed("test/model", "hello")
 
     async def test_aembed_on_completion_only_raises(self) -> None:
         reg = Registry()
         reg.register("test", CompletionOnlyProvider())
         with pytest.raises(UnsupportedFeatureError, match="does not support embeddings"):
-            await reg.aembed("test/model", "hello")
+            _ = await reg.aembed("test/model", "hello")
 
     def test_create_response_on_completion_only_raises(self) -> None:
         reg = Registry()
         reg.register("test", CompletionOnlyProvider())
         with pytest.raises(UnsupportedFeatureError, match="does not support the Responses API"):
-            reg.create_response("test/model", "hello")
+            _ = reg.create_response("test/model", "hello")
 
     async def test_acreate_response_on_completion_only_raises(self) -> None:
         reg = Registry()
         reg.register("test", CompletionOnlyProvider())
         with pytest.raises(UnsupportedFeatureError, match="does not support the Responses API"):
-            await reg.acreate_response("test/model", "hello")
+            _ = await reg.acreate_response("test/model", "hello")
 
     def test_chat_on_embedding_only_raises(self) -> None:
         reg = Registry()
         reg.register("emb", EmbeddingOnlyProvider())
         with pytest.raises(UnsupportedFeatureError, match="does not support chat"):
-            reg.chat("emb/model", [UserMessage(content="Hi")])
+            _ = reg.chat("emb/model", [UserMessage(content="Hi")])
 
     async def test_achat_on_embedding_only_raises(self) -> None:
         reg = Registry()
         reg.register("emb", EmbeddingOnlyProvider())
         with pytest.raises(UnsupportedFeatureError, match="does not support chat"):
-            await reg.achat("emb/model", [UserMessage(content="Hi")])
+            _ = await reg.achat("emb/model", [UserMessage(content="Hi")])
 
     def test_chat_stream_on_embedding_only_raises(self) -> None:
         reg = Registry()
         reg.register("emb", EmbeddingOnlyProvider())
         with pytest.raises(UnsupportedFeatureError, match="does not support chat"):
-            list(reg.chat_stream("emb/model", [UserMessage(content="Hi")]))
+            _ = list(reg.chat_stream("emb/model", [UserMessage(content="Hi")]))
 
     async def test_achat_stream_on_embedding_only_raises(self) -> None:
         reg = Registry()
@@ -467,14 +467,14 @@ class TestProviderParamsResolution:
         prov = RecordingProvider()
         reg = Registry()
         reg.register("rec", prov)
-        reg.chat("rec/model", [UserMessage(content="Hi")])
+        _ = reg.chat("rec/model", [UserMessage(content="Hi")])
         assert prov.last_params is None
 
     def test_default_params_used_when_no_per_call(self) -> None:
         prov = RecordingProvider()
         reg = Registry()
         reg.register("rec", prov, default_params=FakeParams(tag="from-default"))
-        reg.chat("rec/model", [UserMessage(content="Hi")])
+        _ = reg.chat("rec/model", [UserMessage(content="Hi")])
         assert isinstance(prov.last_params, FakeParams)
         assert prov.last_params.tag == "from-default"
 
@@ -482,7 +482,7 @@ class TestProviderParamsResolution:
         prov = RecordingProvider()
         reg = Registry()
         reg.register("rec", prov, default_params=FakeParams(tag="default"))
-        reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=FakeParams(tag="override"))
+        _ = reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=FakeParams(tag="override"))
         assert isinstance(prov.last_params, FakeParams)
         assert prov.last_params.tag == "override"
 
@@ -491,7 +491,7 @@ class TestProviderParamsResolution:
         reg = Registry()
         reg.register("rec", prov)
         params = {"rec": FakeParams(tag="from-dict"), "other": FakeParams(tag="wrong")}
-        reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
+        _ = reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
         assert isinstance(prov.last_params, FakeParams)
         assert prov.last_params.tag == "from-dict"
 
@@ -500,7 +500,7 @@ class TestProviderParamsResolution:
         reg = Registry()
         reg.register("rec", prov, default_params=FakeParams(tag="fallback"))
         params: dict[str, BaseProviderParams] = {"other": FakeParams(tag="wrong")}
-        reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
+        _ = reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
         assert isinstance(prov.last_params, FakeParams)
         assert prov.last_params.tag == "fallback"
 
@@ -509,7 +509,7 @@ class TestProviderParamsResolution:
         reg = Registry()
         reg.register("rec", prov, default_params=FakeParams(tag="default"))
         params = {"rec": FakeParams(tag="dict-wins")}
-        reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
+        _ = reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
         assert isinstance(prov.last_params, FakeParams)
         assert prov.last_params.tag == "dict-wins"
 
@@ -518,14 +518,14 @@ class TestProviderParamsResolution:
         reg = Registry()
         reg.register("rec", prov)
         params: dict[str, BaseProviderParams] = {"other": FakeParams(tag="wrong")}
-        reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
+        _ = reg.chat("rec/model", [UserMessage(content="Hi")], provider_params=params)
         assert prov.last_params is None
 
     def test_reasoning_effort_passed_through(self) -> None:
         prov = RecordingProvider()
         reg = Registry()
         reg.register("rec", prov)
-        reg.chat("rec/model", [UserMessage(content="Hi")], reasoning_effort="high")
+        _ = reg.chat("rec/model", [UserMessage(content="Hi")], reasoning_effort="high")
         assert prov.last_reasoning_effort == "high"
 
     def test_reregister_without_default_clears_old_default(self) -> None:
@@ -533,5 +533,5 @@ class TestProviderParamsResolution:
         reg = Registry()
         reg.register("rec", prov, default_params=FakeParams(tag="old"))
         reg.register("rec", prov)
-        reg.chat("rec/model", [UserMessage(content="Hi")])
+        _ = reg.chat("rec/model", [UserMessage(content="Hi")])
         assert prov.last_params is None

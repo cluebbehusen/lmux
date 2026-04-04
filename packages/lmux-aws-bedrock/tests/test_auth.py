@@ -43,7 +43,7 @@ class TestBedrockEnvAuthProvider:
         provider = BedrockEnvAuthProvider()
 
         with pytest.raises(ImportError, match=r"\[async\] extra group is required for async operations.*"):
-            await provider.aget_credentials()
+            _ = await provider.aget_credentials()
 
 
 class TestBedrockSessionAuthProvider:
@@ -91,7 +91,7 @@ class TestBedrockSessionAuthProvider:
         provider = BedrockSessionAuthProvider()
 
         with pytest.raises(ImportError, match=r"\[async\] extra group is required for async operations.*"):
-            await provider.aget_credentials()
+            _ = await provider.aget_credentials()
 
     async def test_aget_with_default_kwargs_does_not_set_config_or_credentials(
         self, mock_aiobotocore_get_session: MagicMock
@@ -110,13 +110,13 @@ class TestBedrockSessionAuthProvider:
     ) -> None:
         provider = BedrockSessionAuthProvider(aws_account_id="123456789012")
 
-        await provider.aget_credentials()
+        _ = await provider.aget_credentials()
 
         mock_aiobotocore_get_session.return_value.set_credentials.assert_not_called()
 
     def test_default_kwargs_all_none(self, mock_boto3_session_cls: MagicMock) -> None:
         provider = BedrockSessionAuthProvider()
-        provider.get_credentials()
+        _ = provider.get_credentials()
 
         mock_boto3_session_cls.assert_called_once_with(
             region_name=None,
