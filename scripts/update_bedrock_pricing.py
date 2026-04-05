@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""Generate AWS Bedrock cost.py from the public AWS Pricing API.
+"""Generate AWS Bedrock cost.py from the AWS Pricing API and Bedrock API.
 
 Fetches pricing from two unauthenticated API endpoints:
 - AmazonBedrock: third-party models (DeepSeek, Gemma, Mistral, etc.)
 - AmazonBedrockFoundationModels: Claude, Amazon Nova/Titan, Cohere, etc.
 
+Then fetches real model and inference profile IDs from the Bedrock API
+(via boto3's default credential chain) to ensure pricing keys match actual
+Bedrock identifiers.
+
 Usage:
+    python3 scripts/update_bedrock_pricing.py --write
     python3 scripts/update_bedrock_pricing.py               # stdout, us-east-1 only
-    python3 scripts/update_bedrock_pricing.py --write        # overwrite cost.py
     python3 scripts/update_bedrock_pricing.py --regions eu-west-1 ap-northeast-1
 """
 
 import argparse
 import json
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -20,6 +25,9 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
+
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError, EndpointConnectionError
 
 API_BASE = "https://pricing.us-east-1.amazonaws.com"
 DEFAULT_REGION = "us-east-1"
@@ -36,7 +44,7 @@ LCTX_THRESHOLD = 200_000
 FM_SERVICENAME_MAP: dict[str, str] = {
     # Anthropic Claude
     "Claude Opus 4.6": "anthropic.claude-opus-4-6-v1",
-    "Claude Sonnet 4.6": "anthropic.claude-sonnet-4-6-v1",
+    "Claude Sonnet 4.6": "anthropic.claude-sonnet-4-6",
     "Claude Opus 4.5": "anthropic.claude-opus-4-5-v1",
     "Claude Sonnet 4.5": "anthropic.claude-sonnet-4-5-v1",
     "Claude Haiku 4.5": "anthropic.claude-haiku-4-5-v1",
@@ -142,6 +150,174 @@ EMBEDDING_PREFIXES = ("amazon.titan-embed", "amazon.nova-embed", "cohere.embed")
 # Cross-region inference profile prefixes (excluding "global." which gets its own pricing)
 INFERENCE_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.")
 
+# ── Bedrock API integration ──────────────────────────────────────────────────
+
+_DATE_IN_ID = re.compile(r"-\d{8}")
+_COLON_VERSION = re.compile(r":\d+$")
+_DASH_VERSION = re.compile(r"-v\d+$")
+_INSTRUCT_SUFFIX = re.compile(r"-instruct$")
+_THROUGHPUT_VARIANT = re.compile(r":\d+:\w")
+
+
+def _strip_colon_version(model_id: str) -> str:
+    """Strip :N version suffix (e.g. :0) from a model ID."""
+    return _COLON_VERSION.sub("", model_id)
+
+
+def _strip_date_from_id(model_id: str) -> str:
+    """Strip date component (e.g. -20251101) from a model ID."""
+    return _DATE_IN_ID.sub("", model_id)
+
+
+# Representative regions for discovering geo-specific inference profiles.
+# One region per geo prefix — queried to find all profiles for that prefix.
+GEO_DISCOVERY_REGIONS: dict[str, str] = {
+    "us-east-1": "us.",
+    "eu-central-1": "eu.",
+    "ap-southeast-1": "apac.",
+    "ap-southeast-2": "au.",
+    "ap-northeast-1": "jp.",
+    "ca-central-1": "ca.",
+}
+
+
+def fetch_bedrock_catalog() -> tuple[list[str], list[str]]:
+    """Fetch foundation model and inference profile IDs from the Bedrock API.
+
+    Queries us-east-1 for foundation models and global profiles, then queries
+    one representative region per geo to discover all regional inference profiles.
+
+    Uses boto3's default credential chain (env vars, AWS config, instance metadata).
+    """
+    session = boto3.Session()
+
+    # Foundation models + global/US profiles from us-east-1
+    client = session.client("bedrock", region_name="us-east-1")
+    models_resp = client.list_foundation_models()
+    model_ids = [m["modelId"] for m in models_resp["modelSummaries"]]
+
+    all_profile_ids: set[str] = set()
+    for region, geo_prefix in GEO_DISCOVERY_REGIONS.items():
+        try:
+            client = session.client("bedrock", region_name=region)
+            resp = client.list_inference_profiles()
+            region_profiles = [p["inferenceProfileId"] for p in resp["inferenceProfileSummaries"]]
+            # Only keep profiles matching this geo's prefix (+ global from us-east-1)
+            for pid in region_profiles:
+                stripped = _strip_colon_version(pid)
+                if stripped.startswith((geo_prefix, "global.")):
+                    all_profile_ids.add(pid)
+            geo_count = sum(1 for p in region_profiles if _strip_colon_version(p).startswith(geo_prefix))
+            _info(f"  {region}: {geo_count} {geo_prefix}* profiles")
+        except (ClientError, BotoCoreError, EndpointConnectionError) as e:
+            _warn(f"Failed to query {region} for {geo_prefix}* profiles: {e}")
+
+    return model_ids, sorted(all_profile_ids)
+
+
+def _normalize_model_id(model_id: str) -> str:
+    """Strip date, -vN, and -instruct suffixes from a model ID."""
+    return _INSTRUCT_SUFFIX.sub("", _DASH_VERSION.sub("", _strip_date_from_id(model_id)))
+
+
+def _build_resolution_indexes(
+    real_model_ids: list[str],
+) -> tuple[set[str], set[str], dict[str, list[str]], dict[str, list[str]], dict[str, str]]:
+    """Build lookup indexes from real Bedrock model IDs for resolution matching.
+
+    Returns (real_raw, real_clean, dateless_to_real, normalized_to_real, prefix_to_real).
+    """
+    real_raw: set[str] = set()
+    real_clean: set[str] = set()
+    for rid in real_model_ids:
+        if _THROUGHPUT_VARIANT.search(rid):
+            continue
+        real_raw.add(rid)
+        real_clean.add(_strip_colon_version(rid))
+
+    dateless_to_real: dict[str, list[str]] = {}
+    normalized_to_real: dict[str, list[str]] = {}
+    prefix_to_real: dict[str, str] = {}
+
+    for clean in real_clean:
+        dateless = _strip_date_from_id(clean)
+        if dateless != clean:
+            dateless_to_real.setdefault(dateless, []).append(clean)
+
+        normalized = _normalize_model_id(clean)
+        if normalized != clean:
+            normalized_to_real.setdefault(normalized, []).append(clean)
+
+        # Reverse prefix: part before last dash segment (e.g. gpt-oss-120b for gpt-oss-120b-1)
+        base = clean.rsplit("-", 1)[0]
+        if base and base not in real_clean:
+            _ = prefix_to_real.setdefault(base, clean)
+
+    return real_raw, real_clean, dateless_to_real, normalized_to_real, prefix_to_real
+
+
+def build_id_resolution_map(
+    simplified_ids: set[str],
+    real_model_ids: list[str],
+) -> dict[str, str]:
+    """Map simplified pricing IDs to real Bedrock model IDs.
+
+    Tries four strategies:
+    1. Strip date from real ID, match against simplified (handles dated models)
+    2. Strip -vN from simplified, match against real (handles version-less models)
+    3. Normalize both (strip date, -vN, -instruct), match (handles suffix mismatches)
+    4. Prefix match: simplified is a prefix of a real ID (handles extra segments)
+    """
+    real_raw, real_clean, dateless_to_real, normalized_to_real, prefix_to_real = _build_resolution_indexes(
+        real_model_ids
+    )
+
+    mapping: dict[str, str] = {}
+    unresolved: list[str] = []
+
+    for sid in simplified_ids:
+        if sid in real_clean or sid in real_raw:
+            continue
+
+        # Strategy 1: dateless form of a real ID matches simplified
+        candidates = dateless_to_real.get(sid)
+        if candidates:
+            mapping[sid] = sorted(candidates)[-1]
+            continue
+
+        # Strategy 2: simplified minus -vN matches a real ID
+        sid_no_v = _DASH_VERSION.sub("", sid)
+        if sid_no_v != sid and sid_no_v in real_clean:
+            mapping[sid] = sid_no_v
+            continue
+
+        # Strategy 3: fully normalized match
+        sid_normalized = _normalize_model_id(sid)
+        if sid_normalized != sid and sid_normalized in real_clean:
+            mapping[sid] = sid_normalized
+            continue
+        candidates = normalized_to_real.get(sid_normalized)
+        if candidates:
+            mapping[sid] = sorted(candidates)[-1]
+            continue
+
+        # Strategy 4: simplified is a prefix of a real ID
+        if sid in prefix_to_real:
+            mapping[sid] = prefix_to_real[sid]
+            continue
+
+        unresolved.append(sid)
+
+    if unresolved:
+        _warn(f"Could not resolve to real Bedrock model IDs: {sorted(unresolved)}")
+    if mapping:
+        _info(f"Resolved {len(mapping)} simplified IDs to real Bedrock model IDs:")
+        for old, new in sorted(mapping.items()):
+            _info(f"  {old} -> {new}")
+
+    return mapping
+
+
 # ── Data structures ──────────────────────────────────────────────────────────
 
 
@@ -162,6 +338,50 @@ class ModelPrices:
     @property
     def has_lctx(self) -> bool:
         return self.lctx_input_cost is not None
+
+
+def resolve_pricing_ids(
+    pricing: dict[str, ModelPrices],
+    resolution_map: dict[str, str],
+) -> dict[str, ModelPrices]:
+    """Re-key pricing dict from simplified IDs to real Bedrock model IDs."""
+    return {resolution_map.get(k, k): v for k, v in pricing.items()}
+
+
+def expand_with_real_profiles(
+    default: dict[str, ModelPrices],
+    global_pricing: dict[str, ModelPrices],
+    real_profile_ids: list[str],
+) -> dict[str, ModelPrices]:
+    """Expand pricing with real inference profile IDs from Bedrock.
+
+    For global.* profiles, uses global pricing. For regional profiles (us.*, eu.*, etc.),
+    uses default (non-global) pricing.
+    """
+    result = dict(default)
+
+    for pid in real_profile_ids:
+        clean_pid = _strip_colon_version(pid)
+
+        # Determine prefix and base model
+        is_global = False
+        base: str | None = None
+        for pfx in ("global.", *INFERENCE_PROFILE_PREFIXES):
+            if clean_pid.startswith(pfx):
+                base = clean_pid[len(pfx) :]
+                is_global = pfx == "global."
+                break
+
+        if base is None:
+            continue  # Not a recognized inference profile prefix
+
+        # Find pricing for base model
+        if is_global and base in global_pricing:
+            result[clean_pid] = global_pricing[base]
+        elif base in default:
+            result[clean_pid] = default[base]
+
+    return result
 
 
 # ── Fetching ─────────────────────────────────────────────────────────────────
@@ -558,26 +778,6 @@ def merge_pricing(
     return result
 
 
-def expand_inference_profiles(
-    default: dict[str, ModelPrices],
-    global_prices: dict[str, ModelPrices],
-) -> dict[str, ModelPrices]:
-    """Expand models with inference profiles into prefixed variants.
-
-    For each model with global pricing, emits:
-    - bare model ID with non-global (direct invoke) price
-    - global.{model_id} with global price
-    - {prefix}{model_id} for each regional prefix with non-global price
-    """
-    result = dict(default)
-    for model_id, gp in global_prices.items():
-        result[f"global.{model_id}"] = gp
-        if model_id in default:
-            for prefix in INFERENCE_PROFILE_PREFIXES:
-                result[f"{prefix}{model_id}"] = default[model_id]
-    return result
-
-
 # ── Regional pricing ─────────────────────────────────────────────────────────
 
 
@@ -643,7 +843,8 @@ def _fmt(price: Decimal) -> str:
 
 def _is_embedding(model_id: str) -> bool:
     """Whether this model is an embedding model (no output cost)."""
-    return any(model_id.startswith(p) for p in EMBEDDING_PREFIXES)
+    bare_id = _strip_profile_prefix(model_id)
+    return any(bare_id.startswith(p) for p in EMBEDDING_PREFIXES)
 
 
 def generate_cost_py(
@@ -920,8 +1121,18 @@ def main() -> None:
     global_pricing: dict[str, ModelPrices] = {**amazon_global, **foundation_global}
     _info(f"Total models after merge: {len(default_pricing)} ({len(global_pricing)} with global pricing)")
 
-    # Expand inference profile variants for models with global pricing
-    expanded_pricing = expand_inference_profiles(default_pricing, global_pricing)
+    # Fetch real model/profile IDs from Bedrock API and resolve pricing keys
+    _info("Fetching Bedrock catalog...")
+    real_model_ids, real_profile_ids = fetch_bedrock_catalog()
+    _info(f"  Found {len(real_model_ids)} foundation models, {len(real_profile_ids)} inference profiles")
+
+    all_simplified = set(default_pricing.keys()) | set(global_pricing.keys())
+    resolution_map = build_id_resolution_map(all_simplified, real_model_ids)
+    if resolution_map:
+        default_pricing = resolve_pricing_ids(default_pricing, resolution_map)
+        global_pricing = resolve_pricing_ids(global_pricing, resolution_map)
+
+    expanded_pricing = expand_with_real_profiles(default_pricing, global_pricing, real_profile_ids)
     _info(f"Total entries after inference profile expansion: {len(expanded_pricing)}")
 
     # Regional pricing (compared against unexpanded default)

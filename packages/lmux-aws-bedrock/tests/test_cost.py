@@ -64,7 +64,7 @@ class TestCalculateBedrockCost:
     def test_long_context_tier(self) -> None:
         """Claude Sonnet 4.5 on Bedrock uses higher pricing above 200K threshold."""
         usage = Usage(input_tokens=300_000, output_tokens=1000)
-        cost = calculate_bedrock_cost("anthropic.claude-sonnet-4-5-v1", usage)
+        cost = calculate_bedrock_cost("anthropic.claude-sonnet-4-5-20250929-v1", usage)
         assert cost is not None
         # Above 200K threshold, uses long-context tier pricing
         assert cost.input_cost == pytest.approx(300_000 * 6.6 / 1_000_000)
@@ -144,7 +144,7 @@ class TestCalculateBedrockCost:
     def test_inference_profile_model_without_profiles(self) -> None:
         """Models without inference profiles return None for prefixed IDs."""
         usage = Usage(input_tokens=1000, output_tokens=500)
-        cost = calculate_bedrock_cost("us.meta.llama3-1-70b-instruct-v1", usage)
+        cost = calculate_bedrock_cost("us.ai21.jamba-1-5-large-v1", usage)
         assert cost is None
 
     def test_regional_pricing_exact_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
