@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-03-29T00:37:56.499885Z"
+exclude-newer = "2026-03-29T00:44:50.921587Z"
 exclude-newer-span = "P7D"
 
 [manifest]
@@ -788,7 +788,7 @@ wheels = [
 
 [[package]]
 name = "lmux"
-version = "0.5.1"
+version = "0.5.2"
 source = { editable = "packages/lmux" }
 dependencies = [
     { name = "pydantic" },
@@ -799,7 +799,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.3.1"
+version = "0.3.2"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "anthropic" },
@@ -814,7 +814,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-aws-bedrock"
-version = "0.4.3"
+version = "0.4.4"
 source = { editable = "packages/lmux-aws-bedrock" }
 dependencies = [
     { name = "boto3" },
@@ -836,7 +836,7 @@ provides-extras = ["async"]
 
 [[package]]
 name = "lmux-azure-foundry"
-version = "0.4.1"
+version = "0.4.2"
 source = { editable = "packages/lmux-azure-foundry" }
 dependencies = [
     { name = "lmux" },
@@ -858,7 +858,7 @@ provides-extras = ["identity"]
 
 [[package]]
 name = "lmux-gcp-vertex"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "packages/lmux-gcp-vertex" }
 dependencies = [
     { name = "google-genai" },
@@ -873,7 +873,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-groq"
-version = "0.3.1"
+version = "0.3.2"
 source = { editable = "packages/lmux-groq" }
 dependencies = [
     { name = "groq" },
@@ -888,7 +888,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-openai"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "packages/lmux-openai" }
 dependencies = [
     { name = "lmux" },
