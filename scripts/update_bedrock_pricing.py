@@ -26,6 +26,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError, EndpointConnectionError
+
 API_BASE = "https://pricing.us-east-1.amazonaws.com"
 DEFAULT_REGION = "us-east-1"
 COST_PY_PATH = (
@@ -186,8 +189,6 @@ def fetch_bedrock_catalog() -> tuple[list[str], list[str]]:
 
     Uses boto3's default credential chain (env vars, AWS config, instance metadata).
     """
-    import boto3
-
     session = boto3.Session()
 
     # Foundation models + global/US profiles from us-east-1
@@ -204,29 +205,28 @@ def fetch_bedrock_catalog() -> tuple[list[str], list[str]]:
             # Only keep profiles matching this geo's prefix (+ global from us-east-1)
             for pid in region_profiles:
                 stripped = _strip_colon_version(pid)
-                if stripped.startswith(geo_prefix) or stripped.startswith("global."):
+                if stripped.startswith((geo_prefix, "global.")):
                     all_profile_ids.add(pid)
-            _info(
-                f"  {region}: {sum(1 for p in region_profiles if _strip_colon_version(p).startswith(geo_prefix))} {geo_prefix}* profiles"
-            )
-        except Exception as e:
+            geo_count = sum(1 for p in region_profiles if _strip_colon_version(p).startswith(geo_prefix))
+            _info(f"  {region}: {geo_count} {geo_prefix}* profiles")
+        except (ClientError, BotoCoreError, EndpointConnectionError) as e:
             _warn(f"Failed to query {region} for {geo_prefix}* profiles: {e}")
 
     return model_ids, sorted(all_profile_ids)
 
 
-def build_id_resolution_map(
-    simplified_ids: set[str],
-    real_model_ids: list[str],
-) -> dict[str, str]:
-    """Map simplified pricing IDs to real Bedrock model IDs.
+def _normalize_model_id(model_id: str) -> str:
+    """Strip date, -vN, and -instruct suffixes from a model ID."""
+    return _INSTRUCT_SUFFIX.sub("", _DASH_VERSION.sub("", _strip_date_from_id(model_id)))
 
-    Tries three strategies:
-    1. Strip date from real ID, match against simplified (handles dated models)
-    2. Strip -vN from simplified, match against real (handles version-less models)
-    3. Normalize both (strip date + version), match (handles edge cases)
+
+def _build_resolution_indexes(
+    real_model_ids: list[str],
+) -> tuple[set[str], set[str], dict[str, list[str]], dict[str, list[str]], dict[str, str]]:
+    """Build lookup indexes from real Bedrock model IDs for resolution matching.
+
+    Returns (real_raw, real_clean, dateless_to_real, normalized_to_real, prefix_to_real).
     """
-    # Build set of real IDs, both raw and stripped of :N version suffix
     real_raw: set[str] = set()
     real_clean: set[str] = set()
     for rid in real_model_ids:
@@ -235,50 +235,64 @@ def build_id_resolution_map(
         real_raw.add(rid)
         real_clean.add(_strip_colon_version(rid))
 
-    # Dateless real IDs: maps dateless form → list of real (clean) IDs
     dateless_to_real: dict[str, list[str]] = {}
+    normalized_to_real: dict[str, list[str]] = {}
+    prefix_to_real: dict[str, str] = {}
+
     for clean in real_clean:
         dateless = _strip_date_from_id(clean)
         if dateless != clean:
             dateless_to_real.setdefault(dateless, []).append(clean)
 
-    # Fully normalized: strip date, -vN, and -instruct suffix
-    normalized_to_real: dict[str, list[str]] = {}
-    for clean in real_clean:
-        normalized = _INSTRUCT_SUFFIX.sub("", _DASH_VERSION.sub("", _strip_date_from_id(clean)))
+        normalized = _normalize_model_id(clean)
         if normalized != clean:
             normalized_to_real.setdefault(normalized, []).append(clean)
 
-    # Reverse prefix lookup: for each real ID, index all prefixes that are
-    # shorter than the full ID (handles cases like gpt-oss-120b → gpt-oss-120b-1)
-    prefix_to_real: dict[str, str] = {}
-    for clean in real_clean:
-        # Don't index very short prefixes; only the part before the last dash segment
+        # Reverse prefix: part before last dash segment (e.g. gpt-oss-120b for gpt-oss-120b-1)
         base = clean.rsplit("-", 1)[0]
         if base and base not in real_clean:
-            prefix_to_real.setdefault(base, clean)
+            _ = prefix_to_real.setdefault(base, clean)
+
+    return real_raw, real_clean, dateless_to_real, normalized_to_real, prefix_to_real
+
+
+def build_id_resolution_map(
+    simplified_ids: set[str],
+    real_model_ids: list[str],
+) -> dict[str, str]:
+    """Map simplified pricing IDs to real Bedrock model IDs.
+
+    Tries four strategies:
+    1. Strip date from real ID, match against simplified (handles dated models)
+    2. Strip -vN from simplified, match against real (handles version-less models)
+    3. Normalize both (strip date, -vN, -instruct), match (handles suffix mismatches)
+    4. Prefix match: simplified is a prefix of a real ID (handles extra segments)
+    """
+    real_raw, real_clean, dateless_to_real, normalized_to_real, prefix_to_real = _build_resolution_indexes(
+        real_model_ids
+    )
 
     mapping: dict[str, str] = {}
     unresolved: list[str] = []
 
     for sid in simplified_ids:
         if sid in real_clean or sid in real_raw:
-            continue  # Already matches a real ID
-
-        # Strategy 1: simplified matches dateless form of a real ID
-        candidates = dateless_to_real.get(sid)
-        if candidates:
-            mapping[sid] = sorted(candidates)[-1]  # Latest date if multiple
             continue
 
-        # Strategy 2: simplified minus -vN matches a real ID exactly
+        # Strategy 1: dateless form of a real ID matches simplified
+        candidates = dateless_to_real.get(sid)
+        if candidates:
+            mapping[sid] = sorted(candidates)[-1]
+            continue
+
+        # Strategy 2: simplified minus -vN matches a real ID
         sid_no_v = _DASH_VERSION.sub("", sid)
         if sid_no_v != sid and sid_no_v in real_clean:
             mapping[sid] = sid_no_v
             continue
 
-        # Strategy 3: fully normalize both sides (strip date, -vN, -instruct)
-        sid_normalized = _INSTRUCT_SUFFIX.sub("", _DASH_VERSION.sub("", _strip_date_from_id(sid)))
+        # Strategy 3: fully normalized match
+        sid_normalized = _normalize_model_id(sid)
         if sid_normalized != sid and sid_normalized in real_clean:
             mapping[sid] = sid_normalized
             continue
@@ -287,7 +301,7 @@ def build_id_resolution_map(
             mapping[sid] = sorted(candidates)[-1]
             continue
 
-        # Strategy 4: simplified is a prefix of a real ID (e.g. gpt-oss-120b → gpt-oss-120b-1)
+        # Strategy 4: simplified is a prefix of a real ID
         if sid in prefix_to_real:
             mapping[sid] = prefix_to_real[sid]
             continue
