@@ -23,7 +23,7 @@ jobs:
 
       - run: uv python install 3.13
 
-      - run: uv sync --all-packages --all-extras
+      - run: uv sync --all-packages --all-extras --locked
 
       - run: uv run ruff format --check
 
@@ -47,6 +47,6 @@ jobs:
 
       - run: uv python install ${{ matrix.python-version }}
 
-      - run: uv sync --all-packages --all-extras --python ${{ matrix.python-version }}
+      - run: uv sync --all-packages --all-extras --locked --python ${{ matrix.python-version }}
 
       - run: uv run --python ${{ matrix.python-version }} pytest
