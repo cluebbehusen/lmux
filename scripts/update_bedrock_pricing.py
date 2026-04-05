@@ -206,7 +206,9 @@ def fetch_bedrock_catalog() -> tuple[list[str], list[str]]:
                 stripped = _strip_colon_version(pid)
                 if stripped.startswith(geo_prefix) or stripped.startswith("global."):
                     all_profile_ids.add(pid)
-            _info(f"  {region}: {sum(1 for p in region_profiles if _strip_colon_version(p).startswith(geo_prefix))} {geo_prefix}* profiles")
+            _info(
+                f"  {region}: {sum(1 for p in region_profiles if _strip_colon_version(p).startswith(geo_prefix))} {geo_prefix}* profiles"
+            )
         except Exception as e:
             _warn(f"Failed to query {region} for {geo_prefix}* profiles: {e}")
 
@@ -760,7 +762,6 @@ def merge_pricing(
     result.update(foundation)
 
     return result
-
 
 
 # ── Regional pricing ─────────────────────────────────────────────────────────
