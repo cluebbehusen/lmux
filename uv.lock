@@ -3,8 +3,17 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-03-29T00:44:50.921587Z"
+exclude-newer = "2026-03-29T10:29:27.296838Z"
 exclude-newer-span = "P7D"
+
+[options.exclude-newer-package]
+lmux = false
+lmux-anthropic = false
+lmux-aws-bedrock = false
+lmux-azure-foundry = false
+lmux-gcp-vertex = false
+lmux-openai = false
+lmux-groq = false
 
 [manifest]
 members = [
@@ -814,7 +823,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-aws-bedrock"
-version = "0.4.4"
+version = "0.4.5"
 source = { editable = "packages/lmux-aws-bedrock" }
 dependencies = [
     { name = "boto3" },
