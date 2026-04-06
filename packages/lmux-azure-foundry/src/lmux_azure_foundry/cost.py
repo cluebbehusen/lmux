@@ -56,6 +56,48 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # --- OpenAI: GPT-5.4 family ---
+    "gpt-5.4": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.25),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(22.50),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-5.4-pro": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(30.00),
+                output_cost_per_token=per_million_tokens(180.00),
+            )
+        ],
+    ),
+    "gpt-5.4-mini": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.75),
+                output_cost_per_token=per_million_tokens(4.50),
+                cache_read_cost_per_token=per_million_tokens(0.075),
+            )
+        ],
+    ),
+    "gpt-5.4-nano": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(1.25),
+                cache_read_cost_per_token=per_million_tokens(0.02),
+            )
+        ],
+    ),
     # --- OpenAI: GPT-4.5 ---
     "gpt-4.5": ModelPricing(
         tiers=[
