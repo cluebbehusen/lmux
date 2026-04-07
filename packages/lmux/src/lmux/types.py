@@ -82,6 +82,18 @@ class ToolCallDelta(BaseModel):
     function: FunctionCallDelta | None = None
 
 
+# MARK: Tool Choice
+
+
+class ToolChoiceFunction(BaseModel):
+    """Force the model to call a specific function by name."""
+
+    name: str
+
+
+type ToolChoice = Literal["auto", "required", "none"] | ToolChoiceFunction
+
+
 # MARK: Server Tools
 
 

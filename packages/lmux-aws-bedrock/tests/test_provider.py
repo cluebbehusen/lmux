@@ -189,6 +189,25 @@ class TestChat:
             toolConfig={"tools": [{"toolSpec": {"name": "get_weather", "inputSchema": {"json": {"type": "object"}}}}]},
         )
 
+    def test_chat_with_tool_choice(
+        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    ) -> None:
+        mock_sync_client.converse.return_value = converse_response
+
+        tools = [Tool(function=FunctionDefinition(name="get_weather"))]
+        _ = sync_provider.chat(
+            "anthropic.claude-sonnet-4", [UserMessage(content="Hi")], tools=tools, tool_choice="required"
+        )
+
+        mock_sync_client.converse.assert_called_once_with(
+            modelId="anthropic.claude-sonnet-4",
+            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
+            toolConfig={
+                "tools": [{"toolSpec": {"name": "get_weather", "inputSchema": {"json": {"type": "object"}}}}],
+                "toolChoice": {"any": {}},
+            },
+        )
+
     def test_chat_with_text_response_format(
         self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
     ) -> None:

@@ -45,6 +45,8 @@ from lmux.types import (
     Tool,
     ToolCall,
     ToolCallDelta,
+    ToolChoice,
+    ToolChoiceFunction,
     ToolMessage,
     Usage,
     UserMessage,
@@ -165,6 +167,18 @@ def map_tools(tools: list[Tool]) -> "ToolConfigurationTypeDef":
             spec["description"] = tool.function.description
         tool_specs.append({"toolSpec": spec})
     return {"tools": tool_specs}
+
+
+def map_tool_choice(tc: ToolChoice) -> dict[str, object]:
+    """Convert lmux ToolChoice to Bedrock ``toolChoice`` dict."""
+    if tc == "none":
+        msg = "tool_choice='none' is not supported by Bedrock; omit tools instead"
+        raise UnsupportedFeatureError(msg, provider="aws-bedrock")
+    if tc == "required":
+        return {"any": {}}
+    if isinstance(tc, ToolChoiceFunction):
+        return {"tool": {"name": tc.name}}
+    return {"auto": {}}
 
 
 def map_response_format(rf: ResponseFormat) -> dict[str, object] | None:

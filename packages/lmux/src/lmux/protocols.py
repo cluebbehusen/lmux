@@ -15,6 +15,7 @@ from lmux.types import (
     ResponseInputItem,
     ResponseResponse,
     Tool,
+    ToolChoice,
 )
 
 
@@ -40,6 +41,7 @@ class CompletionProvider[ParamsT](Protocol):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,
@@ -55,6 +57,7 @@ class CompletionProvider[ParamsT](Protocol):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,
@@ -70,6 +73,7 @@ class CompletionProvider[ParamsT](Protocol):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,
@@ -85,6 +89,7 @@ class CompletionProvider[ParamsT](Protocol):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,

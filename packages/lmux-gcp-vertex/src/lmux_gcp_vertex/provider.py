@@ -18,6 +18,7 @@ from lmux.types import (
     Message,
     ResponseFormat,
     Tool,
+    ToolChoice,
     Usage,
 )
 from lmux_gcp_vertex._exceptions import map_gcp_vertex_error
@@ -28,6 +29,7 @@ from lmux_gcp_vertex._mappers import (
     map_generate_content_response,
     map_messages,
     map_response_format,
+    map_tool_choice,
     map_tools,
 )
 from lmux_gcp_vertex.auth import GCPVertexADCAuthProvider
@@ -125,13 +127,23 @@ class GCPVertexProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> ChatResponse:
         system, contents = map_messages(messages)
         config = self._build_config(
-            system, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
+            system,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            tool_choice,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = self._get_client()
@@ -155,13 +167,23 @@ class GCPVertexProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> ChatResponse:
         system, contents = map_messages(messages)
         config = self._build_config(
-            system, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
+            system,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            tool_choice,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = await self._aget_client()
@@ -185,13 +207,23 @@ class GCPVertexProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> Iterator[ChatChunk]:
         system, contents = map_messages(messages)
         config = self._build_config(
-            system, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
+            system,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            tool_choice,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = self._get_client()
@@ -223,13 +255,23 @@ class GCPVertexProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GCPVertexParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
         system, contents = map_messages(messages)
         config = self._build_config(
-            system, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
+            system,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            tool_choice,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         try:
             client = await self._aget_client()
@@ -299,13 +341,14 @@ class GCPVertexProvider(
         return config or None
 
     @staticmethod
-    def _build_config(  # noqa: PLR0913
+    def _build_config(  # noqa: PLR0913, PLR0912
         system_instruction: str | None,
         temperature: float | None,
         max_tokens: int | None,
         top_p: float | None,
         stop: str | list[str] | None,
         tools: list[Tool] | None,
+        tool_choice: ToolChoice | None,
         response_format: ResponseFormat | None,
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: GCPVertexParams | None,
@@ -323,6 +366,8 @@ class GCPVertexProvider(
             config["stop_sequences"] = [stop] if isinstance(stop, str) else stop
         if tools is not None:
             config["tools"] = map_tools(tools)
+        if tool_choice is not None:
+            config["tool_config"] = map_tool_choice(tool_choice)
         if response_format is not None:
             mime_type, schema = map_response_format(response_format)
             if mime_type is not None:

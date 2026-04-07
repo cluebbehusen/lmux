@@ -29,6 +29,7 @@ from lmux.types import (
     Tool,
     ToolCall,
     ToolCallDelta,
+    ToolChoiceFunction,
     ToolMessage,
     Usage,
     UserMessage,
@@ -40,6 +41,7 @@ from lmux_aws_bedrock._mappers import (
     map_messages,
     map_response_format,
     map_stream_event,
+    map_tool_choice,
     map_tools,
 )
 
@@ -650,3 +652,21 @@ class TestBuildEmbeddingRequestBody:
         body = build_embedding_request_body("Hello!", dimensions=256)
         parsed = json.loads(body)
         assert parsed == {"inputText": "Hello!", "dimensions": 256}
+
+
+# MARK: map_tool_choice
+
+
+class TestMapToolChoice:
+    def test_auto(self) -> None:
+        assert map_tool_choice("auto") == {"auto": {}}
+
+    def test_required(self) -> None:
+        assert map_tool_choice("required") == {"any": {}}
+
+    def test_none_raises(self) -> None:
+        with pytest.raises(UnsupportedFeatureError):
+            _ = map_tool_choice("none")
+
+    def test_specific_function(self) -> None:
+        assert map_tool_choice(ToolChoiceFunction(name="get_weather")) == {"tool": {"name": "get_weather"}}

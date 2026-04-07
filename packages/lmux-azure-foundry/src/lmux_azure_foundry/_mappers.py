@@ -28,6 +28,8 @@ from lmux.types import (
     Tool,
     ToolCall,
     ToolCallDelta,
+    ToolChoice,
+    ToolChoiceFunction,
     Usage,
     UserMessage,
 )
@@ -127,6 +129,13 @@ def map_tools(tools: list[Tool]) -> list["ChatCompletionToolParam"]:
             fn["strict"] = tool.function.strict
         result.append({"type": "function", "function": fn})
     return result
+
+
+def map_tool_choice(tc: ToolChoice) -> str | dict[str, object]:
+    """Convert lmux ToolChoice to OpenAI tool_choice param."""
+    if isinstance(tc, ToolChoiceFunction):
+        return {"type": "function", "function": {"name": tc.name}}
+    return tc  # "auto", "required", "none"
 
 
 def map_response_format(

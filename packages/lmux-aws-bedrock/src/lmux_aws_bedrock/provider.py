@@ -21,6 +21,7 @@ from lmux.types import (
     Message,
     ResponseFormat,
     Tool,
+    ToolChoice,
     Usage,
 )
 from lmux_aws_bedrock._exceptions import map_bedrock_error
@@ -31,6 +32,7 @@ from lmux_aws_bedrock._mappers import (
     map_messages,
     map_response_format,
     map_stream_event,
+    map_tool_choice,
     map_tools,
 )
 from lmux_aws_bedrock.auth import BedrockEnvAuthProvider
@@ -104,6 +106,7 @@ class BedrockProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BedrockParams | None = None,
@@ -116,6 +119,7 @@ class BedrockProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -138,6 +142,7 @@ class BedrockProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BedrockParams | None = None,
@@ -150,6 +155,7 @@ class BedrockProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -172,6 +178,7 @@ class BedrockProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BedrockParams | None = None,
@@ -184,6 +191,7 @@ class BedrockProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -216,6 +224,7 @@ class BedrockProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BedrockParams | None = None,
@@ -228,6 +237,7 @@ class BedrockProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -337,7 +347,7 @@ class BedrockProvider(
     # MARK: Internal Helpers
 
     @staticmethod
-    def _build_converse_kwargs(  # noqa: PLR0913
+    def _build_converse_kwargs(  # noqa: PLR0913, PLR0912
         model: str,
         messages: Sequence[Message],
         temperature: float | None,
@@ -345,6 +355,7 @@ class BedrockProvider(
         top_p: float | None,
         stop: str | list[str] | None,
         tools: list[Tool] | None,
+        tool_choice: ToolChoice | None,
         response_format: ResponseFormat | None,
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: BedrockParams | None,
@@ -371,7 +382,10 @@ class BedrockProvider(
             kwargs["inferenceConfig"] = inference_config
 
         if tools is not None:
-            kwargs["toolConfig"] = map_tools(tools)
+            tool_config = map_tools(tools)
+            if tool_choice is not None:
+                tool_config["toolChoice"] = map_tool_choice(tool_choice)  # pyright: ignore[reportGeneralTypeIssues]
+            kwargs["toolConfig"] = tool_config
 
         if response_format is not None:
             output_config = map_response_format(response_format)

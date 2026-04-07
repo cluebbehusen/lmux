@@ -20,6 +20,7 @@ from lmux.types import (
     ResponseFormat,
     ResponseResponse,
     Tool,
+    ToolChoice,
     Usage,
     UserMessage,
 )
@@ -126,6 +127,10 @@ class TestChat:
         )
         assert result.content == "Hello!"
 
+    def test_forwards_tool_choice(self, registry: Registry) -> None:
+        result = registry.chat("mock/gpt-4o", [UserMessage(content="Hi")], tool_choice="required")
+        assert result.content == "Hello!"
+
 
 class TestAchat:
     async def test_routes_to_provider(self, registry: Registry) -> None:
@@ -203,6 +208,7 @@ class CompletionOnlyProvider(CompletionProvider[None]):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
@@ -222,6 +228,7 @@ class CompletionOnlyProvider(CompletionProvider[None]):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
@@ -241,6 +248,7 @@ class CompletionOnlyProvider(CompletionProvider[None]):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
@@ -258,6 +266,7 @@ class CompletionOnlyProvider(CompletionProvider[None]):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,
@@ -370,6 +379,7 @@ class RecordingProvider(CompletionProvider[FakeParams]):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: FakeParams | None = None,
@@ -391,6 +401,7 @@ class RecordingProvider(CompletionProvider[FakeParams]):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: FakeParams | None = None,
@@ -411,6 +422,7 @@ class RecordingProvider(CompletionProvider[FakeParams]):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: FakeParams | None = None,
@@ -429,6 +441,7 @@ class RecordingProvider(CompletionProvider[FakeParams]):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: FakeParams | None = None,
