@@ -206,6 +206,16 @@ class TestChat:
             tools=[{"type": "function", "function": {"name": "get_weather"}}],
         )
 
+    def test_chat_with_tool_choice(
+        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
+
+        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], tool_choice="required")
+
+        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["tool_choice"] == "required"
+
     def test_chat_with_response_format(
         self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
     ) -> None:

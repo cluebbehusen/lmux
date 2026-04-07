@@ -17,6 +17,7 @@ from lmux.types import (
     ResponseInputItem,
     ResponseResponse,
     Tool,
+    ToolChoice,
 )
 
 type Provider = CompletionProvider[Any] | EmbeddingProvider[Any] | ResponsesProvider[Any]
@@ -103,6 +104,7 @@ class Registry:
         top_p: float | None,
         stop: str | list[str] | None,
         tools: list[Tool] | None,
+        tool_choice: ToolChoice | None,
         response_format: ResponseFormat | None,
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None,
@@ -117,6 +119,8 @@ class Registry:
             "response_format": response_format,
             "provider_params": self._resolve_params(prefix, provider_params),
         }
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
         if reasoning_effort is not None:
             kwargs["reasoning_effort"] = reasoning_effort
         return kwargs
@@ -131,6 +135,7 @@ class Registry:
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
@@ -141,7 +146,16 @@ class Registry:
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
         kwargs = self._build_provider_kwargs(
-            prefix, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
+            prefix,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            tool_choice,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         return provider.chat(bare_model, messages, **kwargs)
 
@@ -155,6 +169,7 @@ class Registry:
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
@@ -165,7 +180,16 @@ class Registry:
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
         kwargs = self._build_provider_kwargs(
-            prefix, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
+            prefix,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            tool_choice,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         return await provider.achat(bare_model, messages, **kwargs)
 
@@ -179,6 +203,7 @@ class Registry:
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
@@ -189,7 +214,16 @@ class Registry:
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
         kwargs = self._build_provider_kwargs(
-            prefix, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
+            prefix,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            tool_choice,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         yield from provider.chat_stream(bare_model, messages, **kwargs)
 
@@ -203,6 +237,7 @@ class Registry:
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: BaseProviderParams | Mapping[str, BaseProviderParams] | None = None,
@@ -213,7 +248,16 @@ class Registry:
             msg = f"Provider {prefix!r} ({type(provider).__name__}) does not support chat (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
         kwargs = self._build_provider_kwargs(
-            prefix, temperature, max_tokens, top_p, stop, tools, response_format, reasoning_effort, provider_params
+            prefix,
+            temperature,
+            max_tokens,
+            top_p,
+            stop,
+            tools,
+            tool_choice,
+            response_format,
+            reasoning_effort,
+            provider_params,
         )
         async for chunk in provider.achat_stream(bare_model, messages, **kwargs):
             yield chunk

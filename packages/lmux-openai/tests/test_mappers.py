@@ -39,6 +39,7 @@ from lmux.types import (
     Tool,
     ToolCall,
     ToolCallDelta,
+    ToolChoiceFunction,
     ToolMessage,
     Usage,
     UserMessage,
@@ -51,6 +52,7 @@ from lmux_openai._mappers import (
     map_response_format,
     map_response_input,
     map_responses_response,
+    map_tool_choice,
     map_tools,
 )
 
@@ -563,3 +565,23 @@ class TestMapResponsesResponse:
         result = map_responses_response(mock, "openai", noop_cost_fn)
         assert result.usage is None
         assert result.cost is None
+
+
+# MARK: map_tool_choice
+
+
+class TestMapToolChoice:
+    def test_auto(self) -> None:
+        assert map_tool_choice("auto") == "auto"
+
+    def test_required(self) -> None:
+        assert map_tool_choice("required") == "required"
+
+    def test_none(self) -> None:
+        assert map_tool_choice("none") == "none"
+
+    def test_specific_function(self) -> None:
+        assert map_tool_choice(ToolChoiceFunction(name="get_weather")) == {
+            "type": "function",
+            "function": {"name": "get_weather"},
+        }

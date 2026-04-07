@@ -19,6 +19,7 @@ from lmux.types import (
     ResponseInputItem,
     ResponseResponse,
     Tool,
+    ToolChoice,
     Usage,
 )
 from lmux_openai._exceptions import map_openai_error
@@ -31,6 +32,7 @@ from lmux_openai._mappers import (
     map_response_format,
     map_response_input,
     map_responses_response,
+    map_tool_choice,
     map_tools,
 )
 from lmux_openai.auth import OpenAIEnvAuthProvider
@@ -119,6 +121,7 @@ class OpenAIProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
@@ -131,6 +134,7 @@ class OpenAIProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -153,6 +157,7 @@ class OpenAIProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
@@ -165,6 +170,7 @@ class OpenAIProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -187,6 +193,7 @@ class OpenAIProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
@@ -199,6 +206,7 @@ class OpenAIProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -230,6 +238,7 @@ class OpenAIProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
@@ -242,6 +251,7 @@ class OpenAIProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -358,6 +368,7 @@ class OpenAIProvider(
         top_p: float | None,
         stop: str | list[str] | None,
         tools: list[Tool] | None,
+        tool_choice: ToolChoice | None,
         response_format: ResponseFormat | None,
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: OpenAIParams | None,
@@ -376,6 +387,8 @@ class OpenAIProvider(
             kwargs["stop"] = stop
         if tools is not None:
             kwargs["tools"] = map_tools(tools)
+        if tool_choice is not None:
+            kwargs["tool_choice"] = map_tool_choice(tool_choice)
         if response_format is not None:
             kwargs["response_format"] = map_response_format(response_format)
         if reasoning_effort is not None:

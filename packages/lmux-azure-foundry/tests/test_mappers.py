@@ -37,6 +37,7 @@ from lmux.types import (
     Tool,
     ToolCall,
     ToolCallDelta,
+    ToolChoiceFunction,
     ToolMessage,
     Usage,
     UserMessage,
@@ -47,6 +48,7 @@ from lmux_azure_foundry._mappers import (
     map_embedding_response,
     map_messages,
     map_response_format,
+    map_tool_choice,
     map_tools,
 )
 
@@ -505,3 +507,23 @@ class TestMapEmbeddingResponse:
         )
         result = map_embedding_response(response, "azure-foundry", noop_cost_fn)
         assert result.embeddings == [[0.1, 0.2], [0.3, 0.4]]
+
+
+# MARK: map_tool_choice
+
+
+class TestMapToolChoice:
+    def test_auto(self) -> None:
+        assert map_tool_choice("auto") == "auto"
+
+    def test_required(self) -> None:
+        assert map_tool_choice("required") == "required"
+
+    def test_none(self) -> None:
+        assert map_tool_choice("none") == "none"
+
+    def test_specific_function(self) -> None:
+        assert map_tool_choice(ToolChoiceFunction(name="get_weather")) == {
+            "type": "function",
+            "function": {"name": "get_weather"},
+        }

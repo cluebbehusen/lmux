@@ -25,6 +25,7 @@ from lmux.types import (
     Tool,
     ToolCall,
     ToolCallDelta,
+    ToolChoiceFunction,
     ToolMessage,
     Usage,
     UserMessage,
@@ -38,6 +39,7 @@ from lmux_anthropic._mappers import (
     map_message_start,
     map_messages,
     map_response_format,
+    map_tool_choice,
     map_tools,
 )
 
@@ -609,3 +611,20 @@ class TestMapMessageDelta:
             finish_reason="stop",
             usage=Usage(input_tokens=100, output_tokens=50, cache_read_tokens=10, cache_creation_tokens=5),
         )
+
+
+# MARK: map_tool_choice
+
+
+class TestMapToolChoice:
+    def test_auto(self) -> None:
+        assert map_tool_choice("auto") == {"type": "auto"}
+
+    def test_required(self) -> None:
+        assert map_tool_choice("required") == {"type": "any"}
+
+    def test_none(self) -> None:
+        assert map_tool_choice("none") == {"type": "none"}
+
+    def test_specific_function(self) -> None:
+        assert map_tool_choice(ToolChoiceFunction(name="get_weather")) == {"type": "tool", "name": "get_weather"}

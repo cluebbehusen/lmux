@@ -17,6 +17,7 @@ from lmux.types import (
     Message,
     ResponseFormat,
     Tool,
+    ToolChoice,
     Usage,
 )
 from lmux_azure_foundry._exceptions import map_azure_foundry_error
@@ -27,6 +28,7 @@ from lmux_azure_foundry._mappers import (
     map_embedding_response,
     map_messages,
     map_response_format,
+    map_tool_choice,
     map_tools,
 )
 from lmux_azure_foundry.auth import AzureFoundryCredential, AzureFoundryKeyAuthProvider
@@ -139,6 +141,7 @@ class AzureFoundryProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AzureFoundryParams | None = None,
@@ -151,6 +154,7 @@ class AzureFoundryProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -174,6 +178,7 @@ class AzureFoundryProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AzureFoundryParams | None = None,
@@ -186,6 +191,7 @@ class AzureFoundryProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -209,6 +215,7 @@ class AzureFoundryProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AzureFoundryParams | None = None,
@@ -221,6 +228,7 @@ class AzureFoundryProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -254,6 +262,7 @@ class AzureFoundryProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AzureFoundryParams | None = None,
@@ -266,6 +275,7 @@ class AzureFoundryProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -380,6 +390,7 @@ class AzureFoundryProvider(
         top_p: float | None,
         stop: str | list[str] | None,
         tools: list[Tool] | None,
+        tool_choice: ToolChoice | None,
         response_format: ResponseFormat | None,
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: AzureFoundryParams | None,
@@ -398,6 +409,8 @@ class AzureFoundryProvider(
             kwargs["stop"] = stop
         if tools is not None:
             kwargs["tools"] = map_tools(tools)
+        if tool_choice is not None:
+            kwargs["tool_choice"] = map_tool_choice(tool_choice)
         if response_format is not None:
             kwargs["response_format"] = map_response_format(response_format)
         if reasoning_effort is not None:

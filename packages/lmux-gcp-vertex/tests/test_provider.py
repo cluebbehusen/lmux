@@ -220,6 +220,16 @@ class TestChat:
         call_kwargs = mock_client.models.generate_content.call_args.kwargs
         assert call_kwargs["config"]["tools"] == [{"function_declarations": [{"name": "get_weather"}]}]
 
+    def test_chat_with_tool_choice(
+        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+    ) -> None:
+        mock_client.models.generate_content.return_value = generate_response
+
+        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], tool_choice="required")
+
+        call_kwargs = mock_client.models.generate_content.call_args.kwargs
+        assert call_kwargs["config"]["tool_config"] == {"function_calling_config": {"mode": "ANY"}}
+
     def test_chat_with_text_response_format(
         self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:

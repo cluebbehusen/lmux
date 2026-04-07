@@ -28,6 +28,7 @@ from lmux.types import (
     Tool,
     ToolCall,
     ToolCallDelta,
+    ToolChoiceFunction,
     ToolMessage,
     Usage,
     UserMessage,
@@ -38,6 +39,7 @@ from lmux_gcp_vertex._mappers import (
     map_generate_content_response,
     map_messages,
     map_response_format,
+    map_tool_choice,
     map_tools,
 )
 
@@ -797,3 +799,22 @@ class TestMapEmbedContentResponse:
 
         result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
         assert result.usage == Usage(input_tokens=0, output_tokens=0)
+
+
+# MARK: map_tool_choice
+
+
+class TestMapToolChoice:
+    def test_auto(self) -> None:
+        assert map_tool_choice("auto") == {"function_calling_config": {"mode": "AUTO"}}
+
+    def test_required(self) -> None:
+        assert map_tool_choice("required") == {"function_calling_config": {"mode": "ANY"}}
+
+    def test_none(self) -> None:
+        assert map_tool_choice("none") == {"function_calling_config": {"mode": "NONE"}}
+
+    def test_specific_function(self) -> None:
+        assert map_tool_choice(ToolChoiceFunction(name="get_weather")) == {
+            "function_calling_config": {"mode": "ANY", "allowed_function_names": ["get_weather"]},
+        }

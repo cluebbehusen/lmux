@@ -41,6 +41,8 @@ from lmux.types import (
     Tool,
     ToolCall,
     ToolCallDelta,
+    ToolChoice,
+    ToolChoiceFunction,
     ToolMessage,
     Usage,
     UserMessage,
@@ -171,6 +173,14 @@ def map_tools(tools: list[Tool]) -> list["ToolDict"]:
             decl["parameters_json_schema"] = tool.function.parameters
         declarations.append(decl)
     return [{"function_declarations": declarations}]
+
+
+def map_tool_choice(tc: ToolChoice) -> dict[str, object]:
+    """Convert lmux ToolChoice to google-genai ``tool_config`` dict."""
+    if isinstance(tc, ToolChoiceFunction):
+        return {"function_calling_config": {"mode": "ANY", "allowed_function_names": [tc.name]}}
+    mode = {"auto": "AUTO", "required": "ANY", "none": "NONE"}[tc]
+    return {"function_calling_config": {"mode": mode}}
 
 
 def map_response_format(rf: ResponseFormat) -> tuple[str | None, dict[str, object] | None]:

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 from lmux.cost import ModelPricing, calculate_cost
 from lmux.protocols import AuthProvider, CompletionProvider, PricingProvider
-from lmux.types import ChatChunk, ChatResponse, Cost, Message, ResponseFormat, Tool, Usage
+from lmux.types import ChatChunk, ChatResponse, Cost, Message, ResponseFormat, Tool, ToolChoice, Usage
 from lmux_anthropic._exceptions import map_anthropic_error
 from lmux_anthropic._lazy import create_async_client, create_sync_client
 from lmux_anthropic._mappers import (
@@ -20,6 +20,7 @@ from lmux_anthropic._mappers import (
     map_message_start,
     map_messages,
     map_response_format,
+    map_tool_choice,
     map_tools,
 )
 from lmux_anthropic.auth import AnthropicEnvAuthProvider
@@ -113,6 +114,7 @@ class AnthropicProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
@@ -125,6 +127,7 @@ class AnthropicProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -148,6 +151,7 @@ class AnthropicProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
@@ -160,6 +164,7 @@ class AnthropicProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -183,6 +188,7 @@ class AnthropicProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
@@ -195,6 +201,7 @@ class AnthropicProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -241,6 +248,7 @@ class AnthropicProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
@@ -253,6 +261,7 @@ class AnthropicProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -299,6 +308,7 @@ class AnthropicProvider(
         top_p: float | None,
         stop: str | list[str] | None,
         tools: list[Tool] | None,
+        tool_choice: ToolChoice | None,
         response_format: ResponseFormat | None,
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: AnthropicParams | None,
@@ -319,6 +329,8 @@ class AnthropicProvider(
             kwargs["stop_sequences"] = [stop] if isinstance(stop, str) else stop
         if tools is not None:
             kwargs["tools"] = map_tools(tools)
+        if tool_choice is not None:
+            kwargs["tool_choice"] = map_tool_choice(tool_choice)
         if response_format is not None:
             output_config = map_response_format(response_format)
             if output_config is not None:

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 from lmux.cost import ModelPricing, calculate_cost
 from lmux.protocols import AuthProvider, CompletionProvider, PricingProvider
-from lmux.types import ChatChunk, ChatResponse, Cost, Message, ResponseFormat, Tool, Usage
+from lmux.types import ChatChunk, ChatResponse, Cost, Message, ResponseFormat, Tool, ToolChoice, Usage
 from lmux_groq._exceptions import map_groq_error
 from lmux_groq._lazy import create_async_client, create_sync_client
 from lmux_groq._mappers import (
@@ -17,6 +17,7 @@ from lmux_groq._mappers import (
     map_chat_completion,
     map_messages,
     map_response_format,
+    map_tool_choice,
     map_tools,
 )
 from lmux_groq.auth import GroqEnvAuthProvider
@@ -103,6 +104,7 @@ class GroqProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GroqParams | None = None,
@@ -115,6 +117,7 @@ class GroqProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -137,6 +140,7 @@ class GroqProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GroqParams | None = None,
@@ -149,6 +153,7 @@ class GroqProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -171,6 +176,7 @@ class GroqProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GroqParams | None = None,
@@ -183,6 +189,7 @@ class GroqProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -214,6 +221,7 @@ class GroqProvider(
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: GroqParams | None = None,
@@ -226,6 +234,7 @@ class GroqProvider(
             top_p,
             stop,
             tools,
+            tool_choice,
             response_format,
             reasoning_effort,
             provider_params,
@@ -257,6 +266,7 @@ class GroqProvider(
         top_p: float | None,
         stop: str | list[str] | None,
         tools: list[Tool] | None,
+        tool_choice: ToolChoice | None,
         response_format: ResponseFormat | None,
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: GroqParams | None,
@@ -275,6 +285,8 @@ class GroqProvider(
             kwargs["stop"] = stop
         if tools is not None:
             kwargs["tools"] = map_tools(tools)
+        if tool_choice is not None:
+            kwargs["tool_choice"] = map_tool_choice(tool_choice)
         if response_format is not None:
             kwargs["response_format"] = map_response_format(response_format)
         if reasoning_effort is not None:

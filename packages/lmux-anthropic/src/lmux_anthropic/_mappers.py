@@ -27,6 +27,8 @@ from lmux.types import (
     Tool,
     ToolCall,
     ToolCallDelta,
+    ToolChoice,
+    ToolChoiceFunction,
     ToolMessage,
     Usage,
     UserMessage,
@@ -168,6 +170,17 @@ def map_tools(tools: list[Tool]) -> list["ToolParam"]:
             t["description"] = tool.function.description
         result.append(t)
     return result
+
+
+def map_tool_choice(tc: ToolChoice) -> dict[str, str]:
+    """Convert lmux ToolChoice to Anthropic tool_choice param."""
+    if tc == "none":
+        return {"type": "none"}
+    if tc == "required":
+        return {"type": "any"}
+    if isinstance(tc, ToolChoiceFunction):
+        return {"type": "tool", "name": tc.name}
+    return {"type": "auto"}
 
 
 def map_response_format(rf: ResponseFormat) -> "OutputConfigParam | None":

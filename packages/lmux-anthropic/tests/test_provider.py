@@ -261,6 +261,16 @@ class TestChat:
             tools=[{"name": "get_weather", "input_schema": {"type": "object"}}],
         )
 
+    def test_chat_with_tool_choice(
+        self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], tool_choice="required")
+
+        call_kwargs = mock_sync_client.messages.create.call_args.kwargs
+        assert call_kwargs["tool_choice"] == {"type": "any"}
+
     def test_chat_with_json_schema_response_format(
         self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
     ) -> None:
