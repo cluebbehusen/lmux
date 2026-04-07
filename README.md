@@ -152,6 +152,7 @@ from lmux import (
     Message,
     ResponseFormat,
     Tool,
+    ToolChoice,
 )
 
 
@@ -166,6 +167,7 @@ class MyProvider(CompletionProvider[None]):
         top_p: float | None = None,
         stop: str | list[str] | None = None,
         tools: list[Tool] | None = None,
+        tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: None = None,

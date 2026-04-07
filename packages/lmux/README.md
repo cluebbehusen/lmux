@@ -32,6 +32,7 @@ You don't need to install this directly; provider packages (e.g., `lmux-openai`)
 ### Tools
 
 - `Tool`: function tool definition
+- `ToolChoice` / `ToolChoiceFunction`: control whether and which tool the model calls
 - `ToolCall` / `ToolCallDelta`: tool call in responses and streaming
 - `FunctionDefinition` / `FunctionCallResult` / `FunctionCallDelta`
 
