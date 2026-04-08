@@ -194,7 +194,6 @@ class GroqProvider(
             reasoning_effort,
             provider_params,
         )
-        kwargs["stream_options"] = {"include_usage": True}
         try:
             client = self._get_sync_client()
             stream = client.chat.completions.create(**kwargs, stream=True)
@@ -239,7 +238,6 @@ class GroqProvider(
             reasoning_effort,
             provider_params,
         )
-        kwargs["stream_options"] = {"include_usage": True}
         try:
             client = await self._get_async_client()
             stream = await client.chat.completions.create(**kwargs, stream=True)

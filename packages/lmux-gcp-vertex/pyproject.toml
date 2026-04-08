@@ -1,6 +1,6 @@
 [project]
 name = "lmux-gcp-vertex"
-version = "0.6.0"
+version = "0.6.1"
 description = "Google Cloud Vertex AI provider for lmux"
 requires-python = ">=3.13"
 license = "MIT"

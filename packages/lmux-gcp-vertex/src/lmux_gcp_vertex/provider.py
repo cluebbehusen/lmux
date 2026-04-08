@@ -280,8 +280,8 @@ class GCPVertexProvider(
                 contents=contents,
                 config=config,  # pyright: ignore[reportArgumentType]
             )
-            async for chunk in stream:  # pyright: ignore[reportGeneralTypeIssues,reportUnknownVariableType]
-                mapped = map_generate_content_chunk(chunk, model)  # pyright: ignore[reportUnknownArgumentType]
+            async for chunk in await stream:
+                mapped = map_generate_content_chunk(chunk, model)
                 if mapped.usage is not None:
                     mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
                 yield mapped
