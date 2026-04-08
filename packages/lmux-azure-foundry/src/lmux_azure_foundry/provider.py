@@ -402,7 +402,10 @@ class AzureFoundryProvider(
         if temperature is not None:
             kwargs["temperature"] = temperature
         if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
+            if model.startswith(("gpt-5", "o1", "o3", "o4")):
+                kwargs["max_completion_tokens"] = max_tokens
+            else:
+                kwargs["max_tokens"] = max_tokens
         if top_p is not None:
             kwargs["top_p"] = top_p
         if stop is not None:

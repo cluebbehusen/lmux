@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-03-30T22:31:44.967902Z"
+exclude-newer = "2026-04-01T16:42:56.730423Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
@@ -848,7 +848,7 @@ provides-extras = ["async"]
 
 [[package]]
 name = "lmux-azure-foundry"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "packages/lmux-azure-foundry" }
 dependencies = [
     { name = "lmux" },
@@ -870,7 +870,7 @@ provides-extras = ["identity"]
 
 [[package]]
 name = "lmux-gcp-vertex"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "packages/lmux-gcp-vertex" }
 dependencies = [
     { name = "google-genai" },
@@ -885,7 +885,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-groq"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "packages/lmux-groq" }
 dependencies = [
     { name = "groq" },
@@ -900,7 +900,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-openai"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "packages/lmux-openai" }
 dependencies = [
     { name = "lmux" },
