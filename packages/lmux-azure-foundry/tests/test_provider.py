@@ -262,6 +262,20 @@ class TestChat:
             stop=["END"],
         )
 
+    def test_chat_maps_max_tokens_to_max_completion_tokens_for_newer_models(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
+
+        _ = sync_provider.chat("gpt-5-mini", [UserMessage(content="Hi")], max_tokens=100)
+
+        mock_sync_client.chat.completions.create.assert_called_once_with(
+            model="gpt-5-mini",
+            messages=[{"role": "user", "content": "Hi"}],
+            stream=False,
+            max_completion_tokens=100,
+        )
+
     def test_chat_with_tools(
         self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
     ) -> None:

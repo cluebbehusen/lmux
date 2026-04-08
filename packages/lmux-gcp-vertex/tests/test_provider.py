@@ -441,7 +441,10 @@ class TestAchatStream:
             yield chunk1
             yield chunk2
 
-        mock_client.aio.models.generate_content_stream.return_value = _async_iter()
+        async def _coro() -> Any:  # noqa: ANN401
+            return _async_iter()
+
+        mock_client.aio.models.generate_content_stream.return_value = _coro()
 
         chunks = [chunk async for chunk in async_provider.achat_stream("gemini-2.0-flash", [UserMessage(content="Hi")])]
 
@@ -459,7 +462,10 @@ class TestAchatStream:
             yield _make_response_mock(text="Hi")
             raise server_error
 
-        mock_client.aio.models.generate_content_stream.return_value = _failing_iter()
+        async def _coro() -> Any:  # noqa: ANN401
+            return _failing_iter()
+
+        mock_client.aio.models.generate_content_stream.return_value = _coro()
 
         with pytest.raises(ProviderError, match="test error"):
             async for _ in async_provider.achat_stream("gemini-2.0-flash", [UserMessage(content="Hi")]):
