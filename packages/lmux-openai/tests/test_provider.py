@@ -25,6 +25,7 @@ from lmux.types import (
     UserMessage,
 )
 from lmux_openai import preload
+from lmux_openai.cost import calculate_openai_cost
 from lmux_openai.params import OpenAIParams
 from lmux_openai.provider import OpenAIProvider
 
@@ -182,6 +183,57 @@ def not_found_error() -> openai.NotFoundError:
     response.status_code = 404
     response.headers = {}
     return openai.NotFoundError(message="test error", response=response, body=None)
+
+
+@pytest.fixture
+def gpt_5_4_completion() -> ChatCompletion:
+    return ChatCompletion(
+        id="chatcmpl-abc",
+        choices=[
+            Choice(
+                finish_reason="stop",
+                index=0,
+                message=ChatCompletionMessage(content="Hi!", role="assistant"),
+            )
+        ],
+        created=1234567890,
+        model="gpt-5.4-2025-11-01",
+        object="chat.completion",
+        usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+    )
+
+
+@pytest.fixture
+def gpt_5_4_stream_chunks() -> list[ChatCompletionChunk]:
+    return [
+        ChatCompletionChunk(
+            id="chatcmpl-abc",
+            choices=[ChunkChoice(delta=ChoiceDelta(content="Hi"), index=0, finish_reason=None)],
+            created=1234567890,
+            model="gpt-5.4-2025-11-01",
+            object="chat.completion.chunk",
+        ),
+        ChatCompletionChunk(
+            id="chatcmpl-abc",
+            choices=[ChunkChoice(delta=ChoiceDelta(), index=0, finish_reason="stop")],
+            created=1234567890,
+            model="gpt-5.4-2025-11-01",
+            object="chat.completion.chunk",
+            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+        ),
+    ]
+
+
+@pytest.fixture
+def residency_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> OpenAIProvider:
+    mock_sync_create.assert_not_called()
+    return OpenAIProvider(auth=fake_auth, data_residency=True)
+
+
+@pytest.fixture
+def async_residency_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> OpenAIProvider:
+    mock_async_create.assert_not_called()
+    return OpenAIProvider(auth=fake_auth, data_residency=True)
 
 
 # MARK: Chat
@@ -355,6 +407,69 @@ class TestChat:
         assert result.cost is not None
         assert result.cost.total_cost > 0
 
+    def test_chat_default_applies_no_residency_uplift(
+        self,
+        sync_provider: OpenAIProvider,
+        mock_sync_client: MagicMock,
+        gpt_5_4_completion: ChatCompletion,
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = gpt_5_4_completion
+
+        result = sync_provider.chat("gpt-5.4", [UserMessage(content="Hi")])
+
+        assert result.cost is not None
+        base_cost = calculate_openai_cost("gpt-5.4", result.usage) if result.usage else None
+        assert base_cost is not None
+        assert result.cost.total_cost == pytest.approx(base_cost.total_cost)
+
+    def test_chat_residency_uplifts_eligible_model(
+        self,
+        sync_provider: OpenAIProvider,
+        residency_provider: OpenAIProvider,
+        mock_sync_client: MagicMock,
+        gpt_5_4_completion: ChatCompletion,
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = gpt_5_4_completion
+        standard = sync_provider.chat("gpt-5.4", [UserMessage(content="Hi")])
+
+        mock_sync_client.chat.completions.create.return_value = gpt_5_4_completion
+        residency = residency_provider.chat("gpt-5.4", [UserMessage(content="Hi")])
+
+        assert standard.cost is not None
+        assert residency.cost is not None
+        assert residency.cost.total_cost == pytest.approx(standard.cost.total_cost * 1.1)
+
+    def test_chat_residency_does_not_uplift_ineligible_model(
+        self,
+        sync_provider: OpenAIProvider,
+        residency_provider: OpenAIProvider,
+        mock_sync_client: MagicMock,
+        chat_completion: ChatCompletion,
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = chat_completion
+        standard = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
+
+        mock_sync_client.chat.completions.create.return_value = chat_completion
+        residency = residency_provider.chat("gpt-4o", [UserMessage(content="Hi")])
+
+        assert standard.cost is not None
+        assert residency.cost is not None
+        assert residency.cost.total_cost == pytest.approx(standard.cost.total_cost)
+
+    def test_chat_residency_does_not_send_sdk_param(
+        self,
+        residency_provider: OpenAIProvider,
+        mock_sync_client: MagicMock,
+        gpt_5_4_completion: ChatCompletion,
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = gpt_5_4_completion
+
+        _ = residency_provider.chat("gpt-5.4", [UserMessage(content="Hi")])
+
+        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
+        assert "data_residency" not in call_kwargs
+        assert "regional" not in call_kwargs
+
 
 # MARK: Achat
 
@@ -379,6 +494,23 @@ class TestAchat:
 
         with pytest.raises(AuthenticationError):
             _ = await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
+
+    async def test_achat_residency_uplifts_eligible_model(
+        self,
+        async_provider: OpenAIProvider,
+        async_residency_provider: OpenAIProvider,
+        mock_async_client: MagicMock,
+        gpt_5_4_completion: ChatCompletion,
+    ) -> None:
+        mock_async_client.chat.completions.create.return_value = gpt_5_4_completion
+        standard = await async_provider.achat("gpt-5.4", [UserMessage(content="Hi")])
+
+        mock_async_client.chat.completions.create.return_value = gpt_5_4_completion
+        residency = await async_residency_provider.achat("gpt-5.4", [UserMessage(content="Hi")])
+
+        assert standard.cost is not None
+        assert residency.cost is not None
+        assert residency.cost.total_cost == pytest.approx(standard.cost.total_cost * 1.1)
 
 
 # MARK: ChatStream
@@ -439,6 +571,23 @@ class TestChatStream:
         with pytest.raises(ProviderError, match="test error"):
             _ = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
 
+    def test_stream_residency_uplifts_final_chunk(
+        self,
+        sync_provider: OpenAIProvider,
+        residency_provider: OpenAIProvider,
+        mock_sync_client: MagicMock,
+        gpt_5_4_stream_chunks: list[ChatCompletionChunk],
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = iter(gpt_5_4_stream_chunks)
+        standard_chunks = list(sync_provider.chat_stream("gpt-5.4", [UserMessage(content="Hi")]))
+
+        mock_sync_client.chat.completions.create.return_value = iter(gpt_5_4_stream_chunks)
+        residency_chunks = list(residency_provider.chat_stream("gpt-5.4", [UserMessage(content="Hi")]))
+
+        assert standard_chunks[-1].cost is not None
+        assert residency_chunks[-1].cost is not None
+        assert residency_chunks[-1].cost.total_cost == pytest.approx(standard_chunks[-1].cost.total_cost * 1.1)
+
 
 # MARK: AchatStream
 
@@ -488,6 +637,29 @@ class TestAchatStream:
         with pytest.raises(ProviderError, match="test error"):
             async for _ in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")]):
                 pass
+
+    async def test_async_stream_residency_uplifts_final_chunk(
+        self,
+        async_provider: OpenAIProvider,
+        async_residency_provider: OpenAIProvider,
+        mock_async_client: MagicMock,
+        gpt_5_4_stream_chunks: list[ChatCompletionChunk],
+    ) -> None:
+        async def _async_iter(chunks: list[ChatCompletionChunk]) -> Any:  # noqa: ANN401
+            for chunk in chunks:
+                yield chunk
+
+        mock_async_client.chat.completions.create.return_value = _async_iter(gpt_5_4_stream_chunks)
+        standard_chunks = [chunk async for chunk in async_provider.achat_stream("gpt-5.4", [UserMessage(content="Hi")])]
+
+        mock_async_client.chat.completions.create.return_value = _async_iter(gpt_5_4_stream_chunks)
+        residency_chunks = [
+            chunk async for chunk in async_residency_provider.achat_stream("gpt-5.4", [UserMessage(content="Hi")])
+        ]
+
+        assert standard_chunks[-1].cost is not None
+        assert residency_chunks[-1].cost is not None
+        assert residency_chunks[-1].cost.total_cost == pytest.approx(standard_chunks[-1].cost.total_cost * 1.1)
 
 
 # MARK: Embed

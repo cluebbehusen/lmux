@@ -63,6 +63,15 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "gpt-5.3-chat-latest": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.75),
+                output_cost_per_token=per_million_tokens(14.00),
+                cache_read_cost_per_token=per_million_tokens(0.175),
+            )
+        ],
+    ),
     "gpt-5.2-pro": ModelPricing(
         tiers=[
             PricingTier(
@@ -320,6 +329,11 @@ _PRICING: dict[str, ModelPricing] = {
 # Pre-sorted by key length descending for prefix matching (longest match first)
 _PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
 
+# 10% uplift for regional processing (data residency) endpoints. Per OpenAI, this
+# applies only to the gpt-5.4 family (gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-pro).
+REGIONAL_UPLIFT = 1.1
+_REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4",)
+
 
 def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:
     """Calculate cost for an OpenAI API call. Returns None if model pricing is unknown."""
@@ -332,3 +346,19 @@ def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:
     if pricing is None:
         return None
     return calculate_cost(usage, pricing)
+
+
+def regional_uplift_applies(model: str) -> bool:
+    """Whether the regional processing (data residency) uplift applies to this model."""
+    return any(model.startswith(prefix) for prefix in _REGIONAL_UPLIFT_PREFIXES)
+
+
+def apply_cost_multiplier(cost: Cost, multiplier: float) -> Cost:
+    """Apply a multiplier to all fields in a cost breakdown."""
+    return Cost(
+        input_cost=cost.input_cost * multiplier,
+        output_cost=cost.output_cost * multiplier,
+        total_cost=cost.total_cost * multiplier,
+        cache_read_cost=cost.cache_read_cost * multiplier if cost.cache_read_cost is not None else None,
+        cache_creation_cost=cost.cache_creation_cost * multiplier if cost.cache_creation_cost is not None else None,
+    )

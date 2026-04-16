@@ -3,17 +3,8 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-04-01T16:42:56.730423Z"
+exclude-newer = "2026-04-09T18:15:37.5295Z"
 exclude-newer-span = "P7D"
-
-[options.exclude-newer-package]
-lmux = false
-lmux-anthropic = false
-lmux-aws-bedrock = false
-lmux-azure-foundry = false
-lmux-gcp-vertex = false
-lmux-openai = false
-lmux-groq = false
 
 [manifest]
 members = [
@@ -811,7 +802,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "anthropic" },
@@ -826,7 +817,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-aws-bedrock"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "packages/lmux-aws-bedrock" }
 dependencies = [
     { name = "boto3" },
@@ -870,7 +861,7 @@ provides-extras = ["identity"]
 
 [[package]]
 name = "lmux-gcp-vertex"
-version = "0.6.1"
+version = "0.6.2"
 source = { editable = "packages/lmux-gcp-vertex" }
 dependencies = [
     { name = "google-genai" },
@@ -900,7 +891,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-openai"
-version = "0.5.1"
+version = "0.5.2"
 source = { editable = "packages/lmux-openai" }
 dependencies = [
     { name = "lmux" },

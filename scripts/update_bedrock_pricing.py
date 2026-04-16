@@ -43,6 +43,7 @@ LCTX_THRESHOLD = 200_000
 # Foundation Models API: servicename (after stripping " (Amazon Bedrock Edition)") -> Bedrock model ID
 FM_SERVICENAME_MAP: dict[str, str] = {
     # Anthropic Claude
+    "Claude Opus 4.7": "anthropic.claude-opus-4-7-v1",
     "Claude Opus 4.6": "anthropic.claude-opus-4-6-v1",
     "Claude Sonnet 4.6": "anthropic.claude-sonnet-4-6",
     "Claude Opus 4.5": "anthropic.claude-opus-4-5-v1",
@@ -113,6 +114,8 @@ NON_MANTLE_MODEL_MAP: dict[str, str] = {
     "Mistral Large": "mistral.mistral-large-2402-v1",
     "Mistral Small": "mistral.mistral-small-2402-v1",
     "Mistral Large 3": "mistral.mistral-large-3-675b-instruct",
+    # Nvidia
+    "NVIDIA Nemotron Nano 2 VL": "nvidia.nemotron-nano-12b-v2-vl",
 }
 
 # For entries with empty model attribute: usagetype key -> Bedrock model ID
@@ -592,7 +595,11 @@ def parse_amazon_models(data: dict[str, Any]) -> tuple[dict[str, ModelPrices], d
 def _parse_fm_dimension(usagetype: str) -> tuple[str, bool] | None:
     """Extract (dimension, is_lctx) from a Foundation Models usagetype.
 
-    Usagetype format: {REGION}-MP:{REGION}_{Dimension}[-{Variant}]-Units
+    Supports two naming schemes:
+    - Legacy PascalCase: ``{REGION}-MP:{REGION}_{Dimension}[_{Variant}]-Units``
+      e.g. ``USE1-MP:USE1_InputTokenCount_Global-Units``
+    - New snake_case (Claude Opus 4.7+): ``{REGION}-MP:{REGION}_{token_kind}[_1h][_global]_standard-Units``
+      e.g. ``USE1-MP:USE1_cache_write_tokens_global_standard-Units``
 
     Returns None for usagetypes we don't care about.
     """
@@ -617,7 +624,8 @@ def _parse_fm_dimension(usagetype: str) -> tuple[str, bool] | None:
         "Customization",
         "search_units",
         "MillionBatch",
-        "CacheWrite1h",
+        "CacheWrite1h",  # Legacy 1h cache-write
+        "_1h_",  # New-format 1h cache-write (e.g. cache_write_tokens_1h_standard)
         "Created_image",
         "created_image",
         "inputAudioSecond",
@@ -629,14 +637,21 @@ def _parse_fm_dimension(usagetype: str) -> tuple[str, bool] | None:
     if any(p in field for p in skip_patterns):
         return None
 
-    is_lctx = "_LCtx" in field
+    is_lctx = "_LCtx" in field or "_lctx" in field
 
-    # Determine dimension (order matters: CacheRead before Input)
+    # Determine dimension (order matters: CacheRead/CacheWrite before Input/Output
+    # so PascalCase CacheReadInputTokenCount isn't partial-matched by InputTokenCount).
     dimension_patterns = [
+        # Legacy PascalCase
         ("CacheReadInputTokenCount", "cache_read"),
         ("CacheWriteInputTokenCount", "cache_write"),
         ("InputTokenCount", "input"),
         ("OutputTokenCount", "output"),
+        # New snake_case
+        ("cache_read_tokens", "cache_read"),
+        ("cache_write_tokens", "cache_write"),
+        ("input_tokens", "input"),
+        ("output_tokens", "output"),
     ]
     return next(
         ((dim, is_lctx) for pattern, dim in dimension_patterns if pattern in field),
@@ -645,10 +660,15 @@ def _parse_fm_dimension(usagetype: str) -> tuple[str, bool] | None:
 
 
 def _is_global_fm(usagetype: str) -> bool:
-    """Whether this FM usagetype is Global (cross-region) pricing."""
+    """Whether this FM usagetype is Global (cross-region) pricing.
+
+    Legacy PascalCase uses ``_Global`` (but ``_Global_Batch`` is batch, not global-standard).
+    New snake_case (Opus 4.7+) uses lowercase ``_global_`` before ``_standard``.
+    """
     dim_part = usagetype.split("-MP:")[1] if "-MP:" in usagetype else ""
-    # Check for _Global but NOT _Global_Batch
-    return "_Global" in dim_part and "_Batch" not in dim_part
+    legacy_global = "_Global" in dim_part and "_Batch" not in dim_part
+    snake_global = "_global_" in dim_part
+    return legacy_global or snake_global
 
 
 def parse_foundation_models(data: dict[str, Any]) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:

@@ -1,16 +1,19 @@
 """lmux-openai — OpenAI provider for lmux."""
 
 from lmux_openai.auth import OpenAIEnvAuthProvider
-from lmux_openai.cost import calculate_openai_cost
+from lmux_openai.cost import REGIONAL_UPLIFT, apply_cost_multiplier, calculate_openai_cost, regional_uplift_applies
 from lmux_openai.params import OpenAIParams
 from lmux_openai.provider import OpenAIProvider
 
 __all__ = [
+    "REGIONAL_UPLIFT",
     "OpenAIEnvAuthProvider",
     "OpenAIParams",
     "OpenAIProvider",
+    "apply_cost_multiplier",
     "calculate_openai_cost",
     "preload",
+    "regional_uplift_applies",
 ]
 
 
