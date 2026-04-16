@@ -36,7 +36,12 @@ from lmux_openai._mappers import (
     map_tools,
 )
 from lmux_openai.auth import OpenAIEnvAuthProvider
-from lmux_openai.cost import calculate_openai_cost
+from lmux_openai.cost import (
+    REGIONAL_UPLIFT,
+    apply_cost_multiplier,
+    calculate_openai_cost,
+    regional_uplift_applies,
+)
 from lmux_openai.params import OpenAIParams
 
 PROVIDER_NAME = "openai"
@@ -57,11 +62,13 @@ class OpenAIProvider(
         base_url: str | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
+        data_residency: bool = False,
     ) -> None:
         self._auth: AuthProvider[str] = auth or OpenAIEnvAuthProvider()
         self._base_url: str | None = base_url
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
+        self._data_residency: bool = data_residency
         self._sync_client: openai.OpenAI | None = None
         self._async_client: openai.AsyncOpenAI | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -78,6 +85,23 @@ class OpenAIProvider(
         if pricing is not None:
             return calculate_cost(usage, pricing)
         return calculate_openai_cost(model, usage)
+
+    def _apply_cost_multipliers(self, cost: Cost | None, model: str) -> Cost | None:
+        """Apply the regional-processing uplift when configured for this model."""
+        if cost is None:
+            return None
+        if self._data_residency and regional_uplift_applies(model):
+            return apply_cost_multiplier(cost, REGIONAL_UPLIFT)
+        return cost
+
+    def _apply_response_multipliers[T: ChatResponse | EmbeddingResponse | ResponseResponse](
+        self, response: T, model: str
+    ) -> T:
+        """Wrap a completed response with any applicable cost multipliers."""
+        adjusted = self._apply_cost_multipliers(response.cost, model)
+        if adjusted is response.cost:
+            return response
+        return response.model_copy(update={"cost": adjusted})
 
     def _get_sync_client(self) -> "openai.OpenAI":
         if self._sync_client is None:
@@ -144,7 +168,8 @@ class OpenAIProvider(
             completion = client.chat.completions.create(**kwargs, stream=False)
         except Exception as e:
             raise map_openai_error(e) from e
-        return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
+        response = map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(response, completion.model)
 
     @override
     async def achat(
@@ -180,7 +205,8 @@ class OpenAIProvider(
             completion = await client.chat.completions.create(**kwargs, stream=False)
         except Exception as e:
             raise map_openai_error(e) from e
-        return map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
+        response = map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(response, completion.model)
 
     @override
     def chat_stream(
@@ -222,7 +248,8 @@ class OpenAIProvider(
             for chunk in stream:
                 mapped = map_chat_chunk(chunk)
                 if mapped.usage is not None:
-                    mapped = mapped.model_copy(update={"cost": self._calculate_cost(chunk.model, mapped.usage)})
+                    cost = self._apply_cost_multipliers(self._calculate_cost(chunk.model, mapped.usage), chunk.model)
+                    mapped = mapped.model_copy(update={"cost": cost})
                 yield mapped
         except Exception as e:
             raise map_openai_error(e) from e
@@ -267,7 +294,8 @@ class OpenAIProvider(
             async for chunk in stream:
                 mapped = map_chat_chunk(chunk)
                 if mapped.usage is not None:
-                    mapped = mapped.model_copy(update={"cost": self._calculate_cost(chunk.model, mapped.usage)})
+                    cost = self._apply_cost_multipliers(self._calculate_cost(chunk.model, mapped.usage), chunk.model)
+                    mapped = mapped.model_copy(update={"cost": cost})
                 yield mapped
         except Exception as e:
             raise map_openai_error(e) from e
@@ -291,7 +319,8 @@ class OpenAIProvider(
             response = client.embeddings.create(model=model, input=input, **extra)
         except Exception as e:
             raise map_openai_error(e) from e
-        return map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
+        mapped = map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(mapped, response.model)
 
     @override
     async def aembed(
@@ -310,7 +339,8 @@ class OpenAIProvider(
             response = await client.embeddings.create(model=model, input=input, **extra)
         except Exception as e:
             raise map_openai_error(e) from e
-        return map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
+        mapped = map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(mapped, response.model)
 
     # MARK: Responses API
 
@@ -328,7 +358,8 @@ class OpenAIProvider(
             response = client.responses.create(model=model, input=map_response_input(input), stream=False, **extra)
         except Exception as e:
             raise map_openai_error(e) from e
-        return map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
+        mapped = map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(mapped, response.model)
 
     @override
     async def acreate_response(
@@ -346,7 +377,8 @@ class OpenAIProvider(
             )
         except Exception as e:
             raise map_openai_error(e) from e
-        return map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
+        mapped = map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(mapped, response.model)
 
     # MARK: Internal Helpers
 

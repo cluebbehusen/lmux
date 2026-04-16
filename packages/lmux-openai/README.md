@@ -86,20 +86,36 @@ response = provider.chat(
 )
 ```
 
-| Parameter | Type | Description |
-|---|---|---|
-| `service_tier` | `"auto" \| "default" \| "flex"` | Service tier selection |
-| `reasoning_effort` | `"low" \| "medium" \| "high"` | Reasoning effort for o-series models |
-| `seed` | `int` | Deterministic sampling seed |
-| `user` | `str` | End-user identifier |
+| Parameter          | Type                            | Description                          |
+| ------------------ | ------------------------------- | ------------------------------------ |
+| `service_tier`     | `"auto" \| "default" \| "flex"` | Service tier selection               |
+| `reasoning_effort` | `"low" \| "medium" \| "high"`   | Reasoning effort for o-series models |
+| `seed`             | `int`                           | Deterministic sampling seed          |
+| `user`             | `str`                           | End-user identifier                  |
 
 ## Constructor Options
 
 ```python
 OpenAIProvider(
-    auth=...,           # AuthProvider[str], default: OpenAIEnvAuthProvider()
-    base_url=...,       # Optional base URL override
-    timeout=...,        # Request timeout in seconds
-    max_retries=...,    # Max retry attempts
+    auth=...,            # AuthProvider[str], default: OpenAIEnvAuthProvider()
+    base_url=...,        # Optional base URL override
+    timeout=...,         # Request timeout in seconds
+    max_retries=...,     # Max retry attempts
+    data_residency=...,  # bool, default: False — apply 10% uplift for regional endpoints
 )
 ```
+
+### Data Residency
+
+OpenAI charges a 10% uplift on the `gpt-5.4` family (`gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.4-pro`) when requests go through a [regional processing (data residency) endpoint](https://developers.openai.com/api/docs/guides/your-data).
+
+Data residency is selected at the _transport_ layer (regional hostname like `eu.api.openai.com`), not via a per-request parameter. Set `data_residency=True` on the provider so lmux applies the uplift to the reported cost.
+
+```python
+provider = OpenAIProvider(
+    base_url="https://eu.api.openai.com/v1",
+    data_residency=True,
+)
+```
+
+The uplift is only applied to eligible models (checked via `regional_uplift_applies`); other models (e.g. `gpt-4o`, embeddings) return their standard cost even when `data_residency=True`.

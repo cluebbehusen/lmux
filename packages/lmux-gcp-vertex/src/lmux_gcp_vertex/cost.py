@@ -156,6 +156,15 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # ── Anthropic Claude (via Vertex AI) ───────────────────────
+    "claude-opus-4-7": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.0),
+                output_cost_per_token=per_million_tokens(25.0),
+                cache_read_cost_per_token=per_million_tokens(0.5),
+            ),
+        ],
+    ),
     "claude-opus-4-6": ModelPricing(
         tiers=[
             PricingTier(
@@ -393,6 +402,133 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(1.25),
                 output_cost_per_token=per_million_tokens(10.00),
+            ),
+        ],
+    ),
+    # ── xAI Grok (via Vertex AI) ───────────────────────────────
+    "grok-4-20-non-reasoning": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(6.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+            ),
+        ],
+    ),
+    "grok-4-1-fast-reasoning": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(0.50),
+                cache_read_cost_per_token=per_million_tokens(0.05),
+            ),
+        ],
+    ),
+    "grok-4-1-fast-non-reasoning": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(0.50),
+                cache_read_cost_per_token=per_million_tokens(0.05),
+            ),
+        ],
+    ),
+    # ── MiniMax (via Vertex AI) ────────────────────────────────
+    "minimax-m2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.30),
+                output_cost_per_token=per_million_tokens(1.20),
+                cache_read_cost_per_token=per_million_tokens(0.03),
+            ),
+        ],
+    ),
+    # ── Moonshot AI (via Vertex AI) ────────────────────────────
+    "kimi-k2-thinking": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.60),
+                output_cost_per_token=per_million_tokens(2.50),
+                cache_read_cost_per_token=per_million_tokens(0.06),
+            ),
+        ],
+    ),
+    # ── Qwen (via Vertex AI) ───────────────────────────────────
+    "qwen3-coder-480b-a35b-instruct": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.22),
+                output_cost_per_token=per_million_tokens(1.80),
+                cache_read_cost_per_token=per_million_tokens(0.022),
+            ),
+        ],
+    ),
+    "qwen3-next-80b-thinking": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.15),
+                output_cost_per_token=per_million_tokens(1.20),
+            ),
+        ],
+    ),
+    "qwen3-next-80b-instruct": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.15),
+                output_cost_per_token=per_million_tokens(1.20),
+            ),
+        ],
+    ),
+    "qwen3-235b-a22b-instruct-2507": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.22),
+                output_cost_per_token=per_million_tokens(0.88),
+            ),
+        ],
+    ),
+    # ── Zhipu AI GLM (via Vertex AI) ───────────────────────────
+    "glm-4.7": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.60),
+                output_cost_per_token=per_million_tokens(2.20),
+            ),
+        ],
+    ),
+    "glm-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.00),
+                output_cost_per_token=per_million_tokens(3.20),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+            ),
+        ],
+    ),
+    # ── OpenAI gpt-oss (via Vertex AI) ─────────────────────────
+    "gpt-oss-120b": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.09),
+                output_cost_per_token=per_million_tokens(0.36),
+            ),
+        ],
+    ),
+    "gpt-oss-20b": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.07),
+                output_cost_per_token=per_million_tokens(0.25),
+                cache_read_cost_per_token=per_million_tokens(0.007),
+            ),
+        ],
+    ),
+    # ── Google Gemma (via Vertex AI) ───────────────────────────
+    "gemma-4-26b": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.15),
+                output_cost_per_token=per_million_tokens(0.60),
             ),
         ],
     ),

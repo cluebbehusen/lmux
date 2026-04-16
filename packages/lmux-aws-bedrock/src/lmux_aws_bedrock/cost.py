@@ -426,6 +426,16 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "anthropic.claude-opus-4-7": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+        ],
+    ),
     "anthropic.claude-sonnet-4-20250514-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -652,6 +662,16 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "eu.anthropic.claude-opus-4-7": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
+            ),
+        ],
+    ),
     "eu.anthropic.claude-sonnet-4-20250514-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -740,6 +760,16 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "global.anthropic.claude-opus-4-7": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.0),
+                output_cost_per_token=per_million_tokens(25.0),
+                cache_read_cost_per_token=per_million_tokens(0.5),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
+            ),
+        ],
+    ),
     "global.anthropic.claude-sonnet-4-20250514-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -798,6 +828,16 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(5.5),
                 cache_read_cost_per_token=per_million_tokens(0.11),
                 cache_creation_cost_per_token=per_million_tokens(1.375),
+            ),
+        ],
+    ),
+    "jp.anthropic.claude-opus-4-7": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
             ),
         ],
     ),
@@ -925,6 +965,16 @@ _PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.55),
                 cache_creation_cost_per_token=per_million_tokens(6.875),
                 min_input_tokens=200000,
+            ),
+        ],
+    ),
+    "us.anthropic.claude-opus-4-7": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(27.5),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                cache_creation_cost_per_token=per_million_tokens(6.875),
             ),
         ],
     ),
@@ -1452,6 +1502,14 @@ _PRICING: dict[str, ModelPricing] = {
     ),
     # -- Nvidia (via Bedrock) ------------------------------------
     "nvidia.nemotron-nano-12b-v2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.2),
+                output_cost_per_token=per_million_tokens(0.6),
+            ),
+        ],
+    ),
+    "nvidia.nemotron-nano-12b-v2-vl": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.2),

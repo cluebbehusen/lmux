@@ -10,6 +10,17 @@ from lmux.types import Cost, Usage
 # 1-hour cache writes (2x input) are set per-content-block and can't be detected from
 # the API response, so accurate costing for extended TTL caches is not supported.
 _PRICING: dict[str, ModelPricing] = {
+    # Claude 4.7 family
+    "claude-opus-4-7": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(25.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
+            ),
+        ],
+    ),
     # Claude 4.6 family
     "claude-opus-4-6": ModelPricing(
         tiers=[

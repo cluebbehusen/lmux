@@ -2,8 +2,13 @@
 
 import pytest
 
-from lmux.types import Usage
-from lmux_openai.cost import calculate_openai_cost
+from lmux.types import Cost, Usage
+from lmux_openai.cost import (
+    REGIONAL_UPLIFT,
+    apply_cost_multiplier,
+    calculate_openai_cost,
+    regional_uplift_applies,
+)
 
 
 class TestCalculateOpenAICost:
@@ -56,3 +61,42 @@ class TestCalculateOpenAICost:
         mini_cost = calculate_openai_cost("gpt-4o-mini", usage)
         assert mini_cost is not None
         assert cost.total_cost == pytest.approx(mini_cost.total_cost)
+
+
+class TestRegionalUpliftApplies:
+    @pytest.mark.parametrize(
+        "model",
+        ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.4-pro", "gpt-5.4-2025-11-01"],
+    )
+    def test_applies_to_gpt_5_4_family(self, model: str) -> None:
+        assert regional_uplift_applies(model) is True
+
+    @pytest.mark.parametrize(
+        "model",
+        ["gpt-4o", "gpt-5", "gpt-5.3-codex", "o3", "text-embedding-3-small", "unknown-model"],
+    )
+    def test_does_not_apply_to_other_models(self, model: str) -> None:
+        assert regional_uplift_applies(model) is False
+
+
+class TestApplyCostMultiplier:
+    def test_applies_multiplier_to_all_fields(self) -> None:
+        cost = Cost(
+            input_cost=1.0,
+            output_cost=2.0,
+            total_cost=3.0,
+            cache_read_cost=0.5,
+            cache_creation_cost=0.25,
+        )
+        result = apply_cost_multiplier(cost, REGIONAL_UPLIFT)
+        assert result.input_cost == pytest.approx(1.1)
+        assert result.output_cost == pytest.approx(2.2)
+        assert result.total_cost == pytest.approx(3.3)
+        assert result.cache_read_cost == pytest.approx(0.55)
+        assert result.cache_creation_cost == pytest.approx(0.275)
+
+    def test_preserves_none_cache_costs(self) -> None:
+        cost = Cost(input_cost=1.0, output_cost=2.0, total_cost=3.0)
+        result = apply_cost_multiplier(cost, 2.0)
+        assert result.cache_read_cost is None
+        assert result.cache_creation_cost is None
