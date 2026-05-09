@@ -61,15 +61,6 @@ class TestCalculateBedrockCost:
         assert exact_cost is not None
         assert cost.total_cost == pytest.approx(exact_cost.total_cost)
 
-    def test_long_context_tier(self) -> None:
-        """Claude Sonnet 4.5 on Bedrock uses higher pricing above 200K threshold."""
-        usage = Usage(input_tokens=300_000, output_tokens=1000)
-        cost = calculate_bedrock_cost("anthropic.claude-sonnet-4-5-20250929-v1", usage)
-        assert cost is not None
-        # Above 200K threshold, uses long-context tier pricing
-        assert cost.input_cost == pytest.approx(300_000 * 6.6 / 1_000_000)
-        assert cost.output_cost == pytest.approx(1000 * 24.75 / 1_000_000)
-
     def test_region_none_uses_default(self) -> None:
         usage = Usage(input_tokens=1000, output_tokens=500)
         cost_none = calculate_bedrock_cost("meta.llama3-1-70b-instruct-v1", usage, region=None)

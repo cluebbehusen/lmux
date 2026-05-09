@@ -35,6 +35,15 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # Moonshot Kimi family (prompt caching: 50% discount on cached input tokens)
+    "moonshotai/kimi-k2-instruct-0905": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.00),
+                output_cost_per_token=per_million_tokens(3.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
     "moonshotai/kimi-k2-instruct": ModelPricing(
         tiers=[
             PricingTier(
