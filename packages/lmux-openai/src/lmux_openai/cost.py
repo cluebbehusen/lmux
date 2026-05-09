@@ -297,24 +297,6 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # Search API
-    "gpt-5-search-api": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(1.25),
-                output_cost_per_token=per_million_tokens(10.00),
-                cache_read_cost_per_token=per_million_tokens(0.125),
-            )
-        ],
-    ),
-    "gpt-4o-search-preview": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(2.50),
-                output_cost_per_token=per_million_tokens(10.00),
-            )
-        ],
-    ),
     # Reasoning models
     "o3-pro": ModelPricing(
         tiers=[
