@@ -77,7 +77,12 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(30.00),
                 output_cost_per_token=per_million_tokens(180.00),
-            )
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(60.00),
+                output_cost_per_token=per_million_tokens(270.00),
+                min_input_tokens=272_000,
+            ),
         ],
     ),
     "gpt-5.4-mini": ModelPricing(
@@ -95,6 +100,25 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(0.20),
                 output_cost_per_token=per_million_tokens(1.25),
                 cache_read_cost_per_token=per_million_tokens(0.02),
+            )
+        ],
+    ),
+    # --- OpenAI: GPT-5.3 family ---
+    "gpt-5.3-codex": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.75),
+                output_cost_per_token=per_million_tokens(14.00),
+                cache_read_cost_per_token=per_million_tokens(0.175),
+            )
+        ],
+    ),
+    "gpt-5.3-chat": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.75),
+                output_cost_per_token=per_million_tokens(14.00),
+                cache_read_cost_per_token=per_million_tokens(0.175),
             )
         ],
     ),
@@ -118,6 +142,15 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     "gpt-5.2-chat": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.75),
+                output_cost_per_token=per_million_tokens(14.00),
+                cache_read_cost_per_token=per_million_tokens(0.175),
+            )
+        ],
+    ),
+    "gpt-5.2-codex": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(1.75),
@@ -308,7 +341,7 @@ _PRICING: dict[str, ModelPricing] = {
     ),
     # --- OpenAI: Embedding models ---
     "text-embedding-3-small": ModelPricing(
-        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.02), output_cost_per_token=0.0)]
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.022), output_cost_per_token=0.0)]
     ),
     "text-embedding-3-large": ModelPricing(
         tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.143), output_cost_per_token=0.0)]

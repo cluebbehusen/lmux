@@ -8,6 +8,34 @@ from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
     # GPT-5 family
+    "gpt-5.5-pro": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(30.00),
+                output_cost_per_token=per_million_tokens(180.00),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(60.00),
+                output_cost_per_token=per_million_tokens(270.00),
+                min_input_tokens=272_000,
+            ),
+        ]
+    ),
+    "gpt-5.5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(45.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
     "gpt-5.4-pro": ModelPricing(
         tiers=[
             PricingTier(
@@ -98,6 +126,24 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "gpt-5.2-chat-latest": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.75),
+                output_cost_per_token=per_million_tokens(14.00),
+                cache_read_cost_per_token=per_million_tokens(0.175),
+            )
+        ],
+    ),
+    "gpt-5.1-codex-max": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.125),
+            )
+        ],
+    ),
     "gpt-5.1-codex-mini": ModelPricing(
         tiers=[
             PricingTier(
@@ -117,6 +163,15 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     "gpt-5.1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.125),
+            )
+        ],
+    ),
+    "gpt-5.1-chat-latest": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(1.25),
@@ -169,6 +224,15 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "gpt-5-chat-latest": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.125),
+            )
+        ],
+    ),
     # GPT-4.1 family
     "gpt-4.1-mini": ModelPricing(
         tiers=[
@@ -213,6 +277,23 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(2.50),
                 output_cost_per_token=per_million_tokens(10.00),
                 cache_read_cost_per_token=per_million_tokens(1.25),
+            )
+        ],
+    ),
+    "chatgpt-4o-latest": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(15.00),
+            )
+        ],
+    ),
+    "chat-latest": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
             )
         ],
     ),
@@ -330,9 +411,10 @@ _PRICING: dict[str, ModelPricing] = {
 _PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
 
 # 10% uplift for regional processing (data residency) endpoints. Per OpenAI, this
-# applies only to the gpt-5.4 family (gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-pro).
+# applies to the gpt-5.4 family (gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-pro)
+# and the gpt-5.5 family (gpt-5.5, gpt-5.5-pro).
 REGIONAL_UPLIFT = 1.1
-_REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4",)
+_REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4", "gpt-5.5")
 
 
 def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:

@@ -44,7 +44,7 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.25),
                 output_cost_per_token=per_million_tokens(1.50),
-                cache_read_cost_per_token=per_million_tokens(0.03),
+                cache_read_cost_per_token=per_million_tokens(0.025),
             ),
         ],
     ),
@@ -406,6 +406,15 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # ── xAI Grok (via Vertex AI) ───────────────────────────────
+    "grok-4-20-reasoning": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(6.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+            ),
+        ],
+    ),
     "grok-4-20-non-reasoning": ModelPricing(
         tiers=[
             PricingTier(
@@ -529,6 +538,7 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.15),
                 output_cost_per_token=per_million_tokens(0.60),
+                cache_read_cost_per_token=per_million_tokens(0.015),
             ),
         ],
     ),
