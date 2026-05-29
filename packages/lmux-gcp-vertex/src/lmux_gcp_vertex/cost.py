@@ -8,6 +8,16 @@ from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tok
 from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
+    # ── Google Gemini 3 ────────────────────────────────────────
+    "gemini-3.5-flash": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.5),
+                output_cost_per_token=per_million_tokens(9.0),
+                cache_read_cost_per_token=per_million_tokens(0.15),
+            ),
+        ],
+    ),
     # ── Google Gemini 3 (Preview) ──────────────────────────────
     "gemini-3.1-pro-preview": ModelPricing(
         tiers=[
@@ -156,6 +166,15 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # ── Anthropic Claude (via Vertex AI) ───────────────────────
+    "claude-opus-4-8": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.0),
+                output_cost_per_token=per_million_tokens(25.0),
+                cache_read_cost_per_token=per_million_tokens(0.5),
+            ),
+        ],
+    ),
     "claude-opus-4-7": ModelPricing(
         tiers=[
             PricingTier(
@@ -409,8 +428,8 @@ _PRICING: dict[str, ModelPricing] = {
     "grok-4-20-reasoning": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(2.00),
-                output_cost_per_token=per_million_tokens(6.00),
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(2.50),
                 cache_read_cost_per_token=per_million_tokens(0.20),
             ),
         ],
@@ -418,8 +437,8 @@ _PRICING: dict[str, ModelPricing] = {
     "grok-4-20-non-reasoning": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(2.00),
-                output_cost_per_token=per_million_tokens(6.00),
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(2.50),
                 cache_read_cost_per_token=per_million_tokens(0.20),
             ),
         ],
