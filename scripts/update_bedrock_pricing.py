@@ -43,6 +43,7 @@ LCTX_THRESHOLD = 200_000
 # Foundation Models API: servicename (after stripping " (Amazon Bedrock Edition)") -> Bedrock model ID
 FM_SERVICENAME_MAP: dict[str, str] = {
     # Anthropic Claude
+    "Claude Opus 4.8": "anthropic.claude-opus-4-8-v1",
     "Claude Opus 4.7": "anthropic.claude-opus-4-7-v1",
     "Claude Opus 4.6": "anthropic.claude-opus-4-6-v1",
     "Claude Sonnet 4.6": "anthropic.claude-sonnet-4-6",
