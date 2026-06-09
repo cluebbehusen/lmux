@@ -82,6 +82,17 @@ class TestCalculateGCPVertexCost:
         assert cost.input_cost == pytest.approx(1000 * 3.00 / 1_000_000)
         assert cost.output_cost == pytest.approx(500 * 15.00 / 1_000_000)
 
+    def test_claude_cache_creation_cost(self) -> None:
+        """Claude models bill cache-write tokens at the write rate, not $0."""
+        usage = Usage(input_tokens=1000, output_tokens=0, cache_creation_tokens=1000)
+        cost = calculate_gcp_vertex_cost("claude-fable-5", usage)
+        assert cost is not None
+        # Cache-write tokens are a subset of input, so they leave no billable input.
+        assert cost.input_cost == 0.0
+        # 5-minute cache-write rate (1.25x input) — without it these tokens would bill at $0.
+        assert cost.cache_creation_cost == pytest.approx(1000 * 12.50 / 1_000_000)
+        assert cost.total_cost == pytest.approx(cost.cache_creation_cost)
+
     def test_mistral_model(self) -> None:
         usage = Usage(input_tokens=1000, output_tokens=500)
         cost = calculate_gcp_vertex_cost("mistral-medium-3", usage)
