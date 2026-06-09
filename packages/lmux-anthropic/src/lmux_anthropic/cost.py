@@ -10,6 +10,29 @@ from lmux.types import Cost, Usage
 # input); 1-hour writes (2x input) are billed via the per-TTL breakdown that the
 # API reports in usage.cache_creation.
 _PRICING: dict[str, ModelPricing] = {
+    # Claude Fable 5 / Mythos 5 family
+    "claude-fable-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(50.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(20.00)},
+            ),
+        ],
+    ),
+    "claude-mythos-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(50.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(20.00)},
+            ),
+        ],
+    ),
     # Claude 4.8 family
     "claude-opus-4-8": ModelPricing(
         tiers=[

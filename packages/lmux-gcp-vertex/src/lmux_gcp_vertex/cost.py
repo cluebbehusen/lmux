@@ -166,6 +166,15 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # ── Anthropic Claude (via Vertex AI) ───────────────────────
+    "claude-fable-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.0),
+                output_cost_per_token=per_million_tokens(50.0),
+                cache_read_cost_per_token=per_million_tokens(1.0),
+            ),
+        ],
+    ),
     "claude-opus-4-8": ModelPricing(
         tiers=[
             PricingTier(
@@ -432,6 +441,12 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(2.50),
                 cache_read_cost_per_token=per_million_tokens(0.20),
             ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(5.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                min_input_tokens=200_000,
+            ),
         ],
     ),
     "grok-4-20-non-reasoning": ModelPricing(
@@ -440,6 +455,12 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(1.25),
                 output_cost_per_token=per_million_tokens(2.50),
                 cache_read_cost_per_token=per_million_tokens(0.20),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(5.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                min_input_tokens=200_000,
             ),
         ],
     ),
@@ -458,6 +479,21 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(0.20),
                 output_cost_per_token=per_million_tokens(0.50),
                 cache_read_cost_per_token=per_million_tokens(0.05),
+            ),
+        ],
+    ),
+    "grok-4-3": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(2.50),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(5.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                min_input_tokens=200_000,
             ),
         ],
     ),
