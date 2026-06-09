@@ -77,7 +77,7 @@ approved:
    - Use `per_million_tokens()` for all per-token prices
    - Maintain alphabetical grouping by model family with comment headers
    - Maintain the `_PRICING_BY_PREFIX` sorted list after `_PRICING`
-   - Keep multi-tier pricing for providers that use it (anthropic, gcp-vertex)
+   - Keep multi-tier pricing for providers that use it (anthropic, google)
    - Keep `cache_creation_cost_per_token` for anthropic models
    - Preserve multiplier constants and `apply_cost_multiplier()` functions
 3. Run verification per AGENTS.md

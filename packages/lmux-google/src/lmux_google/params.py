@@ -1,4 +1,4 @@
-"""GCP Vertex AI provider-specific parameters."""
+"""Google provider-specific parameters."""
 
 from typing import Any, Literal
 
@@ -41,8 +41,8 @@ class GoogleSearchRetrievalConfig(BaseModel):
     dynamic_retrieval_config: DynamicRetrievalConfig | None = None
 
 
-class GCPVertexParams(BaseProviderParams):
-    """Vertex AI-specific parameters passed via ``provider_params``."""
+class GoogleParams(BaseProviderParams):
+    """Google-specific parameters passed via ``provider_params``."""
 
     safety_settings: list[SafetySetting] | None = None
     presence_penalty: float | None = None

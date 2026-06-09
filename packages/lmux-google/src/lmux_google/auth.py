@@ -1,7 +1,7 @@
-"""Authentication for Google Cloud Vertex AI provider.
+"""Authentication for the Google provider.
 
 The simplest way to authenticate is to use Application Default Credentials (ADC)
-via ``GCPVertexADCAuthProvider`` (the default).  ADC searches for credentials in:
+via ``GoogleADCAuthProvider`` (the default).  ADC searches for credentials in:
 
 1. ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable (path to a service
    account JSON key file)
@@ -10,7 +10,7 @@ via ``GCPVertexADCAuthProvider`` (the default).  ADC searches for credentials in
 
 See: https://cloud.google.com/docs/authentication/application-default-credentials
 
-For API key authentication, use ``GCPVertexAPIKeyAuthProvider``.
+For API key authentication, use ``GoogleAPIKeyAuthProvider``.
 
 See: https://cloud.google.com/vertex-ai/generative-ai/docs/start/api-keys
 """
@@ -23,10 +23,10 @@ from lmux.exceptions import AuthenticationError
 if TYPE_CHECKING:
     from google.auth.credentials import Credentials
 
-PROVIDER_NAME = "gcp-vertex"
+PROVIDER_NAME = "google"
 
 
-class GCPVertexADCAuthProvider:
+class GoogleADCAuthProvider:
     """Default auth provider — uses Application Default Credentials.
 
     Credentials are resolved by ``google.auth.default()`` which searches
@@ -51,7 +51,7 @@ class GCPVertexADCAuthProvider:
         return cast("Credentials", google.auth.default(scopes=self._scopes)[0])
 
 
-class GCPVertexServiceAccountAuthProvider:
+class GoogleServiceAccountAuthProvider:
     """Auth provider that loads credentials from a service account JSON key file.
 
     Accepts the file path to the JSON key file (the same value you would set
@@ -78,7 +78,7 @@ class GCPVertexServiceAccountAuthProvider:
         return service_account.Credentials.from_service_account_file(self._service_account_file, scopes=self._scopes)
 
 
-class GCPVertexAPIKeyAuthProvider:
+class GoogleAPIKeyAuthProvider:
     """Auth provider that uses a Google Cloud API key.
 
     Reads from the ``GOOGLE_API_KEY`` environment variable by default,

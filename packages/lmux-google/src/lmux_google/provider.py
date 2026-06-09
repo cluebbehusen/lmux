@@ -1,4 +1,4 @@
-"""GCP Vertex AI provider implementation."""
+"""Google provider implementation."""
 
 import asyncio
 from collections.abc import AsyncIterator, Iterator, Sequence
@@ -21,9 +21,9 @@ from lmux.types import (
     ToolChoice,
     Usage,
 )
-from lmux_gcp_vertex._exceptions import map_gcp_vertex_error
-from lmux_gcp_vertex._lazy import create_client
-from lmux_gcp_vertex._mappers import (
+from lmux_google._exceptions import map_google_error
+from lmux_google._lazy import create_client
+from lmux_google._mappers import (
     map_embed_content_response,
     map_generate_content_chunk,
     map_generate_content_response,
@@ -32,31 +32,31 @@ from lmux_gcp_vertex._mappers import (
     map_tool_choice,
     map_tools,
 )
-from lmux_gcp_vertex.auth import GCPVertexADCAuthProvider
-from lmux_gcp_vertex.cost import calculate_gcp_vertex_cost
-from lmux_gcp_vertex.params import GCPVertexParams, GoogleSearchConfig
+from lmux_google.auth import GoogleADCAuthProvider
+from lmux_google.cost import calculate_google_cost
+from lmux_google.params import GoogleParams, GoogleSearchConfig
 
-type GCPVertexAuth = AuthProvider["Credentials | str", "Credentials | str"]
+type GoogleAuth = AuthProvider["Credentials | str", "Credentials | str"]
 
-PROVIDER_NAME = "gcp-vertex"
+PROVIDER_NAME = "google"
 
 
-class GCPVertexProvider(
-    CompletionProvider[GCPVertexParams],
-    EmbeddingProvider[GCPVertexParams],
+class GoogleProvider(
+    CompletionProvider[GoogleParams],
+    EmbeddingProvider[GoogleParams],
     PricingProvider,
 ):
-    """GCP Vertex AI provider using the google-genai SDK."""
+    """Google provider using the google-genai SDK (Vertex AI or the Gemini Developer API)."""
 
     def __init__(
         self,
         *,
-        auth: GCPVertexAuth | None = None,
+        auth: GoogleAuth | None = None,
         project: str | None = None,
         location: str | None = None,
         vertexai: bool = True,
     ) -> None:
-        self._auth: GCPVertexAuth = auth or GCPVertexADCAuthProvider()
+        self._auth: GoogleAuth = auth or GoogleADCAuthProvider()
         self._project: str | None = project
         self._location: str | None = location
         self._vertexai: bool = vertexai
@@ -74,7 +74,7 @@ class GCPVertexProvider(
         pricing = self._custom_pricing.get(model)
         if pricing is not None:
             return calculate_cost(usage, pricing)
-        return calculate_gcp_vertex_cost(model, usage)
+        return calculate_google_cost(model, usage)
 
     # MARK: Client Management
 
@@ -130,7 +130,7 @@ class GCPVertexProvider(
         tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
-        provider_params: GCPVertexParams | None = None,
+        provider_params: GoogleParams | None = None,
     ) -> ChatResponse:
         system, contents = map_messages(messages)
         config = self._build_config(
@@ -153,7 +153,7 @@ class GCPVertexProvider(
                 config=config,  # pyright: ignore[reportArgumentType]
             )
         except Exception as e:
-            raise map_gcp_vertex_error(e) from e
+            raise map_google_error(e) from e
         return map_generate_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
     @override
@@ -170,7 +170,7 @@ class GCPVertexProvider(
         tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
-        provider_params: GCPVertexParams | None = None,
+        provider_params: GoogleParams | None = None,
     ) -> ChatResponse:
         system, contents = map_messages(messages)
         config = self._build_config(
@@ -193,7 +193,7 @@ class GCPVertexProvider(
                 config=config,  # pyright: ignore[reportArgumentType]
             )
         except Exception as e:
-            raise map_gcp_vertex_error(e) from e
+            raise map_google_error(e) from e
         return map_generate_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
     @override
@@ -210,7 +210,7 @@ class GCPVertexProvider(
         tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
-        provider_params: GCPVertexParams | None = None,
+        provider_params: GoogleParams | None = None,
     ) -> Iterator[ChatChunk]:
         system, contents = map_messages(messages)
         config = self._build_config(
@@ -233,7 +233,7 @@ class GCPVertexProvider(
                 config=config,  # pyright: ignore[reportArgumentType]
             )
         except Exception as e:
-            raise map_gcp_vertex_error(e) from e
+            raise map_google_error(e) from e
 
         try:
             for chunk in stream:
@@ -242,7 +242,7 @@ class GCPVertexProvider(
                     mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
                 yield mapped
         except Exception as e:
-            raise map_gcp_vertex_error(e) from e
+            raise map_google_error(e) from e
 
     @override
     async def achat_stream(
@@ -258,7 +258,7 @@ class GCPVertexProvider(
         tool_choice: ToolChoice | None = None,
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
-        provider_params: GCPVertexParams | None = None,
+        provider_params: GoogleParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
         system, contents = map_messages(messages)
         config = self._build_config(
@@ -286,7 +286,7 @@ class GCPVertexProvider(
                     mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
                 yield mapped
         except Exception as e:
-            raise map_gcp_vertex_error(e) from e
+            raise map_google_error(e) from e
 
     # MARK: Embeddings
 
@@ -297,7 +297,7 @@ class GCPVertexProvider(
         input: str | list[str],
         *,
         dimensions: int | None = None,
-        provider_params: GCPVertexParams | None = None,
+        provider_params: GoogleParams | None = None,
     ) -> EmbeddingResponse:
         contents = input if isinstance(input, list) else [input]
         config = self._build_embed_config(dimensions, provider_params)
@@ -305,7 +305,7 @@ class GCPVertexProvider(
             client = self._get_client()
             response = client.models.embed_content(model=model, contents=contents, config=config)  # pyright: ignore[reportArgumentType]
         except Exception as e:
-            raise map_gcp_vertex_error(e) from e
+            raise map_google_error(e) from e
         return map_embed_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
     @override
@@ -315,7 +315,7 @@ class GCPVertexProvider(
         input: str | list[str],
         *,
         dimensions: int | None = None,
-        provider_params: GCPVertexParams | None = None,
+        provider_params: GoogleParams | None = None,
     ) -> EmbeddingResponse:
         contents = input if isinstance(input, list) else [input]
         config = self._build_embed_config(dimensions, provider_params)
@@ -323,7 +323,7 @@ class GCPVertexProvider(
             client = await self._aget_client()
             response = await client.aio.models.embed_content(model=model, contents=contents, config=config)  # pyright: ignore[reportArgumentType]
         except Exception as e:
-            raise map_gcp_vertex_error(e) from e
+            raise map_google_error(e) from e
         return map_embed_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
 
     # MARK: Internal Helpers
@@ -331,7 +331,7 @@ class GCPVertexProvider(
     @staticmethod
     def _build_embed_config(
         dimensions: int | None,
-        provider_params: GCPVertexParams | None,
+        provider_params: GoogleParams | None,
     ) -> dict[str, Any] | None:
         config: dict[str, Any] = {}
         if dimensions is not None:
@@ -351,7 +351,7 @@ class GCPVertexProvider(
         tool_choice: ToolChoice | None,
         response_format: ResponseFormat | None,
         reasoning_effort: Literal["low", "medium", "high"] | None,
-        provider_params: GCPVertexParams | None,
+        provider_params: GoogleParams | None,
     ) -> dict[str, Any]:
         config: dict[str, Any] = {}
         if system_instruction is not None:
@@ -378,15 +378,15 @@ class GCPVertexProvider(
             budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
             config["thinking_config"] = {"thinking_budget": budget, "include_thoughts": True}
         if provider_params is not None:
-            config.update(GCPVertexProvider._provider_params_kwargs(provider_params))
-            special_tools = GCPVertexProvider._build_special_tools(provider_params)
+            config.update(GoogleProvider._provider_params_kwargs(provider_params))
+            special_tools = GoogleProvider._build_special_tools(provider_params)
             if special_tools:
                 config.setdefault("tools", []).extend(special_tools)
         return config
 
     @staticmethod
-    def _provider_params_kwargs(params: GCPVertexParams) -> dict[str, Any]:
-        """Convert GCPVertexParams to kwargs for GenerateContentConfig."""
+    def _provider_params_kwargs(params: GoogleParams) -> dict[str, Any]:
+        """Convert GoogleParams to kwargs for GenerateContentConfig."""
         kwargs: dict[str, Any] = {}
         if params.safety_settings is not None:
             kwargs["safety_settings"] = [
@@ -405,14 +405,14 @@ class GCPVertexProvider(
         return kwargs
 
     @staticmethod
-    def _build_special_tools(params: GCPVertexParams) -> list[dict[str, Any]]:
+    def _build_special_tools(params: GoogleParams) -> list[dict[str, Any]]:
         """Convert special tool params to google-genai tool dicts."""
         tools: list[dict[str, Any]] = []
         if params.google_search is not None:
             if params.google_search is True:
                 tools.append({"google_search": {}})
             elif isinstance(params.google_search, GoogleSearchConfig):
-                tools.append({"google_search": GCPVertexProvider._build_google_search_dict(params.google_search)})
+                tools.append({"google_search": GoogleProvider._build_google_search_dict(params.google_search)})
         if params.google_search_retrieval is not None:
             gsr_dict: dict[str, Any] = {}
             drc = params.google_search_retrieval.dynamic_retrieval_config

@@ -1,20 +1,21 @@
 [project]
-name = "lmux-gcp-vertex"
+name = "lmux-google"
 version = "0.7.0"
-description = "DEPRECATED: renamed to lmux-google"
+description = "Google (Gemini) provider for lmux"
 requires-python = ">=3.13"
 license = "MIT"
 readme = "README.md"
 authors = [{ name = "Connor Luebbehusen", email = "connor@luebbehusen.dev" }]
 keywords = ["llm", "ai", "google", "gemini", "vertex", "language-model"]
 classifiers = [
-  "Development Status :: 7 - Inactive",
+  "Development Status :: 4 - Beta",
   "Programming Language :: Python :: 3",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Typing :: Typed",
 ]
 dependencies = [
-  "lmux-google~=0.7",
+  "lmux~=0.7",
+  "google-genai~=1.0",
 ]
 
 [project.urls]
@@ -23,7 +24,7 @@ Source = "https://github.com/cluebbehusen/lmux/tree/main/packages/lmux-google"
 Issues = "https://github.com/cluebbehusen/lmux/issues"
 
 [tool.uv.sources]
-lmux-google = { workspace = true }
+lmux = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.11.0,<0.12.0"]

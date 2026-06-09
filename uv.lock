@@ -13,6 +13,7 @@ members = [
     "lmux-aws-bedrock",
     "lmux-azure-foundry",
     "lmux-gcp-vertex",
+    "lmux-google",
     "lmux-groq",
     "lmux-openai",
     "lmux-workspace",
@@ -861,8 +862,19 @@ provides-extras = ["identity"]
 
 [[package]]
 name = "lmux-gcp-vertex"
-version = "0.6.6"
+version = "0.7.0"
 source = { editable = "packages/lmux-gcp-vertex" }
+dependencies = [
+    { name = "lmux-google" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "lmux-google", editable = "packages/lmux-google" }]
+
+[[package]]
+name = "lmux-google"
+version = "0.7.0"
+source = { editable = "packages/lmux-google" }
 dependencies = [
     { name = "google-genai" },
     { name = "lmux" },

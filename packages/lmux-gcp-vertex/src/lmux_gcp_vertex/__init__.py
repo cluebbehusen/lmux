@@ -1,20 +1,37 @@
-"""lmux-gcp-vertex — Google Cloud Vertex AI provider for lmux."""
+"""lmux-gcp-vertex — DEPRECATED; renamed to lmux-google.
 
-from lmux_gcp_vertex.auth import (
-    GCPVertexADCAuthProvider,
-    GCPVertexAPIKeyAuthProvider,
-    GCPVertexServiceAccountAuthProvider,
-)
-from lmux_gcp_vertex.cost import calculate_gcp_vertex_cost
-from lmux_gcp_vertex.params import (
+This package is a compatibility shim that re-exports lmux-google under the
+old names. Install ``lmux-google`` and import from ``lmux_google`` instead.
+"""
+
+import warnings
+
+from lmux_google import (
     DynamicRetrievalConfig,
-    GCPVertexParams,
     GoogleSearchConfig,
     GoogleSearchRetrievalConfig,
     GoogleSearchTypes,
     SafetySetting,
+    preload,
 )
-from lmux_gcp_vertex.provider import GCPVertexProvider
+from lmux_google import (
+    GoogleADCAuthProvider as GCPVertexADCAuthProvider,
+)
+from lmux_google import (
+    GoogleAPIKeyAuthProvider as GCPVertexAPIKeyAuthProvider,
+)
+from lmux_google import (
+    GoogleParams as GCPVertexParams,
+)
+from lmux_google import (
+    GoogleProvider as GCPVertexProvider,
+)
+from lmux_google import (
+    GoogleServiceAccountAuthProvider as GCPVertexServiceAccountAuthProvider,
+)
+from lmux_google import (
+    calculate_google_cost as calculate_gcp_vertex_cost,
+)
 
 __all__ = [
     "DynamicRetrievalConfig",
@@ -31,7 +48,8 @@ __all__ = [
     "preload",
 ]
 
-
-def preload() -> None:
-    """Eagerly import the google-genai SDK."""
-    import google.genai  # noqa: PLC0415, F401  # pyright: ignore[reportUnusedImport]
+warnings.warn(
+    "lmux-gcp-vertex has been renamed to lmux-google; install lmux-google and import from lmux_google instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)

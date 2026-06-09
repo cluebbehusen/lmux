@@ -86,8 +86,8 @@ PROVIDER_SPECS: list[ProviderSpec] = [
     ProviderSpec("lmux_anthropic.cost", "anthropic", ["anthropic", ""], "anthropic", ["anthropic/"]),
     ProviderSpec("lmux_groq.cost", "groq", ["groq/", ""], "groq", ["groq/"]),
     ProviderSpec(
-        "lmux_gcp_vertex.cost",
-        "gcp-vertex",
+        "lmux_google.cost",
+        "google",
         ["vertex_ai/", "vertex_ai-chat-models/", "vertex_ai-language-models/", "gemini/", ""],
         "google",
         ["google/"],

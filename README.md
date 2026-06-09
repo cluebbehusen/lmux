@@ -13,7 +13,7 @@ uv add lmux-openai         # OpenAI
 uv add lmux-anthropic      # Anthropic
 uv add lmux-azure-foundry  # Azure AI Foundry
 uv add lmux-aws-bedrock    # AWS Bedrock
-uv add lmux-gcp-vertex     # Google Cloud Vertex AI
+uv add lmux-google         # Google (Gemini)
 uv add lmux-groq           # Groq
 ```
 
@@ -103,7 +103,7 @@ Streaming returns reasoning in `chunk.reasoning_delta`. Each provider maps the e
 |---|---|
 | OpenAI / Azure Foundry | `reasoning_effort` |
 | Anthropic | `thinking` with budget tokens (capped to `max_tokens - 1`) |
-| GCP Vertex | `thinking_config` with `thinking_budget` and `include_thoughts` |
+| Google | `thinking_config` with `thinking_budget` and `include_thoughts` |
 | AWS Bedrock | `additionalModelRequestFields.thinking` |
 | Groq | `reasoning_effort` + `include_reasoning` |
 
@@ -134,7 +134,7 @@ provider.register_pricing("my-fine-tune", ModelPricing(tiers=[
 | [lmux-anthropic](packages/lmux-anthropic)         | Completion                       | `ANTHROPIC_API_KEY`                               |
 | [lmux-azure-foundry](packages/lmux-azure-foundry) | Completion, Embedding            | `AZURE_FOUNDRY_API_KEY`, Azure AD, token provider |
 | [lmux-aws-bedrock](packages/lmux-aws-bedrock)     | Completion, Embedding            | boto3 credential chain                            |
-| [lmux-gcp-vertex](packages/lmux-gcp-vertex)       | Completion, Embedding            | ADC, service account, `GOOGLE_API_KEY`            |
+| [lmux-google](packages/lmux-google)               | Completion, Embedding            | ADC, service account, `GOOGLE_API_KEY`            |
 | [lmux-groq](packages/lmux-groq)                   | Completion                       | `GROQ_API_KEY`                                    |
 
 ## Custom Providers
