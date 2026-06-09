@@ -11,6 +11,7 @@ from pytest_mock import MockerFixture
 from lmux.exceptions import UnsupportedFeatureError
 from lmux.types import (
     AssistantMessage,
+    CachePointContent,
     ChatChunk,
     ChatResponse,
     ContentPart,
@@ -87,7 +88,7 @@ class TestMapMessages:
         raw_bytes = b"\x89PNG\r\n"
         b64_data = base64.b64encode(raw_bytes).decode()
         data_uri = f"data:image/png;base64,{b64_data}"
-        parts = [TextContent(text="What is this?"), ImageContent(url=data_uri)]
+        parts: list[ContentPart] = [TextContent(text="What is this?"), ImageContent(url=data_uri)]
         system, messages = map_messages([UserMessage(content=parts)])
 
         assert system is None
@@ -201,6 +202,110 @@ class TestMapMessages:
 
 
 # MARK: map_tools
+
+
+class TestMapMessagesCachePoints:
+    def test_cache_point_emitted_inline(self) -> None:
+        _, messages = map_messages([UserMessage(content=[TextContent(text="Big context"), CachePointContent()])])
+        assert messages == [{"role": "user", "content": [{"text": "Big context"}, {"cachePoint": {"type": "default"}}]}]
+
+    def test_cache_point_with_ttl(self) -> None:
+        _, messages = map_messages(
+            [UserMessage(content=[TextContent(text="Big context"), CachePointContent(ttl="1h")])]
+        )
+        assert messages == [
+            {"role": "user", "content": [{"text": "Big context"}, {"cachePoint": {"type": "default", "ttl": "1h"}}]}
+        ]
+
+    def test_marker_only_message_appends_to_previous_message(self) -> None:
+        _, messages = map_messages([UserMessage(content="Hello"), UserMessage(content=[CachePointContent()])])
+        assert messages == [{"role": "user", "content": [{"text": "Hello"}, {"cachePoint": {"type": "default"}}]}]
+
+    def test_marker_only_message_appends_to_tool_result(self) -> None:
+        _, messages = map_messages(
+            [
+                AssistantMessage(
+                    content=None,
+                    tool_calls=[ToolCall(id="t1", function=FunctionCallResult(name="f", arguments="{}"))],
+                ),
+                ToolMessage(content="result", tool_call_id="t1"),
+                UserMessage(content=[CachePointContent()]),
+            ]
+        )
+        assert messages[-1] == {
+            "role": "user",
+            "content": [
+                {"toolResult": {"toolUseId": "t1", "content": [{"text": "result"}], "status": "success"}},
+                {"cachePoint": {"type": "default"}},
+            ],
+        }
+
+    def test_leading_cache_point_appends_to_system(self) -> None:
+        system, messages = map_messages(
+            [SystemMessage(content="Be helpful."), UserMessage(content=[CachePointContent(), TextContent(text="Hi")])]
+        )
+        assert system == [{"text": "Be helpful."}, {"cachePoint": {"type": "default"}}]
+        assert messages == [{"role": "user", "content": [{"text": "Hi"}]}]
+
+    def test_leading_cache_point_with_no_prefix_dropped(self) -> None:
+        system, messages = map_messages([UserMessage(content=[CachePointContent(), TextContent(text="Hi")])])
+        assert system is None
+        assert messages == [{"role": "user", "content": [{"text": "Hi"}]}]
+
+    def test_marker_only_first_message_dropped(self) -> None:
+        system, messages = map_messages([UserMessage(content=[CachePointContent()])])
+        assert system is None
+        assert messages == []
+
+    def test_adjacent_cache_points_deduplicated(self) -> None:
+        _, messages = map_messages(
+            [UserMessage(content=[TextContent(text="x"), CachePointContent(ttl="1h"), CachePointContent()])]
+        )
+        assert messages == [
+            {"role": "user", "content": [{"text": "x"}, {"cachePoint": {"type": "default", "ttl": "1h"}}]}
+        ]
+
+    def test_marker_only_message_after_cache_point_not_duplicated(self) -> None:
+        _, messages = map_messages(
+            [
+                UserMessage(content=[TextContent(text="x"), CachePointContent(ttl="1h")]),
+                UserMessage(content=[CachePointContent()]),
+            ]
+        )
+        assert messages == [
+            {"role": "user", "content": [{"text": "x"}, {"cachePoint": {"type": "default", "ttl": "1h"}}]}
+        ]
+
+    def test_first_leading_cache_point_wins_within_message(self) -> None:
+        _, messages = map_messages(
+            [
+                UserMessage(content="prior"),
+                UserMessage(content=[CachePointContent(ttl="1h"), CachePointContent(), TextContent(text="Q")]),
+            ]
+        )
+        assert messages == [
+            {"role": "user", "content": [{"text": "prior"}, {"cachePoint": {"type": "default", "ttl": "1h"}}]},
+            {"role": "user", "content": [{"text": "Q"}]},
+        ]
+
+    def test_attach_to_empty_content_message_is_noop(self) -> None:
+        _, messages = map_messages([AssistantMessage(), UserMessage(content=[CachePointContent()])])
+        assert messages == [{"role": "assistant", "content": []}]
+
+    def test_system_cache_point_not_duplicated(self) -> None:
+        system, messages = map_messages(
+            [
+                SystemMessage(content="Be helpful."),
+                UserMessage(content=[CachePointContent(ttl="1h")]),
+                UserMessage(content=[CachePointContent()]),
+            ]
+        )
+        assert system == [{"text": "Be helpful."}, {"cachePoint": {"type": "default", "ttl": "1h"}}]
+        assert messages == []
+
+    def test_originally_empty_content_list_is_forwarded(self) -> None:
+        _, messages = map_messages([UserMessage(content=[])])
+        assert messages == [{"role": "user", "content": []}]
 
 
 class TestMapTools:
@@ -383,14 +488,49 @@ class TestMapConverseResponse:
             "usage": {
                 "inputTokens": 10,
                 "outputTokens": 5,
-                "cacheReadInputTokenCount": 50,
-                "cacheWriteInputTokenCount": 20,
+                "cacheReadInputTokens": 50,
+                "cacheWriteInputTokens": 20,
             },
         }
         result = map_converse_response(response, "anthropic.claude-3", "aws-bedrock", noop_cost_fn)
         assert result.usage is not None
+        # inputTokens is normalized to the inclusive total (10 + 50 + 20)
+        assert result.usage.input_tokens == 80
         assert result.usage.cache_read_tokens == 50
         assert result.usage.cache_creation_tokens == 20
+
+    def test_cache_details_breakdown_aggregated(self) -> None:
+        response: Any = {
+            "output": {"message": {"content": [{"text": "cached"}]}},
+            "stopReason": "end_turn",
+            "usage": {
+                "inputTokens": 10,
+                "outputTokens": 5,
+                "cacheReadInputTokens": 0,
+                "cacheWriteInputTokens": 2000,
+                "cacheDetails": [
+                    {"ttl": "5m", "inputTokens": 500},
+                    {"ttl": "1h", "inputTokens": 1000},
+                    {"ttl": "1h", "inputTokens": 500},
+                    {"ttl": "5m", "inputTokens": 0},
+                ],
+            },
+        }
+        result = map_converse_response(response, "anthropic.claude-3", "aws-bedrock", lambda _m, _u: None)
+        assert result.usage is not None
+        assert result.usage.input_tokens == 2010
+        assert result.usage.cache_creation_tokens_by_ttl == {"5m": 500, "1h": 1500}
+
+    def test_no_cache_details_is_none(self) -> None:
+        response: Any = {
+            "output": {"message": {"content": [{"text": "x"}]}},
+            "stopReason": "end_turn",
+            "usage": {"inputTokens": 10, "outputTokens": 5},
+        }
+        result = map_converse_response(response, "m", "aws-bedrock", lambda _m, _u: None)
+        assert result.usage is not None
+        assert result.usage.cache_creation_tokens_by_ttl is None
+        assert result.usage.input_tokens == 10
 
     def test_empty_content_blocks(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response: Any = {

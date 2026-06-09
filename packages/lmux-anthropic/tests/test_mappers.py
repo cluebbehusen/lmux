@@ -9,6 +9,7 @@ from pytest_mock import MockerFixture
 from lmux.exceptions import UnsupportedFeatureError
 from lmux.types import (
     AssistantMessage,
+    CachePointContent,
     ChatChunk,
     ChatResponse,
     Cost,
@@ -225,6 +226,179 @@ class TestMapMessages:
 # MARK: map_tools
 
 
+class TestMapMessagesCachePoints:
+    def test_cache_point_attaches_to_preceding_block(self) -> None:
+        _, messages = map_messages([UserMessage(content=[TextContent(text="Big context"), CachePointContent()])])
+        assert messages == [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "Big context", "cache_control": {"type": "ephemeral"}}],
+            }
+        ]
+
+    def test_cache_point_with_ttl(self) -> None:
+        _, messages = map_messages(
+            [UserMessage(content=[TextContent(text="Big context"), CachePointContent(ttl="1h")])]
+        )
+        assert messages == [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Big context", "cache_control": {"type": "ephemeral", "ttl": "1h"}}
+                ],
+            }
+        ]
+
+    def test_cache_point_mid_message(self) -> None:
+        _, messages = map_messages(
+            [UserMessage(content=[TextContent(text="Stable"), CachePointContent(), TextContent(text="Varying")])]
+        )
+        assert messages == [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Stable", "cache_control": {"type": "ephemeral"}},
+                    {"type": "text", "text": "Varying"},
+                ],
+            }
+        ]
+
+    def test_marker_only_message_attaches_to_previous_string_message(self) -> None:
+        _, messages = map_messages([UserMessage(content="Hello"), UserMessage(content=[CachePointContent()])])
+        assert messages == [
+            {"role": "user", "content": [{"type": "text", "text": "Hello", "cache_control": {"type": "ephemeral"}}]}
+        ]
+
+    def test_marker_only_message_attaches_to_tool_result(self) -> None:
+        _, messages = map_messages(
+            [
+                AssistantMessage(
+                    content=None,
+                    tool_calls=[ToolCall(id="t1", function=FunctionCallResult(name="f", arguments="{}"))],
+                ),
+                ToolMessage(content="result", tool_call_id="t1"),
+                UserMessage(content=[CachePointContent()]),
+            ]
+        )
+        assert messages[-1] == {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "t1",
+                    "content": "result",
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        }
+
+    def test_leading_cache_point_attaches_to_system(self) -> None:
+        system, messages = map_messages(
+            [SystemMessage(content="Be helpful."), UserMessage(content=[CachePointContent(), TextContent(text="Hi")])]
+        )
+        assert system == [{"type": "text", "text": "Be helpful.", "cache_control": {"type": "ephemeral"}}]
+        assert messages == [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
+
+    def test_leading_cache_point_with_no_prefix_dropped(self) -> None:
+        system, messages = map_messages([UserMessage(content=[CachePointContent(), TextContent(text="Hi")])])
+        assert system is None
+        assert messages == [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
+
+    def test_marker_only_first_message_dropped(self) -> None:
+        system, messages = map_messages([UserMessage(content=[CachePointContent()])])
+        assert system is None
+        assert messages == []
+
+    def test_attach_to_empty_content_message_is_noop(self) -> None:
+        _, messages = map_messages([AssistantMessage(), UserMessage(content=[CachePointContent()])])
+        assert messages == [{"role": "assistant", "content": []}]
+
+    def test_system_cache_point_splits_at_marker_position(self) -> None:
+        system, messages = map_messages(
+            [
+                SystemMessage(content="Stable A"),
+                UserMessage(content=[CachePointContent()]),
+                SystemMessage(content="Volatile B"),
+            ]
+        )
+        # Only system text seen before the marker is cached; later text stays outside.
+        assert system == [
+            {"type": "text", "text": "Stable A", "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": "Volatile B"},
+        ]
+        assert messages == []
+
+    def test_leading_cache_point_before_any_system_is_dropped(self) -> None:
+        system, messages = map_messages(
+            [
+                UserMessage(content=[CachePointContent(), TextContent(text="Q")]),
+                SystemMessage(content="Late system"),
+            ]
+        )
+        # Nothing preceded the marker, so system text arriving later is not cached.
+        assert system == "Late system"
+        assert messages == [{"role": "user", "content": [{"type": "text", "text": "Q"}]}]
+
+    def test_first_system_cache_point_wins(self) -> None:
+        system, _ = map_messages(
+            [
+                SystemMessage(content="A"),
+                UserMessage(content=[CachePointContent(ttl="1h")]),
+                UserMessage(content=[CachePointContent()]),
+            ]
+        )
+        assert system == [{"type": "text", "text": "A", "cache_control": {"type": "ephemeral", "ttl": "1h"}}]
+
+    def test_first_cache_point_wins_within_message(self) -> None:
+        _, messages = map_messages(
+            [UserMessage(content=[TextContent(text="ctx"), CachePointContent(ttl="1h"), CachePointContent()])]
+        )
+        assert messages == [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "ctx", "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
+            }
+        ]
+
+    def test_marker_only_message_does_not_downgrade_existing_marker(self) -> None:
+        _, messages = map_messages(
+            [
+                UserMessage(content=[TextContent(text="ctx"), CachePointContent(ttl="1h")]),
+                UserMessage(content=[CachePointContent()]),
+            ]
+        )
+        assert messages == [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "ctx", "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
+            }
+        ]
+
+    def test_first_leading_cache_point_wins_within_message(self) -> None:
+        _, messages = map_messages(
+            [
+                UserMessage(content="prior"),
+                UserMessage(content=[CachePointContent(ttl="1h"), CachePointContent(), TextContent(text="Q")]),
+            ]
+        )
+        assert messages == [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "prior", "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
+            },
+            {"role": "user", "content": [{"type": "text", "text": "Q"}]},
+        ]
+
+    def test_marker_after_empty_string_message_is_dropped(self) -> None:
+        _, messages = map_messages([UserMessage(content=""), UserMessage(content=[CachePointContent()])])
+        # An empty string message has nothing cacheable; no empty text block is built.
+        assert messages == [{"role": "user", "content": ""}]
+
+    def test_originally_empty_content_list_is_forwarded(self) -> None:
+        _, messages = map_messages([UserMessage(content=[])])
+        assert messages == [{"role": "user", "content": []}]
+
+
 class TestMapTools:
     def test_minimal_tool(self) -> None:
         tools = [Tool(function=FunctionDefinition(name="get_weather"))]
@@ -346,7 +520,11 @@ class TestMapMessageResponse:
         message = MagicMock()
         message.content = [MagicMock(type="text", text="Hello!")]
         message.usage = MagicMock(
-            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=None,
         )
         message.model = "claude-sonnet-4-6"
         message.stop_reason = "end_turn"
@@ -372,7 +550,11 @@ class TestMapMessageResponse:
         message = MagicMock()
         message.content = [tool_block]
         message.usage = MagicMock(
-            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=None,
         )
         message.model = "claude-sonnet-4-6"
         message.stop_reason = "tool_use"
@@ -395,7 +577,11 @@ class TestMapMessageResponse:
         message = MagicMock()
         message.content = [thinking_block, text_block]
         message.usage = MagicMock(
-            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=None,
         )
         message.model = "claude-sonnet-4-6"
         message.stop_reason = "end_turn"
@@ -412,7 +598,11 @@ class TestMapMessageResponse:
         message = MagicMock()
         message.content = [thinking_block]
         message.usage = MagicMock(
-            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=None,
         )
         message.model = "claude-sonnet-4-6"
         message.stop_reason = "end_turn"
@@ -428,7 +618,11 @@ class TestMapMessageResponse:
             MagicMock(type="text", text="Part 2"),
         ]
         message.usage = MagicMock(
-            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=None,
         )
         message.model = "claude-sonnet-4-6"
         message.stop_reason = "end_turn"
@@ -460,7 +654,11 @@ class TestMapMessageResponse:
         message = MagicMock()
         message.content = [thinking_block, tool_block1, tool_block2, text_block]
         message.usage = MagicMock(
-            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=None,
         )
         message.model = "claude-sonnet-4-6"
         message.stop_reason = "tool_use"
@@ -481,7 +679,11 @@ class TestMapMessageResponse:
         message = MagicMock()
         message.content = [unknown_block, text_block]
         message.usage = MagicMock(
-            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=None,
         )
         message.model = "claude-sonnet-4-6"
         message.stop_reason = "end_turn"
@@ -494,7 +696,11 @@ class TestMapMessageResponse:
         message = MagicMock()
         message.content = [MagicMock(type="text", text="Hello")]
         message.usage = MagicMock(
-            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=None,
         )
         message.model = "unknown-model"
         message.stop_reason = "end_turn"
@@ -506,13 +712,19 @@ class TestMapMessageResponse:
         message = MagicMock()
         message.content = [MagicMock(type="text", text="Hello")]
         message.usage = MagicMock(
-            input_tokens=100, output_tokens=50, cache_read_input_tokens=20, cache_creation_input_tokens=10
+            input_tokens=100,
+            output_tokens=50,
+            cache_read_input_tokens=20,
+            cache_creation_input_tokens=10,
+            cache_creation=None,
         )
         message.model = "claude-sonnet-4-6"
         message.stop_reason = "end_turn"
 
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.usage is not None
+        # input_tokens is normalized to the inclusive total (100 + 20 + 10)
+        assert result.usage.input_tokens == 130
         assert result.usage.cache_read_tokens == 20
         assert result.usage.cache_creation_tokens == 10
 
@@ -520,7 +732,11 @@ class TestMapMessageResponse:
         message = MagicMock()
         message.content = [MagicMock(type="text", text="Hello")]
         message.usage = MagicMock(
-            input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=None,
         )
         message.model = "claude-sonnet-4-6"
         message.stop_reason = None
@@ -536,10 +752,87 @@ class TestMapMessageStart:
     def test_extracts_usage(self) -> None:
         event = MagicMock()
         event.message.usage = MagicMock(
-            input_tokens=50, output_tokens=0, cache_read_input_tokens=10, cache_creation_input_tokens=5
+            input_tokens=50,
+            output_tokens=0,
+            cache_read_input_tokens=10,
+            cache_creation_input_tokens=5,
+            cache_creation=None,
         )
         result = map_message_start(event)
-        assert result == Usage(input_tokens=50, output_tokens=0, cache_read_tokens=10, cache_creation_tokens=5)
+        assert result == Usage(input_tokens=65, output_tokens=0, cache_read_tokens=10, cache_creation_tokens=5)
+
+
+class TestCacheCreationBreakdown:
+    def test_breakdown_mapped_from_cache_creation(self) -> None:
+        message = MagicMock()
+        message.content = [MagicMock(type="text", text="Hello")]
+        message.usage = MagicMock(
+            input_tokens=100,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=2000,
+            cache_creation=MagicMock(ephemeral_5m_input_tokens=500, ephemeral_1h_input_tokens=1500),
+        )
+        message.model = "claude-sonnet-4-6"
+        message.stop_reason = "end_turn"
+
+        result = map_message_response(message, "anthropic", lambda _m, _u: None)
+        assert result.usage is not None
+        assert result.usage.input_tokens == 2100
+        assert result.usage.cache_creation_tokens_by_ttl == {"5m": 500, "1h": 1500}
+
+    def test_zero_breakdown_fields_omitted(self) -> None:
+        message = MagicMock()
+        message.content = [MagicMock(type="text", text="Hello")]
+        message.usage = MagicMock(
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=1500,
+            cache_creation=MagicMock(ephemeral_5m_input_tokens=0, ephemeral_1h_input_tokens=1500),
+        )
+        message.model = "claude-sonnet-4-6"
+        message.stop_reason = "end_turn"
+
+        result = map_message_response(message, "anthropic", lambda _m, _u: None)
+        assert result.usage is not None
+        assert result.usage.cache_creation_tokens_by_ttl == {"1h": 1500}
+
+    def test_all_zero_breakdown_is_none(self) -> None:
+        message = MagicMock()
+        message.content = [MagicMock(type="text", text="Hello")]
+        message.usage = MagicMock(
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=MagicMock(ephemeral_5m_input_tokens=0, ephemeral_1h_input_tokens=0),
+        )
+        message.model = "claude-sonnet-4-6"
+        message.stop_reason = "end_turn"
+
+        result = map_message_response(message, "anthropic", lambda _m, _u: None)
+        assert result.usage is not None
+        assert result.usage.cache_creation_tokens_by_ttl is None
+
+    def test_delta_usage_carries_breakdown(self) -> None:
+        start_usage = Usage(
+            input_tokens=2100,
+            output_tokens=0,
+            cache_creation_tokens=2000,
+            cache_creation_tokens_by_ttl={"1h": 2000},
+        )
+        event = MagicMock()
+        event.usage = MagicMock(output_tokens=42)
+        event.delta = MagicMock(stop_reason="end_turn")
+
+        chunk = map_message_delta(event, start_usage)
+        assert chunk.usage == Usage(
+            input_tokens=2100,
+            output_tokens=42,
+            cache_creation_tokens=2000,
+            cache_creation_tokens_by_ttl={"1h": 2000},
+        )
 
 
 class TestMapContentBlockStart:

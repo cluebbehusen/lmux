@@ -99,6 +99,21 @@ response = provider.chat(
 | `additional_model_request_fields`       | `dict`            | Extra fields passed to the model |
 | `additional_model_response_field_paths` | `list[str]`       | Extra response fields to return  |
 
+## Prompt Caching
+
+Place `CachePointContent` parts in `UserMessage` content to emit Converse `cachePoint` blocks marking the end of a stable prompt prefix. A cache point with no preceding block in its message is placed after whatever came before it (the prior message, or the system blocks). Markers with nothing cacheable before them are dropped, and adjacent duplicates are coalesced — the first marker wins.
+
+```python
+from lmux import CachePointContent, TextContent, UserMessage
+
+messages = [
+    UserMessage(content=[TextContent(text=big_stable_context), CachePointContent()]),
+    UserMessage(content="What changed since yesterday?"),
+]
+```
+
+Cache points are emitted for whatever model the request targets; models without prompt-caching support reject them at request validation. Cache reads/writes are reported on `response.usage` (`cache_read_tokens`, `cache_creation_tokens`, and the per-TTL `cache_creation_tokens_by_ttl` breakdown from `cacheDetails`) and priced into `response.cost`, including per-TTL write rates where the pricing data carries them.
+
 ## Constructor Options
 
 ```python

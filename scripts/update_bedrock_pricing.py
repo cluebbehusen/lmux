@@ -333,11 +333,13 @@ class ModelPrices:
     output_cost: Decimal | None = None
     cache_read_cost: Decimal | None = None
     cache_write_cost: Decimal | None = None
+    cache_write_1h_cost: Decimal | None = None
     # Long-context tier (>200K tokens)
     lctx_input_cost: Decimal | None = None
     lctx_output_cost: Decimal | None = None
     lctx_cache_read_cost: Decimal | None = None
     lctx_cache_write_cost: Decimal | None = None
+    lctx_cache_write_1h_cost: Decimal | None = None
 
     @property
     def has_lctx(self) -> bool:
@@ -529,6 +531,8 @@ def _set_dimension(mp: ModelPrices, dim_name: str, price: Decimal) -> None:
         mp.cache_read_cost = price
     elif dim_name == "cache_write":
         mp.cache_write_cost = price
+    elif dim_name == "cache_write_1h":
+        mp.cache_write_1h_cost = price
 
 
 def parse_amazon_models(data: dict[str, Any]) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
@@ -625,8 +629,6 @@ def _parse_fm_dimension(usagetype: str) -> tuple[str, bool] | None:
         "Customization",
         "search_units",
         "MillionBatch",
-        "CacheWrite1h",  # Legacy 1h cache-write
-        "_1h_",  # New-format 1h cache-write (e.g. cache_write_tokens_1h_standard)
         "Created_image",
         "created_image",
         "inputAudioSecond",
@@ -639,6 +641,15 @@ def _parse_fm_dimension(usagetype: str) -> tuple[str, bool] | None:
         return None
 
     is_lctx = "_LCtx" in field or "_lctx" in field
+
+    # 1h cache-write dimensions need handling BEFORE the pattern table: the legacy
+    # field is "CacheWrite1hInputTokenCount", which does NOT match the
+    # CacheWriteInputTokenCount pattern but WOULD partial-match InputTokenCount
+    # and misclassify a 2x cache write as plain input.
+    if "CacheWrite1h" in field or "_1h" in field:
+        if "CacheWrite1h" in field or "cache_write_tokens" in field:
+            return ("cache_write_1h", is_lctx)
+        return None  # unknown 1h dimension — skip rather than misclassify
 
     # Determine dimension (order matters: CacheRead/CacheWrite before Input/Output
     # so PascalCase CacheReadInputTokenCount isn't partial-matched by InputTokenCount).
@@ -732,7 +743,7 @@ def _build_fm_result(
         default_mp = ModelPrices()
         global_mp = ModelPrices()
         has_global = False
-        for dim_name in ("input", "output", "cache_read", "cache_write"):
+        for dim_name in ("input", "output", "cache_read", "cache_write", "cache_write_1h"):
             # Standard tier: prefer non-global, fall back to global
             non_global_std = prices.get((dim_name, False, False))
             global_std = prices.get((dim_name, False, True))
@@ -768,6 +779,8 @@ def _set_fm_lctx(mp: ModelPrices, dim_name: str, price: Decimal | None) -> None:
         mp.lctx_cache_read_cost = price
     elif dim_name == "cache_write":
         mp.lctx_cache_write_cost = price
+    elif dim_name == "cache_write_1h":
+        mp.lctx_cache_write_1h_cost = price
 
 
 # ── Merging ──────────────────────────────────────────────────────────────────
@@ -819,10 +832,12 @@ def _prices_differ(a: ModelPrices, b: ModelPrices) -> bool:
         or a.output_cost != b.output_cost
         or a.cache_read_cost != b.cache_read_cost
         or a.cache_write_cost != b.cache_write_cost
+        or a.cache_write_1h_cost != b.cache_write_1h_cost
         or a.lctx_input_cost != b.lctx_input_cost
         or a.lctx_output_cost != b.lctx_output_cost
         or a.lctx_cache_read_cost != b.lctx_cache_read_cost
         or a.lctx_cache_write_cost != b.lctx_cache_write_cost
+        or a.lctx_cache_write_1h_cost != b.lctx_cache_write_1h_cost
     )
 
 
@@ -1010,11 +1025,13 @@ def _emit_tier(lines: list[str], mp: ModelPrices, is_emb: bool, indent: int, *, 
         output_cost = mp.lctx_output_cost
         cache_read = mp.lctx_cache_read_cost
         cache_write = mp.lctx_cache_write_cost
+        cache_write_1h = mp.lctx_cache_write_1h_cost
     else:
         input_cost = mp.input_cost
         output_cost = mp.output_cost
         cache_read = mp.cache_read_cost
         cache_write = mp.cache_write_cost
+        cache_write_1h = mp.cache_write_1h_cost
 
     if input_cost is not None:
         lines.append(f"{pad}    input_cost_per_token=per_million_tokens({_fmt(input_cost)}),")
@@ -1026,6 +1043,10 @@ def _emit_tier(lines: list[str], mp: ModelPrices, is_emb: bool, indent: int, *, 
         lines.append(f"{pad}    cache_read_cost_per_token=per_million_tokens({_fmt(cache_read)}),")
     if cache_write is not None and cache_write > 0:
         lines.append(f"{pad}    cache_creation_cost_per_token=per_million_tokens({_fmt(cache_write)}),")
+    if cache_write_1h is not None and cache_write_1h > 0:
+        lines.append(
+            f'{pad}    cache_creation_cost_per_token_by_ttl={{"1h": per_million_tokens({_fmt(cache_write_1h)})}},'
+        )
     if is_lctx:
         lines.append(f"{pad}    min_input_tokens={LCTX_THRESHOLD},")
 

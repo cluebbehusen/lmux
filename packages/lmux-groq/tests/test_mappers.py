@@ -15,8 +15,10 @@ from pytest_mock import MockerFixture
 
 from lmux.types import (
     AssistantMessage,
+    CachePointContent,
     ChatChunk,
     ChatResponse,
+    ContentPart,
     Cost,
     DeveloperMessage,
     FunctionCallDelta,
@@ -98,8 +100,12 @@ class TestMapMessages:
         result = map_messages([UserMessage(content="Hello")])
         assert result == [{"role": "user", "content": "Hello"}]
 
+    def test_originally_empty_content_list_is_forwarded(self) -> None:
+        result = map_messages([UserMessage(content=[])])
+        assert result == [{"role": "user", "content": []}]
+
     def test_user_message_multimodal(self) -> None:
-        parts = [TextContent(text="What?"), ImageContent(url="https://img.png", detail="high")]
+        parts: list[ContentPart] = [TextContent(text="What?"), ImageContent(url="https://img.png", detail="high")]
         result = map_messages([UserMessage(content=parts)])
         assert len(result) == 1
         content = result[0]["content"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
@@ -133,6 +139,16 @@ class TestMapMessages:
         result = map_messages(messages)
         assert len(result) == 3
         assert [m["role"] for m in result] == ["system", "user", "assistant"]
+
+
+class TestMapMessagesCachePoints:
+    def test_cache_points_dropped(self) -> None:
+        result = map_messages([UserMessage(content=[TextContent(text="Hi"), CachePointContent()])])
+        assert result == [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
+
+    def test_marker_only_message_skipped(self) -> None:
+        result = map_messages([UserMessage(content="Hello"), UserMessage(content=[CachePointContent()])])
+        assert result == [{"role": "user", "content": "Hello"}]
 
 
 # MARK: map_tools

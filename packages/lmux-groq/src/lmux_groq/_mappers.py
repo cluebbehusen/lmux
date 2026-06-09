@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from lmux.schema import add_additional_properties_false
 from lmux.types import (
     AssistantMessage,
+    CachePointContent,
     ChatChunk,
     ChatResponse,
     ContentPart,
@@ -14,6 +15,7 @@ from lmux.types import (
     DeveloperMessage,
     FunctionCallDelta,
     FunctionCallResult,
+    ImageContent,
     JsonObjectResponseFormat,
     Message,
     ResponseFormat,
@@ -64,6 +66,8 @@ def map_messages(messages: Sequence[Message]) -> list["ChatCompletionMessagePara
             result.append({"role": "developer", "content": msg.content})
         elif isinstance(msg, UserMessage):
             content = _map_user_content(msg.content)
+            if isinstance(content, list) and not content and msg.content:
+                continue  # message held only cache points, which this provider has no representation for
             result.append({"role": "user", "content": content})
         elif isinstance(msg, AssistantMessage):
             d: ChatCompletionAssistantMessageParam = {"role": "assistant"}
@@ -88,10 +92,11 @@ def _map_tool_call_param(tc: ToolCall) -> "ChatCompletionMessageToolCallParam":
 def _map_user_content(content: str | list[ContentPart]) -> str | list["ChatCompletionContentPartParam"]:
     if isinstance(content, str):
         return content
-    return [_map_content_part(part) for part in content]
+    # Cache points are dropped: this provider caches implicitly and has no explicit representation.
+    return [_map_content_part(part) for part in content if not isinstance(part, CachePointContent)]
 
 
-def _map_content_part(part: ContentPart) -> "ChatCompletionContentPartParam":
+def _map_content_part(part: TextContent | ImageContent) -> "ChatCompletionContentPartParam":
     if isinstance(part, TextContent):
         return {"type": "text", "text": part.text}
     return {"type": "image_url", "image_url": {"url": part.url, "detail": part.detail}}
