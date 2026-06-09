@@ -312,8 +312,6 @@ class TestMapMessages:
             {"role": "model", "parts": [{"text": "hello"}]},
         ]
 
-
-class TestMapMessagesCachePoints:
     def test_cache_points_dropped(self) -> None:
         _, contents = map_messages([UserMessage(content=[TextContent(text="Hi"), CachePointContent()])])
         assert contents == [{"role": "user", "parts": [{"text": "Hi"}]}]
@@ -324,8 +322,6 @@ class TestMapMessagesCachePoints:
 
 
 # MARK: map_tools
-
-
 class TestMapTools:
     def test_full_tool(self) -> None:
         tools = [

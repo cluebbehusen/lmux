@@ -297,8 +297,6 @@ class TestCalculateCost:
         cost_high = calculate_cost(Usage(input_tokens=600_000, output_tokens=100), pricing)
         assert cost_high.input_cost == pytest.approx(600_000 * per_million_tokens(4.00))
 
-
-class TestCacheCreationByTtl:
     def test_breakdown_bills_per_ttl_rate(self) -> None:
         pricing = ModelPricing(
             tiers=[

@@ -140,8 +140,6 @@ class TestMapMessages:
         assert len(result) == 3
         assert [m["role"] for m in result] == ["system", "user", "assistant"]
 
-
-class TestMapMessagesCachePoints:
     def test_cache_points_dropped(self) -> None:
         result = map_messages([UserMessage(content=[TextContent(text="Hi"), CachePointContent()])])
         assert result == [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
@@ -152,8 +150,6 @@ class TestMapMessagesCachePoints:
 
 
 # MARK: map_tools
-
-
 class TestMapTools:
     def test_minimal_tool(self) -> None:
         tools = [Tool(function=FunctionDefinition(name="f"))]

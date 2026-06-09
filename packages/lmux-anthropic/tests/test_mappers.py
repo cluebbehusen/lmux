@@ -222,11 +222,8 @@ class TestMapMessages:
         system, _ = map_messages([UserMessage(content="Hi")])
         assert system is None
 
+    # MARK: map_tools
 
-# MARK: map_tools
-
-
-class TestMapMessagesCachePoints:
     def test_cache_point_attaches_to_preceding_block(self) -> None:
         _, messages = map_messages([UserMessage(content=[TextContent(text="Big context"), CachePointContent()])])
         assert messages == [
@@ -744,25 +741,8 @@ class TestMapMessageResponse:
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.finish_reason is None
 
+    # MARK: Streaming mappers
 
-# MARK: Streaming mappers
-
-
-class TestMapMessageStart:
-    def test_extracts_usage(self) -> None:
-        event = MagicMock()
-        event.message.usage = MagicMock(
-            input_tokens=50,
-            output_tokens=0,
-            cache_read_input_tokens=10,
-            cache_creation_input_tokens=5,
-            cache_creation=None,
-        )
-        result = map_message_start(event)
-        assert result == Usage(input_tokens=65, output_tokens=0, cache_read_tokens=10, cache_creation_tokens=5)
-
-
-class TestCacheCreationBreakdown:
     def test_breakdown_mapped_from_cache_creation(self) -> None:
         message = MagicMock()
         message.content = [MagicMock(type="text", text="Hello")]
@@ -815,24 +795,19 @@ class TestCacheCreationBreakdown:
         assert result.usage is not None
         assert result.usage.cache_creation_tokens_by_ttl is None
 
-    def test_delta_usage_carries_breakdown(self) -> None:
-        start_usage = Usage(
-            input_tokens=2100,
-            output_tokens=0,
-            cache_creation_tokens=2000,
-            cache_creation_tokens_by_ttl={"1h": 2000},
-        )
-        event = MagicMock()
-        event.usage = MagicMock(output_tokens=42)
-        event.delta = MagicMock(stop_reason="end_turn")
 
-        chunk = map_message_delta(event, start_usage)
-        assert chunk.usage == Usage(
-            input_tokens=2100,
-            output_tokens=42,
-            cache_creation_tokens=2000,
-            cache_creation_tokens_by_ttl={"1h": 2000},
+class TestMapMessageStart:
+    def test_extracts_usage(self) -> None:
+        event = MagicMock()
+        event.message.usage = MagicMock(
+            input_tokens=50,
+            output_tokens=0,
+            cache_read_input_tokens=10,
+            cache_creation_input_tokens=5,
+            cache_creation=None,
         )
+        result = map_message_start(event)
+        assert result == Usage(input_tokens=65, output_tokens=0, cache_read_tokens=10, cache_creation_tokens=5)
 
 
 class TestMapContentBlockStart:
@@ -905,8 +880,26 @@ class TestMapMessageDelta:
             usage=Usage(input_tokens=100, output_tokens=50, cache_read_tokens=10, cache_creation_tokens=5),
         )
 
+    # MARK: map_tool_choice
 
-# MARK: map_tool_choice
+    def test_delta_usage_carries_breakdown(self) -> None:
+        start_usage = Usage(
+            input_tokens=2100,
+            output_tokens=0,
+            cache_creation_tokens=2000,
+            cache_creation_tokens_by_ttl={"1h": 2000},
+        )
+        event = MagicMock()
+        event.usage = MagicMock(output_tokens=42)
+        event.delta = MagicMock(stop_reason="end_turn")
+
+        chunk = map_message_delta(event, start_usage)
+        assert chunk.usage == Usage(
+            input_tokens=2100,
+            output_tokens=42,
+            cache_creation_tokens=2000,
+            cache_creation_tokens_by_ttl={"1h": 2000},
+        )
 
 
 class TestMapToolChoice:

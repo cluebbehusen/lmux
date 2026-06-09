@@ -200,11 +200,8 @@ class TestMapMessages:
         system, _messages = map_messages([UserMessage(content="hi")])
         assert system is None
 
+    # MARK: map_tools
 
-# MARK: map_tools
-
-
-class TestMapMessagesCachePoints:
     def test_cache_point_emitted_inline(self) -> None:
         _, messages = map_messages([UserMessage(content=[TextContent(text="Big context"), CachePointContent()])])
         assert messages == [{"role": "user", "content": [{"text": "Big context"}, {"cachePoint": {"type": "default"}}]}]
