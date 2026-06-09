@@ -1,118 +1,25 @@
-# lmux-gcp-vertex
+# lmux-gcp-vertex (deprecated)
 
-Google Cloud Vertex AI provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [google-genai](https://pypi.org/project/google-genai/) SDK.
+**This package has been renamed to [lmux-google](https://pypi.org/project/lmux-google/).**
 
-Supports chat completions, streaming, and embeddings.
+The rename reflects what the package actually is: a provider for Google's models via the [google-genai](https://pypi.org/project/google-genai/) SDK, which serves Gemini through either Vertex AI or the Gemini Developer API. Vertex AI has no unified inference API across publishers, so partner models hosted on Vertex (Anthropic Claude, Mistral, Llama/DeepSeek/Grok MaaS, ...) were never servable through this package — "Vertex" was the wrong name for it.
 
-Part of the [lmux](https://github.com/cluebbehusen/lmux) ecosystem: standardized interface, cost tracking on every response, and registry-based routing across providers.
+This final release is a compatibility shim: it depends on `lmux-google` and re-exports everything under the old names, emitting a `DeprecationWarning` on import. It will not receive further updates.
 
-## Auth
+## Migration
 
-Three authentication methods:
+| Old (`lmux_gcp_vertex`)               | New (`lmux_google`)                |
+| ------------------------------------- | ---------------------------------- |
+| `GCPVertexProvider`                   | `GoogleProvider`                   |
+| `GCPVertexParams`                     | `GoogleParams`                     |
+| `GCPVertexADCAuthProvider`            | `GoogleADCAuthProvider`            |
+| `GCPVertexAPIKeyAuthProvider`         | `GoogleAPIKeyAuthProvider`         |
+| `GCPVertexServiceAccountAuthProvider` | `GoogleServiceAccountAuthProvider` |
+| `calculate_gcp_vertex_cost`           | `calculate_google_cost`            |
 
-### Application Default Credentials (default)
+All other exports (`GoogleSearchConfig`, `SafetySetting`, `preload`, ...) keep their names. Submodule import paths (`lmux_gcp_vertex.provider`, `.auth`, `.params`, `.cost`) also continue to work, forwarding to the corresponding `lmux_google` modules.
 
-Uses `google.auth.default()`, which works with `GOOGLE_APPLICATION_CREDENTIALS`, `gcloud` CLI, or instance metadata.
+## Behavior changes vs. 0.6.x
 
-```python
-from lmux_gcp_vertex import GCPVertexProvider
-
-provider = GCPVertexProvider(project="my-project", location="us-central1")
-```
-
-### Service Account
-
-```python
-from lmux_gcp_vertex import GCPVertexServiceAccountAuthProvider
-
-provider = GCPVertexProvider(
-    project="my-project",
-    location="us-central1",
-    auth=GCPVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json"),
-)
-```
-
-### API Key
-
-Set `GOOGLE_API_KEY` in your environment:
-
-```python
-from lmux_gcp_vertex import GCPVertexAPIKeyAuthProvider
-
-provider = GCPVertexProvider(auth=GCPVertexAPIKeyAuthProvider(), vertexai=False)
-```
-
-## Usage
-
-### Chat
-
-```python
-from lmux import UserMessage
-
-response = provider.chat("gemini-2.5-pro", [UserMessage(content="Hello")])
-print(response.content)
-print(response.cost)
-```
-
-### Streaming
-
-```python
-for chunk in provider.chat_stream("gemini-2.5-pro", [UserMessage(content="Hello")]):
-    if chunk.delta:
-        print(chunk.delta, end="")
-```
-
-### Embeddings
-
-```python
-response = provider.embed("text-embedding-005", "Hello")
-print(response.embeddings)
-```
-
-### Async
-
-All methods have async variants: `achat`, `achat_stream`, `aembed`.
-
-### Registry
-
-Use with the lmux registry to route across multiple providers:
-
-```python
-from lmux import Registry
-
-registry = Registry()
-registry.register("gcp", provider)
-response = registry.chat("gcp/gemini-2.5-pro", messages)
-```
-
-## Provider Params
-
-```python
-from lmux_gcp_vertex import GCPVertexParams
-
-response = provider.chat(
-    "gemini-2.5-pro",
-    messages,
-    provider_params=GCPVertexParams(thinking_config={"thinking_budget": 1024}),
-)
-```
-
-| Parameter           | Type                  | Description                      |
-| ------------------- | --------------------- | -------------------------------- |
-| `safety_settings`   | `list[SafetySetting]` | Content safety thresholds        |
-| `presence_penalty`  | `float`               | Presence penalty                 |
-| `frequency_penalty` | `float`               | Frequency penalty                |
-| `seed`              | `int`                 | Deterministic sampling seed      |
-| `labels`            | `dict[str, str]`      | Request labels                   |
-| `thinking_config`   | `dict`                | Thinking/reasoning configuration |
-
-## Constructor Options
-
-```python
-GCPVertexProvider(
-    auth=...,       # AuthProvider, default: GCPVertexADCAuthProvider()
-    project=...,    # GCP project ID
-    location=...,   # GCP region
-    vertexai=...,   # Use Vertex AI (default: True) vs. AI Studio
-)
-```
+- Responses now report `provider="google"` instead of `provider="gcp-vertex"`.
+- Pricing entries for partner models (Claude, Mistral, Llama, DeepSeek, Grok, Qwen, GLM, and other Vertex MaaS models) were removed — those models were never callable through this provider, so the entries were unreachable dead data. `calculate_gcp_vertex_cost` now returns `None` for them.

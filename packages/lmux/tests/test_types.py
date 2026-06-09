@@ -70,7 +70,7 @@ class TestSerialization:
             usage=Usage(input_tokens=10, output_tokens=5),
             cost=None,
             model="gemini-2.0-flash",
-            provider="gcp-vertex",
+            provider="google",
         )
         data = r.model_dump()
         restored = ChatResponse.model_validate(data)

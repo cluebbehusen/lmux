@@ -8,6 +8,7 @@ on:
       - "lmux-anthropic-v*"
       - "lmux-azure-foundry-v*"
       - "lmux-aws-bedrock-v*"
+      - "lmux-google-v*"
       - "lmux-gcp-vertex-v*"
       - "lmux-groq-v*"
 
@@ -23,6 +24,7 @@ on:
           - lmux-anthropic
           - lmux-azure-foundry
           - lmux-aws-bedrock
+          - lmux-google
           - lmux-gcp-vertex
           - lmux-groq
       target:

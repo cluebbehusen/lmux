@@ -15,7 +15,8 @@ packages/
 ├── lmux-anthropic/        # Anthropic provider
 ├── lmux-azure-foundry/    # Azure AI Foundry provider
 ├── lmux-aws-bedrock/      # AWS Bedrock provider
-├── lmux-gcp-vertex/       # Google Cloud Vertex AI provider
+├── lmux-google/           # Google (Gemini) provider
+├── lmux-gcp-vertex/       # DEPRECATED shim -> lmux-google
 └── lmux-groq/             # Groq provider
 ```
 

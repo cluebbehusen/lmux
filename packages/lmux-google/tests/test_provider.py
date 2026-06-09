@@ -1,4 +1,4 @@
-"""Tests for Google Vertex AI provider."""
+"""Tests for the Google provider."""
 
 import asyncio
 from typing import Any
@@ -21,16 +21,16 @@ from lmux.types import (
     Usage,
     UserMessage,
 )
-from lmux_gcp_vertex import preload
-from lmux_gcp_vertex.params import (
+from lmux_google import preload
+from lmux_google.params import (
     DynamicRetrievalConfig,
-    GCPVertexParams,
+    GoogleParams,
     GoogleSearchConfig,
     GoogleSearchRetrievalConfig,
     GoogleSearchTypes,
     SafetySetting,
 )
-from lmux_gcp_vertex.provider import GCPVertexProvider
+from lmux_google.provider import GoogleProvider
 
 # MARK: Shared Fixtures
 
@@ -133,19 +133,19 @@ def mock_client() -> MagicMock:
 
 @pytest.fixture
 def mock_create(mock_client: MagicMock, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_gcp_vertex.provider.create_client", return_value=mock_client)
+    return mocker.patch("lmux_google.provider.create_client", return_value=mock_client)
 
 
 @pytest.fixture
-def sync_provider(fake_auth: FakeAuth, mock_create: MagicMock) -> GCPVertexProvider:
+def sync_provider(fake_auth: FakeAuth, mock_create: MagicMock) -> GoogleProvider:
     mock_create.assert_not_called()
-    return GCPVertexProvider(auth=fake_auth)
+    return GoogleProvider(auth=fake_auth)
 
 
 @pytest.fixture
-def async_provider(fake_auth: FakeAuth, mock_create: MagicMock) -> GCPVertexProvider:
+def async_provider(fake_auth: FakeAuth, mock_create: MagicMock) -> GoogleProvider:
     mock_create.assert_not_called()
-    return GCPVertexProvider(auth=fake_auth)
+    return GoogleProvider(auth=fake_auth)
 
 
 @pytest.fixture
@@ -158,7 +158,7 @@ def server_error() -> Exception:
 
 class TestChat:
     def test_basic_chat(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -170,7 +170,7 @@ class TestChat:
             usage=Usage(input_tokens=10, output_tokens=5),
             cost=result.cost,
             model="gemini-2.0-flash",
-            provider="gcp-vertex",
+            provider="google",
             finish_reason="stop",
         )
         assert result.cost is not None
@@ -179,7 +179,7 @@ class TestChat:
         mock_client.models.embed_content.assert_not_called()
 
     def test_chat_with_params(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -200,7 +200,7 @@ class TestChat:
         assert config["stop_sequences"] == ["END"]
 
     def test_chat_with_stop_string(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -210,7 +210,7 @@ class TestChat:
         assert call_kwargs["config"]["stop_sequences"] == ["STOP"]
 
     def test_chat_with_tools(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -221,7 +221,7 @@ class TestChat:
         assert call_kwargs["config"]["tools"] == [{"function_declarations": [{"name": "get_weather"}]}]
 
     def test_chat_with_tool_choice(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -231,7 +231,7 @@ class TestChat:
         assert call_kwargs["config"]["tool_config"] == {"function_calling_config": {"mode": "ANY"}}
 
     def test_chat_with_text_response_format(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -244,7 +244,7 @@ class TestChat:
         assert "response_mime_type" not in call_kwargs["config"]
 
     def test_chat_with_json_response_format(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -256,7 +256,7 @@ class TestChat:
         assert call_kwargs["config"]["response_mime_type"] == "application/json"
 
     def test_chat_with_json_schema_response_format(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -268,14 +268,14 @@ class TestChat:
         assert call_kwargs["config"]["response_schema"] == {"type": "object"}
 
     def test_chat_with_provider_params(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(
+            provider_params=GoogleParams(
                 safety_settings=[SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE")],
                 presence_penalty=0.5,
             ),
@@ -289,7 +289,7 @@ class TestChat:
         assert config["presence_penalty"] == 0.5
 
     def test_chat_with_reasoning_effort(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -299,7 +299,7 @@ class TestChat:
         assert call_kwargs["config"]["thinking_config"] == {"thinking_budget": 8192, "include_thoughts": True}
 
     def test_chat_exception_mapping(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, server_error: Exception
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, server_error: Exception
     ) -> None:
         mock_client.models.generate_content.side_effect = server_error
 
@@ -307,7 +307,7 @@ class TestChat:
             _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
     def test_chat_with_system_message(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -326,19 +326,19 @@ class TestChat:
 
 class TestAchat:
     async def test_basic_achat(
-        self, async_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, async_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
 
         result = await async_provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         assert result.content == "Hello!"
-        assert result.provider == "gcp-vertex"
+        assert result.provider == "google"
         mock_client.aio.models.generate_content.assert_awaited_once()
         mock_client.aio.models.embed_content.assert_not_called()
 
     async def test_achat_exception_mapping(
-        self, async_provider: GCPVertexProvider, mock_client: MagicMock, server_error: Exception
+        self, async_provider: GoogleProvider, mock_client: MagicMock, server_error: Exception
     ) -> None:
         mock_client.aio.models.generate_content = AsyncMock(side_effect=server_error)
 
@@ -352,7 +352,7 @@ class TestAchat:
 class TestChatStream:
     def test_yields_chunks(
         self,
-        sync_provider: GCPVertexProvider,
+        sync_provider: GoogleProvider,
         mock_client: MagicMock,
     ) -> None:
         chunk1 = _make_response_mock(text="Hello")
@@ -379,7 +379,7 @@ class TestChatStream:
 
     def test_cost_on_usage_chunk(
         self,
-        sync_provider: GCPVertexProvider,
+        sync_provider: GoogleProvider,
         mock_client: MagicMock,
     ) -> None:
         chunk1 = _make_response_mock(text="Hello")
@@ -398,7 +398,7 @@ class TestChatStream:
         assert chunks[1].cost.total_cost > 0
 
     def test_stream_exception_on_create(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, server_error: Exception
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, server_error: Exception
     ) -> None:
         mock_client.models.generate_content_stream.side_effect = server_error
 
@@ -407,7 +407,7 @@ class TestChatStream:
 
     def test_stream_exception_during_iteration(
         self,
-        sync_provider: GCPVertexProvider,
+        sync_provider: GoogleProvider,
         mock_client: MagicMock,
         server_error: Exception,
     ) -> None:
@@ -427,7 +427,7 @@ class TestChatStream:
 class TestAchatStream:
     async def test_yields_chunks(
         self,
-        async_provider: GCPVertexProvider,
+        async_provider: GoogleProvider,
         mock_client: MagicMock,
     ) -> None:
         chunk1 = _make_response_mock(text="Hello")
@@ -454,7 +454,7 @@ class TestAchatStream:
 
     async def test_exception_during_stream(
         self,
-        async_provider: GCPVertexProvider,
+        async_provider: GoogleProvider,
         mock_client: MagicMock,
         server_error: Exception,
     ) -> None:
@@ -478,7 +478,7 @@ class TestAchatStream:
 class TestEmbed:
     def test_basic_embed(
         self,
-        sync_provider: GCPVertexProvider,
+        sync_provider: GoogleProvider,
         mock_client: MagicMock,
         embed_response: MagicMock,
     ) -> None:
@@ -491,7 +491,7 @@ class TestEmbed:
             usage=Usage(input_tokens=0, output_tokens=0),
             cost=result.cost,
             model="text-embedding-005",
-            provider="gcp-vertex",
+            provider="google",
         )
         mock_client.models.embed_content.assert_called_once_with(
             model="text-embedding-005", contents=["hello"], config=None
@@ -500,7 +500,7 @@ class TestEmbed:
 
     def test_embed_list_input(
         self,
-        sync_provider: GCPVertexProvider,
+        sync_provider: GoogleProvider,
         mock_client: MagicMock,
     ) -> None:
         mock_client.models.embed_content.return_value = _make_embed_response_mock([[0.1, 0.2], [0.3, 0.4]])
@@ -514,7 +514,7 @@ class TestEmbed:
 
     def test_embed_with_dimensions(
         self,
-        sync_provider: GCPVertexProvider,
+        sync_provider: GoogleProvider,
         mock_client: MagicMock,
         embed_response: MagicMock,
     ) -> None:
@@ -528,14 +528,14 @@ class TestEmbed:
 
     def test_embed_with_task_type(
         self,
-        sync_provider: GCPVertexProvider,
+        sync_provider: GoogleProvider,
         mock_client: MagicMock,
         embed_response: MagicMock,
     ) -> None:
         mock_client.models.embed_content.return_value = embed_response
 
         _ = sync_provider.embed(
-            "text-embedding-005", "hello", provider_params=GCPVertexParams(task_type="RETRIEVAL_QUERY")
+            "text-embedding-005", "hello", provider_params=GoogleParams(task_type="RETRIEVAL_QUERY")
         )
 
         mock_client.models.embed_content.assert_called_once_with(
@@ -544,7 +544,7 @@ class TestEmbed:
 
     def test_embed_with_dimensions_and_task_type(
         self,
-        sync_provider: GCPVertexProvider,
+        sync_provider: GoogleProvider,
         mock_client: MagicMock,
         embed_response: MagicMock,
     ) -> None:
@@ -554,7 +554,7 @@ class TestEmbed:
             "text-embedding-005",
             "hello",
             dimensions=256,
-            provider_params=GCPVertexParams(task_type="RETRIEVAL_DOCUMENT"),
+            provider_params=GoogleParams(task_type="RETRIEVAL_DOCUMENT"),
         )
 
         mock_client.models.embed_content.assert_called_once_with(
@@ -564,7 +564,7 @@ class TestEmbed:
         )
 
     def test_embed_exception_mapping(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, server_error: Exception
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, server_error: Exception
     ) -> None:
         mock_client.models.embed_content.side_effect = server_error
 
@@ -578,7 +578,7 @@ class TestEmbed:
 class TestAembed:
     async def test_basic_aembed(
         self,
-        async_provider: GCPVertexProvider,
+        async_provider: GoogleProvider,
         mock_client: MagicMock,
         embed_response: MagicMock,
     ) -> None:
@@ -587,7 +587,7 @@ class TestAembed:
         result = await async_provider.aembed("text-embedding-005", "hello")
 
         assert result.embeddings == [[0.1, 0.2, 0.3]]
-        assert result.provider == "gcp-vertex"
+        assert result.provider == "google"
         mock_client.aio.models.embed_content.assert_awaited_once_with(
             model="text-embedding-005", contents=["hello"], config=None
         )
@@ -595,7 +595,7 @@ class TestAembed:
 
     async def test_aembed_list_input(
         self,
-        async_provider: GCPVertexProvider,
+        async_provider: GoogleProvider,
         mock_client: MagicMock,
     ) -> None:
         mock_client.aio.models.embed_content = AsyncMock(return_value=_make_embed_response_mock([[0.1], [0.2]]))
@@ -608,7 +608,7 @@ class TestAembed:
         )
 
     async def test_aembed_exception_mapping(
-        self, async_provider: GCPVertexProvider, mock_client: MagicMock, server_error: Exception
+        self, async_provider: GoogleProvider, mock_client: MagicMock, server_error: Exception
     ) -> None:
         mock_client.aio.models.embed_content = AsyncMock(side_effect=server_error)
 
@@ -622,7 +622,7 @@ class TestAembed:
 class TestClientManagement:
     def test_sync_client_reused(
         self,
-        sync_provider: GCPVertexProvider,
+        sync_provider: GoogleProvider,
         mock_client: MagicMock,
         generate_response: MagicMock,
         mock_create: MagicMock,
@@ -642,7 +642,7 @@ class TestClientManagement:
         generate_response: MagicMock,
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
-        provider = GCPVertexProvider(auth=fake_auth, project="my-project", location="us-central1")
+        provider = GoogleProvider(auth=fake_auth, project="my-project", location="us-central1")
         _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         mock_create.assert_called_once()
@@ -659,7 +659,7 @@ class TestClientManagement:
         generate_response: MagicMock,
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
-        provider = GCPVertexProvider(auth=fake_api_key_auth, vertexai=False)
+        provider = GoogleProvider(auth=fake_api_key_auth, vertexai=False)
         _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         mock_create.assert_called_once()
@@ -676,7 +676,7 @@ class TestClientManagement:
         generate_response: MagicMock,
     ) -> None:
         mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
-        provider = GCPVertexProvider(auth=fake_api_key_auth, vertexai=False)
+        provider = GoogleProvider(auth=fake_api_key_auth, vertexai=False)
         _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         mock_create.assert_called_once()
@@ -692,7 +692,7 @@ class TestClientManagement:
         generate_response: MagicMock,
     ) -> None:
         mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
-        provider = GCPVertexProvider(auth=fake_auth)
+        provider = GoogleProvider(auth=fake_auth)
         _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
         _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi again")])
 
@@ -706,7 +706,7 @@ class TestClientManagement:
         generate_response: MagicMock,
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
-        provider = GCPVertexProvider(auth=fake_auth)
+        provider = GoogleProvider(auth=fake_auth)
         _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
         mock_create.assert_called_once()
@@ -723,7 +723,7 @@ class TestClientManagement:
         mock_create: MagicMock,
     ) -> None:
         mock_create.side_effect = Exception("connection refused")
-        provider = GCPVertexProvider(auth=fake_auth)
+        provider = GoogleProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
             _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
@@ -734,14 +734,14 @@ class TestClientManagement:
         mock_create: MagicMock,
     ) -> None:
         mock_create.side_effect = Exception("connection refused")
-        provider = GCPVertexProvider(auth=fake_auth)
+        provider = GoogleProvider(auth=fake_auth)
 
         with pytest.raises(ProviderError, match="connection refused"):
             _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
 
     @pytest.fixture
     def mock_get_running_loop(self, mocker: MockerFixture) -> MagicMock:
-        return mocker.patch("lmux_gcp_vertex.provider.asyncio.get_running_loop")
+        return mocker.patch("lmux_google.provider.asyncio.get_running_loop")
 
     async def test_achat_recreates_client_on_new_event_loop(
         self,
@@ -752,7 +752,7 @@ class TestClientManagement:
         mock_get_running_loop: MagicMock,
     ) -> None:
         mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
-        provider = GCPVertexProvider(auth=fake_auth)
+        provider = GoogleProvider(auth=fake_auth)
 
         loop1 = asyncio.new_event_loop()
         loop2 = asyncio.new_event_loop()
@@ -771,7 +771,7 @@ class TestClientManagement:
 
 
 class TestRegisterPricing:
-    def test_custom_pricing_for_unknown_model(self, sync_provider: GCPVertexProvider, mock_client: MagicMock) -> None:
+    def test_custom_pricing_for_unknown_model(self, sync_provider: GoogleProvider, mock_client: MagicMock) -> None:
         custom_response = _make_response_mock(prompt_tokens=1000, output_tokens=500)
         mock_client.models.generate_content.return_value = custom_response
 
@@ -788,7 +788,7 @@ class TestRegisterPricing:
         assert result.cost.output_cost == pytest.approx(500 * 15.0 / 1_000_000)
 
     def test_custom_pricing_overrides_builtin(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -803,7 +803,7 @@ class TestRegisterPricing:
         assert result.cost.output_cost == pytest.approx(5 * 199.0 / 1_000_000)
 
     def test_unregistered_unknown_model_returns_none_cost(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock
     ) -> None:
         unknown_response = _make_response_mock()
         mock_client.models.generate_content.return_value = unknown_response
@@ -818,11 +818,11 @@ class TestRegisterPricing:
 
 class TestProviderParamsKwargs:
     def test_empty_params(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], provider_params=GCPVertexParams())
+        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], provider_params=GoogleParams())
 
         call_kwargs = mock_client.models.generate_content.call_args.kwargs
         config = call_kwargs["config"]
@@ -834,11 +834,11 @@ class TestProviderParamsKwargs:
         assert "thinking_config" not in config
 
     def test_all_params(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
-        params = GCPVertexParams(
+        params = GoogleParams(
             safety_settings=[SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE")],
             presence_penalty=0.5,
             frequency_penalty=0.3,
@@ -858,28 +858,28 @@ class TestProviderParamsKwargs:
         assert config["thinking_config"] == {"thinking_budget": 1024}
 
     def test_google_search_bool(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(google_search=True),
+            provider_params=GoogleParams(google_search=True),
         )
 
         config = mock_client.models.generate_content.call_args.kwargs["config"]
         assert config["tools"] == [{"google_search": {}}]
 
     def test_google_search_config_with_search_types(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(
+            provider_params=GoogleParams(
                 google_search=GoogleSearchConfig(
                     search_types=GoogleSearchTypes(web_search=True),
                     exclude_domains=["example.com"],
@@ -893,28 +893,28 @@ class TestProviderParamsKwargs:
         ]
 
     def test_google_search_config_empty(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(google_search=GoogleSearchConfig()),
+            provider_params=GoogleParams(google_search=GoogleSearchConfig()),
         )
 
         config = mock_client.models.generate_content.call_args.kwargs["config"]
         assert config["tools"] == [{"google_search": {}}]
 
     def test_google_search_config_image_search(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(
+            provider_params=GoogleParams(
                 google_search=GoogleSearchConfig(search_types=GoogleSearchTypes(image_search=True)),
             ),
         )
@@ -923,28 +923,28 @@ class TestProviderParamsKwargs:
         assert config["tools"] == [{"google_search": {"search_types": {"image_search": {}}}}]
 
     def test_code_execution(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(code_execution=True),
+            provider_params=GoogleParams(code_execution=True),
         )
 
         config = mock_client.models.generate_content.call_args.kwargs["config"]
         assert config["tools"] == [{"code_execution": {}}]
 
     def test_google_search_retrieval(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(
+            provider_params=GoogleParams(
                 google_search_retrieval=GoogleSearchRetrievalConfig(
                     dynamic_retrieval_config=DynamicRetrievalConfig(mode="MODE_DYNAMIC", dynamic_threshold=0.5),
                 ),
@@ -958,21 +958,21 @@ class TestProviderParamsKwargs:
         ]
 
     def test_google_search_retrieval_empty(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(google_search_retrieval=GoogleSearchRetrievalConfig()),
+            provider_params=GoogleParams(google_search_retrieval=GoogleSearchRetrievalConfig()),
         )
 
         config = mock_client.models.generate_content.call_args.kwargs["config"]
         assert config["tools"] == [{"google_search_retrieval": {}}]
 
     def test_special_tools_merge_with_function_tools(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
@@ -980,7 +980,7 @@ class TestProviderParamsKwargs:
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
             tools=[Tool(function=FunctionDefinition(name="get_weather"))],
-            provider_params=GCPVertexParams(google_search=True, code_execution=True),
+            provider_params=GoogleParams(google_search=True, code_execution=True),
         )
 
         config = mock_client.models.generate_content.call_args.kwargs["config"]
@@ -991,28 +991,28 @@ class TestProviderParamsKwargs:
         ]
 
     def test_multiple_special_tools(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(google_search=True, code_execution=True),
+            provider_params=GoogleParams(google_search=True, code_execution=True),
         )
 
         config = mock_client.models.generate_content.call_args.kwargs["config"]
         assert config["tools"] == [{"google_search": {}}, {"code_execution": {}}]
 
     def test_google_search_retrieval_mode_only(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(
+            provider_params=GoogleParams(
                 google_search_retrieval=GoogleSearchRetrievalConfig(
                     dynamic_retrieval_config=DynamicRetrievalConfig(mode="MODE_DYNAMIC"),
                 ),
@@ -1025,14 +1025,14 @@ class TestProviderParamsKwargs:
         ]
 
     def test_google_search_retrieval_threshold_only(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(
+            provider_params=GoogleParams(
                 google_search_retrieval=GoogleSearchRetrievalConfig(
                     dynamic_retrieval_config=DynamicRetrievalConfig(dynamic_threshold=0.7),
                 ),
@@ -1045,14 +1045,14 @@ class TestProviderParamsKwargs:
         ]
 
     def test_google_search_retrieval_empty_drc(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(
+            provider_params=GoogleParams(
                 google_search_retrieval=GoogleSearchRetrievalConfig(
                     dynamic_retrieval_config=DynamicRetrievalConfig(),
                 ),
@@ -1063,14 +1063,14 @@ class TestProviderParamsKwargs:
         assert config["tools"] == [{"google_search_retrieval": {}}]
 
     def test_google_search_config_empty_search_types(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(
+            provider_params=GoogleParams(
                 google_search=GoogleSearchConfig(search_types=GoogleSearchTypes()),
             ),
         )
@@ -1079,28 +1079,28 @@ class TestProviderParamsKwargs:
         assert config["tools"] == [{"google_search": {}}]
 
     def test_google_search_false_is_noop(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(google_search=False),
+            provider_params=GoogleParams(google_search=False),
         )
 
         config = mock_client.models.generate_content.call_args.kwargs["config"]
         assert "tools" not in config
 
     def test_no_special_tools_no_tools_key(
-        self, sync_provider: GCPVertexProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
     ) -> None:
         mock_client.models.generate_content.return_value = generate_response
 
         _ = sync_provider.chat(
             "gemini-2.0-flash",
             [UserMessage(content="Hi")],
-            provider_params=GCPVertexParams(presence_penalty=0.5),
+            provider_params=GoogleParams(presence_penalty=0.5),
         )
 
         config = mock_client.models.generate_content.call_args.kwargs["config"]
@@ -1119,7 +1119,7 @@ class TestAclose:
         generate_response: MagicMock,
     ) -> None:
         mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
-        provider = GCPVertexProvider(auth=fake_auth)
+        provider = GoogleProvider(auth=fake_auth)
 
         _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
         await provider.aclose()
@@ -1129,7 +1129,7 @@ class TestAclose:
         assert provider._client is None  # pyright: ignore[reportPrivateUsage]
 
     async def test_aclose_noop_when_no_client(self, fake_auth: FakeAuth) -> None:
-        provider = GCPVertexProvider(auth=fake_auth)
+        provider = GoogleProvider(auth=fake_auth)
         await provider.aclose()
 
 

@@ -1,8 +1,8 @@
-"""Tests for GCP Vertex AI provider-specific parameters."""
+"""Tests for Google provider-specific parameters."""
 
-from lmux_gcp_vertex.params import (
+from lmux_google.params import (
     DynamicRetrievalConfig,
-    GCPVertexParams,
+    GoogleParams,
     GoogleSearchConfig,
     GoogleSearchRetrievalConfig,
     GoogleSearchTypes,
@@ -71,9 +71,9 @@ class TestGoogleSearchRetrievalConfig:
         assert config.dynamic_retrieval_config.dynamic_threshold == 0.3
 
 
-class TestGCPVertexParams:
+class TestGoogleParams:
     def test_defaults(self) -> None:
-        params = GCPVertexParams()
+        params = GoogleParams()
         assert params.safety_settings is None
         assert params.presence_penalty is None
         assert params.frequency_penalty is None
@@ -86,7 +86,7 @@ class TestGCPVertexParams:
         assert params.task_type is None
 
     def test_all_fields(self) -> None:
-        params = GCPVertexParams(
+        params = GoogleParams(
             safety_settings=[SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE")],
             presence_penalty=0.5,
             frequency_penalty=0.3,
@@ -109,7 +109,7 @@ class TestGCPVertexParams:
         assert params.code_execution is True
 
     def test_google_search_with_config(self) -> None:
-        params = GCPVertexParams(
+        params = GoogleParams(
             google_search=GoogleSearchConfig(
                 search_types=GoogleSearchTypes(web_search=True),
                 exclude_domains=["example.com"],

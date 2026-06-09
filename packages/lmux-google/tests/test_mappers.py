@@ -1,4 +1,4 @@
-"""Tests for Google Vertex AI type mappers."""
+"""Tests for Google type mappers."""
 
 import base64
 from typing import Any
@@ -34,7 +34,7 @@ from lmux.types import (
     Usage,
     UserMessage,
 )
-from lmux_gcp_vertex._mappers import (
+from lmux_google._mappers import (
     map_embed_content_response,
     map_generate_content_chunk,
     map_generate_content_response,
@@ -382,14 +382,14 @@ class TestMapResponseFormat:
 class TestMapGenerateContentResponse:
     def test_text_response(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hello!")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result == ChatResponse(
             content="Hello!",
             tool_calls=None,
             usage=Usage(input_tokens=10, output_tokens=5),
             cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
             model="gemini-2.0-flash",
-            provider="gcp-vertex",
+            provider="google",
             finish_reason="stop",
         )
 
@@ -398,7 +398,7 @@ class TestMapGenerateContentResponse:
             function_calls=[{"id": "call_0", "name": "get_weather", "args": {"city": "NYC"}}],
             finish_reason="STOP",
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result == ChatResponse(
             content=None,
             tool_calls=[
@@ -410,7 +410,7 @@ class TestMapGenerateContentResponse:
             usage=Usage(input_tokens=10, output_tokens=5),
             cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
             model="gemini-2.0-flash",
-            provider="gcp-vertex",
+            provider="google",
             finish_reason="tool_calls",
         )
 
@@ -418,7 +418,7 @@ class TestMapGenerateContentResponse:
         response = _make_response(
             function_calls=[{"id": None, "name": "search", "args": {}}],
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.tool_calls is not None
         # ID should be auto-generated as call_{index}
         assert result.tool_calls[0].id.startswith("call_")
@@ -427,7 +427,7 @@ class TestMapGenerateContentResponse:
         response = _make_response(
             function_calls=[{"id": "c1", "name": "ping", "args": None}],
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.tool_calls is not None
         assert result.tool_calls[0].function.arguments == "{}"
 
@@ -440,7 +440,7 @@ class TestMapGenerateContentResponse:
         usage.cached_content_token_count = None
         response.usage_metadata = usage
 
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.content is None
         assert result.tool_calls is None
 
@@ -449,52 +449,52 @@ class TestMapGenerateContentResponse:
         response.candidates = []
         response.usage_metadata = None
 
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.content is None
         assert result.usage is None
         assert result.cost is None
 
     def test_cache_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="cached", cached_tokens=50)
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
 
     def test_no_usage(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hi")
         response.usage_metadata = None
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.usage is None
         assert result.cost is None
 
     def test_cost_none_for_unknown_model(self, none_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hi")
-        result = map_generate_content_response(response, "unknown-model", "gcp-vertex", none_cost_fn)
+        result = map_generate_content_response(response, "unknown-model", "google", none_cost_fn)
         assert result.cost is None
 
     def test_safety_finish_reason(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text=None, finish_reason="SAFETY")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.finish_reason == "content_filter"
 
     def test_max_tokens_finish_reason(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="truncated", finish_reason="MAX_TOKENS")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.finish_reason == "length"
 
     def test_none_finish_reason(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hi", finish_reason=None)
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.finish_reason is None
 
     def test_unknown_finish_reason_passthrough(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hi", finish_reason="SOME_NEW_REASON")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.finish_reason == "SOME_NEW_REASON"
 
     def test_thought_parts_extracted(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Answer", thoughts=["Thinking..."])
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.content == "Answer"
         assert result.reasoning == "Thinking..."
 
@@ -516,14 +516,14 @@ class TestMapGenerateContentResponse:
         usage.thoughts_token_count = None
         response.usage_metadata = usage
 
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.content == "Answer"
         assert result.reasoning is None
 
     def test_no_content_on_candidate(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hi")
         response.candidates[0].content = None
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.content is None
         assert result.tool_calls is None
 
@@ -532,7 +532,7 @@ class TestMapGenerateContentResponse:
             text="The answer is 42.",
             code_executions=[{"code": "print(42)", "language": "PYTHON", "output": "42\n", "outcome": "OUTCOME_OK"}],
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.content == "The answer is 42."
         assert result.server_tool_results == [
             ServerToolResult(
@@ -547,7 +547,7 @@ class TestMapGenerateContentResponse:
         response = _make_response(
             code_executions=[{"code": "print(42)", "language": "PYTHON", "output": "42\n", "outcome": "OUTCOME_OK"}],
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.content is None
         assert result.server_tool_results is not None
         assert len(result.server_tool_results) == 1
@@ -556,7 +556,7 @@ class TestMapGenerateContentResponse:
         response = _make_response(
             code_executions=[{"code": "x = 1", "language": None, "output": None, "outcome": None}],
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.server_tool_results is not None
         assert result.server_tool_results[0].input == {"code": "x = 1", "language": None}
         assert result.server_tool_results[0].output is None
@@ -569,7 +569,7 @@ class TestMapGenerateContentResponse:
                 {"code": "print(2)", "language": "PYTHON", "output": "2\n", "outcome": "OUTCOME_OK"},
             ],
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.server_tool_results is not None
         assert len(result.server_tool_results) == 2
         assert result.server_tool_results[0].output == "1\n"
@@ -577,7 +577,7 @@ class TestMapGenerateContentResponse:
 
     def test_no_code_execution_returns_none(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _make_response(text="Hello!")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "gcp-vertex", noop_cost_fn)
+        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
         assert result.server_tool_results is None
 
 
@@ -740,13 +740,13 @@ class TestMapEmbedContentResponse:
         response.embeddings = [emb]
         response.metadata = None
 
-        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
+        result = map_embed_content_response(response, "text-embedding-005", "google", noop_cost_fn)
         assert result == EmbeddingResponse(
             embeddings=[[0.1, 0.2, 0.3]],
             usage=Usage(input_tokens=0, output_tokens=0),
             cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
             model="text-embedding-005",
-            provider="gcp-vertex",
+            provider="google",
         )
 
     def test_multiple_embeddings(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
@@ -758,7 +758,7 @@ class TestMapEmbedContentResponse:
         response.embeddings = [emb1, emb2]
         response.metadata = None
 
-        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
+        result = map_embed_content_response(response, "text-embedding-005", "google", noop_cost_fn)
         assert result.embeddings == [[0.1, 0.2], [0.3, 0.4]]
 
     def test_empty_embeddings(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
@@ -766,7 +766,7 @@ class TestMapEmbedContentResponse:
         response.embeddings = None
         response.metadata = None
 
-        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
+        result = map_embed_content_response(response, "text-embedding-005", "google", noop_cost_fn)
         assert result.embeddings == []
 
     def test_embedding_with_none_values(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
@@ -776,7 +776,7 @@ class TestMapEmbedContentResponse:
         response.embeddings = [emb]
         response.metadata = None
 
-        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
+        result = map_embed_content_response(response, "text-embedding-005", "google", noop_cost_fn)
         assert result.embeddings == [[]]
 
     def test_cost_none_for_unknown(self, none_cost_fn: Any) -> None:  # noqa: ANN401
@@ -784,7 +784,7 @@ class TestMapEmbedContentResponse:
         response.embeddings = [MagicMock(values=[0.1])]
         response.metadata = None
 
-        result = map_embed_content_response(response, "unknown-model", "gcp-vertex", none_cost_fn)
+        result = map_embed_content_response(response, "unknown-model", "google", none_cost_fn)
         assert result.cost is None
 
     def test_approximates_tokens_from_billable_characters(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
@@ -796,7 +796,7 @@ class TestMapEmbedContentResponse:
         metadata.billable_character_count = 400
         response.metadata = metadata
 
-        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
+        result = map_embed_content_response(response, "text-embedding-005", "google", noop_cost_fn)
         assert result.usage == Usage(input_tokens=100, output_tokens=0)
 
     def test_billable_character_count_none_falls_back_to_zero(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
@@ -808,7 +808,7 @@ class TestMapEmbedContentResponse:
         metadata.billable_character_count = None
         response.metadata = metadata
 
-        result = map_embed_content_response(response, "text-embedding-005", "gcp-vertex", noop_cost_fn)
+        result = map_embed_content_response(response, "text-embedding-005", "google", noop_cost_fn)
         assert result.usage == Usage(input_tokens=0, output_tokens=0)
 
 

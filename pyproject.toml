@@ -84,6 +84,7 @@ known-first-party = [
   "lmux_anthropic",
   "lmux_azure_foundry",
   "lmux_aws_bedrock",
+  "lmux_google",
   "lmux_gcp_vertex",
   "lmux_groq",
 ]
@@ -123,6 +124,7 @@ source = [
   "lmux_azure_foundry",
   "lmux_groq",
   "lmux_aws_bedrock",
+  "lmux_google",
   "lmux_gcp_vertex",
 ]
 branch = true
