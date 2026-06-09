@@ -817,7 +817,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-aws-bedrock"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "packages/lmux-aws-bedrock" }
 dependencies = [
     { name = "boto3" },

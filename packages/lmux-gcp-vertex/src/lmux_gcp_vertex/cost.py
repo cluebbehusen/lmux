@@ -172,6 +172,8 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(10.0),
                 output_cost_per_token=per_million_tokens(50.0),
                 cache_read_cost_per_token=per_million_tokens(1.0),
+                cache_creation_cost_per_token=per_million_tokens(12.5),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(20.0)},
             ),
         ],
     ),
