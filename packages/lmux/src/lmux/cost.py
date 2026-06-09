@@ -11,12 +11,19 @@ def per_million_tokens(price: float) -> float:
 
 
 class PricingTier(BaseModel):
-    """A single pricing tier based on total input token count."""
+    """A single pricing tier based on total input token count.
+
+    ``cache_creation_cost_per_token`` is the default cache-write rate.
+    ``cache_creation_cost_per_token_by_ttl`` holds per-TTL overrides (e.g.
+    ``{"1h": ...}``) for providers whose extended-TTL writes bill at a higher
+    rate; write tokens with no matching TTL entry bill at the default rate.
+    """
 
     input_cost_per_token: float
     output_cost_per_token: float
     cache_read_cost_per_token: float | None = None
     cache_creation_cost_per_token: float | None = None
+    cache_creation_cost_per_token_by_ttl: dict[str, float] | None = None
     min_input_tokens: int = 0
 
 
@@ -66,17 +73,21 @@ def _resolve_tier(usage: Usage, pricing: ModelPricing) -> PricingTier:
 def calculate_cost(usage: Usage, pricing: ModelPricing) -> Cost:
     """Calculate the monetary cost from token usage and per-token prices.
 
-    ``usage.input_tokens`` is the **total** prompt token count as reported by
-    the provider API.  Cached tokens (read and creation) are subsets of this
-    total, so they are subtracted before billing at the regular input rate to
-    avoid double-counting.
+    ``usage.input_tokens`` is the **total** prompt token count (see ``Usage``
+    — providers normalize to this convention).  Cached tokens (read and
+    creation) are subsets of this total, so they are subtracted before billing
+    at the regular input rate to avoid double-counting.
+
+    Cache-write tokens bill at ``cache_creation_cost_per_token`` by default;
+    when ``usage.cache_creation_tokens_by_ttl`` is reported and the tier has a
+    matching per-TTL rate, those tokens bill at the per-TTL rate instead.
 
     When ``pricing`` includes multiple tiers and the total input tokens
     exceed a tier's ``min_input_tokens`` threshold, the higher rates
     are used for all tokens in the request.
     """
     cache_read_tokens = usage.cache_read_tokens or 0
-    cache_creation_tokens = usage.cache_creation_tokens or 0
+    cache_creation_tokens = _total_cache_creation_tokens(usage)
 
     tier = _resolve_tier(usage, pricing)
 
@@ -87,9 +98,8 @@ def calculate_cost(usage: Usage, pricing: ModelPricing) -> Cost:
     output_cost = usage.output_tokens * tier.output_cost_per_token
 
     cache_read_cost_per_token = tier.cache_read_cost_per_token or 0.0
-    cache_creation_cost_per_token = tier.cache_creation_cost_per_token or 0.0
     cache_read_cost = cache_read_tokens * cache_read_cost_per_token if cache_read_tokens else None
-    cache_creation_cost = cache_creation_tokens * cache_creation_cost_per_token if cache_creation_tokens else None
+    cache_creation_cost = _cache_creation_cost(usage, tier, cache_creation_tokens)
     total = input_cost + output_cost + (cache_read_cost or 0.0) + (cache_creation_cost or 0.0)
 
     return Cost(
@@ -99,3 +109,25 @@ def calculate_cost(usage: Usage, pricing: ModelPricing) -> Cost:
         cache_read_cost=cache_read_cost,
         cache_creation_cost=cache_creation_cost,
     )
+
+
+def _total_cache_creation_tokens(usage: Usage) -> int:
+    """Total cache-write tokens, robust to a breakdown without an aggregate."""
+    breakdown_total = sum((usage.cache_creation_tokens_by_ttl or {}).values())
+    return max(usage.cache_creation_tokens or 0, breakdown_total)
+
+
+def _cache_creation_cost(usage: Usage, tier: PricingTier, total_tokens: int) -> float | None:
+    """Cache-write cost: per-TTL rates where reported and priced, default rate otherwise."""
+    if not total_tokens:
+        return None
+    default_rate = tier.cache_creation_cost_per_token or 0.0
+    ttl_rates = tier.cache_creation_cost_per_token_by_ttl or {}
+    cost = 0.0
+    covered = 0
+    for ttl, tokens in (usage.cache_creation_tokens_by_ttl or {}).items():
+        cost += tokens * ttl_rates.get(ttl, default_rate)
+        covered += tokens
+    # Tokens not covered by the breakdown bill at the default rate.
+    cost += (total_tokens - covered) * default_rate
+    return cost

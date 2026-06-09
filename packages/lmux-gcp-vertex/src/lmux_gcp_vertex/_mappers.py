@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 from lmux.types import (
     AssistantMessage,
+    CachePointContent,
     ChatChunk,
     ChatResponse,
     ContentPart,
@@ -92,6 +93,8 @@ def map_messages(messages: Sequence[Message]) -> tuple[str | None, list["Content
             system_parts.append(msg.content)
         elif isinstance(msg, UserMessage):
             parts = _map_user_content(msg.content)
+            if not parts and msg.content:
+                continue  # message held only cache points, which this provider has no representation for
             contents.append({"role": "user", "parts": parts})
         elif isinstance(msg, AssistantMessage):
             contents.append(_map_assistant_message(msg))
@@ -105,10 +108,11 @@ def map_messages(messages: Sequence[Message]) -> tuple[str | None, list["Content
 def _map_user_content(content: str | list[ContentPart]) -> list["PartDict"]:
     if isinstance(content, str):
         return [{"text": content}]
-    return [_map_content_part(part) for part in content]
+    # Cache points are dropped: this provider caches implicitly and has no explicit representation.
+    return [_map_content_part(part) for part in content if not isinstance(part, CachePointContent)]
 
 
-def _map_content_part(part: ContentPart) -> "PartDict":
+def _map_content_part(part: TextContent | ImageContent) -> "PartDict":
     if isinstance(part, TextContent):
         return {"text": part.text}
     return _map_image_content(part)

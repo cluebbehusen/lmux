@@ -296,3 +296,96 @@ class TestCalculateCost:
         # Above highest threshold — top tier
         cost_high = calculate_cost(Usage(input_tokens=600_000, output_tokens=100), pricing)
         assert cost_high.input_cost == pytest.approx(600_000 * per_million_tokens(4.00))
+
+    def test_breakdown_bills_per_ttl_rate(self) -> None:
+        pricing = ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=5.0,
+                    output_cost_per_token=25.0,
+                    cache_creation_cost_per_token=6.25,
+                    cache_creation_cost_per_token_by_ttl={"1h": 10.0},
+                )
+            ]
+        )
+        usage = Usage(
+            input_tokens=3100,
+            output_tokens=0,
+            cache_creation_tokens=2000,
+            cache_creation_tokens_by_ttl={"1h": 1500, "5m": 500},
+        )
+        cost = calculate_cost(usage, pricing)
+        # 1500 @ 1h rate, 500 @ default rate ("5m" has no per-TTL entry)
+        assert cost.cache_creation_cost == pytest.approx(1500 * 10.0 + 500 * 6.25)
+        # billable input excludes all cache-write tokens
+        assert cost.input_cost == pytest.approx(1100 * 5.0)
+
+    def test_breakdown_without_per_ttl_pricing_uses_default_rate(self) -> None:
+        pricing = ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=5.0,
+                    output_cost_per_token=25.0,
+                    cache_creation_cost_per_token=6.25,
+                )
+            ]
+        )
+        usage = Usage(
+            input_tokens=2000,
+            output_tokens=0,
+            cache_creation_tokens=2000,
+            cache_creation_tokens_by_ttl={"1h": 2000},
+        )
+        cost = calculate_cost(usage, pricing)
+        assert cost.cache_creation_cost == pytest.approx(2000 * 6.25)
+
+    def test_aggregate_remainder_bills_at_default_rate(self) -> None:
+        pricing = ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=5.0,
+                    output_cost_per_token=25.0,
+                    cache_creation_cost_per_token=6.25,
+                    cache_creation_cost_per_token_by_ttl={"1h": 10.0},
+                )
+            ]
+        )
+        # 800 tokens in the breakdown, 1000 aggregate -> 200 at default rate
+        usage = Usage(
+            input_tokens=1000,
+            output_tokens=0,
+            cache_creation_tokens=1000,
+            cache_creation_tokens_by_ttl={"1h": 800},
+        )
+        cost = calculate_cost(usage, pricing)
+        assert cost.cache_creation_cost == pytest.approx(800 * 10.0 + 200 * 6.25)
+
+    def test_breakdown_without_aggregate_is_authoritative(self) -> None:
+        pricing = ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=5.0,
+                    output_cost_per_token=25.0,
+                    cache_creation_cost_per_token=6.25,
+                    cache_creation_cost_per_token_by_ttl={"1h": 10.0},
+                )
+            ]
+        )
+        usage = Usage(input_tokens=500, output_tokens=0, cache_creation_tokens_by_ttl={"1h": 500})
+        cost = calculate_cost(usage, pricing)
+        assert cost.cache_creation_cost == pytest.approx(500 * 10.0)
+        assert cost.input_cost == pytest.approx(0.0)
+
+    def test_no_cache_creation_returns_none_cost(self) -> None:
+        pricing = ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=5.0,
+                    output_cost_per_token=25.0,
+                    cache_creation_cost_per_token_by_ttl={"1h": 10.0},
+                )
+            ]
+        )
+        usage = Usage(input_tokens=100, output_tokens=10)
+        cost = calculate_cost(usage, pricing)
+        assert cost.cache_creation_cost is None

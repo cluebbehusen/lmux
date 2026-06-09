@@ -1,8 +1,8 @@
 """Core type definitions for lmux."""
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # MARK: Provider Params
 
@@ -29,7 +29,24 @@ class ImageContent(BaseModel):
     detail: Literal["auto", "low", "high"] = "auto"
 
 
-type ContentPart = TextContent | ImageContent
+class CachePointContent(BaseModel):
+    """A prompt-cache breakpoint marking the end of a stable prompt prefix.
+
+    Providers with explicit prompt caching translate this to their native
+    representation (Anthropic ``cache_control``, Bedrock ``cachePoint``).
+    Providers without one ignore it — it is a caching hint, not semantic
+    content, so dropping it never changes the conversation.
+
+    ``ttl`` is passed through to the provider verbatim and validated there;
+    Anthropic and Bedrock currently accept ``"5m"`` and ``"1h"``. When two
+    cache points resolve to the same position, the first one wins.
+    """
+
+    type: Literal["cache_point"] = "cache_point"
+    ttl: str | None = None
+
+
+type ContentPart = Annotated[TextContent | ImageContent | CachePointContent, Field(discriminator="type")]
 
 
 # MARK: Tools
@@ -192,12 +209,25 @@ type ResponseFormat = TextResponseFormat | JsonObjectResponseFormat | JsonSchema
 
 
 class Usage(BaseModel):
-    """Token usage for a request."""
+    """Token usage for a request.
+
+    ``input_tokens`` is the **total** prompt token count, including cached
+    tokens. Providers whose APIs report cached tokens separately from the
+    uncached remainder (e.g. Anthropic, Bedrock) normalize to this total in
+    their mappers. ``cache_read_tokens`` and ``cache_creation_tokens`` are
+    subsets of ``input_tokens``.
+
+    ``cache_creation_tokens_by_ttl`` breaks down cache writes by TTL (e.g.
+    ``{"5m": 1200, "1h": 50000}``) for providers that report it; cache-write
+    rates can differ per TTL, so cost calculation prefers this breakdown over
+    the aggregate when per-TTL pricing is available.
+    """
 
     input_tokens: int
     output_tokens: int
     cache_read_tokens: int | None = None
     cache_creation_tokens: int | None = None
+    cache_creation_tokens_by_ttl: dict[str, int] | None = None
     reasoning_tokens: int | None = None
 
 

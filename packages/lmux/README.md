@@ -10,7 +10,7 @@ You don't need to install this directly; provider packages (e.g., `lmux-openai`)
 
 - `SystemMessage`: system/instruction message
 - `DeveloperMessage`: developer message (for o-series models)
-- `UserMessage`: user message, supports text and multimodal content (`TextContent`, `ImageContent`)
+- `UserMessage`: user message, supports text and multimodal content (`TextContent`, `ImageContent`, `CachePointContent`)
 - `AssistantMessage`: assistant message with optional tool calls
 - `ToolMessage`: tool result
 

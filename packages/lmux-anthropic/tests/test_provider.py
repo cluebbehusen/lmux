@@ -67,6 +67,7 @@ def _make_message_response(
         output_tokens=output_tokens,
         cache_read_input_tokens=0,
         cache_creation_input_tokens=0,
+        cache_creation=None,
     )
     return message
 
@@ -80,7 +81,7 @@ def _make_stream_events() -> list[MagicMock]:
     start_event = MagicMock()
     start_event.type = "message_start"
     start_event.message.usage = MagicMock(
-        input_tokens=10, output_tokens=0, cache_read_input_tokens=0, cache_creation_input_tokens=0
+        input_tokens=10, output_tokens=0, cache_read_input_tokens=0, cache_creation_input_tokens=0, cache_creation=None
     )
 
     text_delta = MagicMock()
@@ -477,7 +478,11 @@ class TestChatStream:
         start_event = MagicMock()
         start_event.type = "message_start"
         start_event.message.usage = MagicMock(
-            input_tokens=10, output_tokens=0, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            input_tokens=10,
+            output_tokens=0,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=None,
         )
 
         text_block_start = MagicMock()
@@ -604,7 +609,11 @@ class TestAchatStream:
         start_event = MagicMock()
         start_event.type = "message_start"
         start_event.message.usage = MagicMock(
-            input_tokens=10, output_tokens=0, cache_read_input_tokens=0, cache_creation_input_tokens=0
+            input_tokens=10,
+            output_tokens=0,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_creation=None,
         )
 
         text_block_start = MagicMock()
@@ -888,6 +897,7 @@ class TestProviderParamsKwargs:
         assert "top_k" not in call_kwargs
         assert "service_tier" not in call_kwargs
         assert "inference_geo" not in call_kwargs
+        assert "cache_control" not in call_kwargs
 
     def test_all_params(
         self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
@@ -899,6 +909,7 @@ class TestProviderParamsKwargs:
             top_k=40,
             service_tier="auto",
             inference_geo="us",
+            cache_control={"type": "ephemeral"},
         )
 
         _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], provider_params=params)
@@ -909,6 +920,7 @@ class TestProviderParamsKwargs:
         assert call_kwargs["top_k"] == 40
         assert call_kwargs["service_tier"] == "auto"
         assert call_kwargs["inference_geo"] == "us"
+        assert call_kwargs["cache_control"] == {"type": "ephemeral"}
 
 
 # MARK: Register Pricing

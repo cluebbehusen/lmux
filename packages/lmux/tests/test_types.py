@@ -1,7 +1,11 @@
 """Tests for lmux core type definitions."""
 
+import pydantic
+import pytest
+
 from lmux.types import (
     AssistantMessage,
+    CachePointContent,
     ChatResponse,
     Cost,
     FunctionCallResult,
@@ -71,3 +75,30 @@ class TestSerialization:
         data = r.model_dump()
         restored = ChatResponse.model_validate(data)
         assert restored == r
+
+
+class TestContentPartValidation:
+    def test_malformed_part_raises(self) -> None:
+        for bad in [{"txt": "hello"}, {}, {"ur1": "https://example.com"}]:
+            with pytest.raises(pydantic.ValidationError):
+                _ = UserMessage.model_validate({"role": "user", "content": [bad]})
+
+    def test_valid_parts_validate(self) -> None:
+        msg = UserMessage.model_validate(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "hi"},
+                    {"type": "image_url", "url": "https://example.com/i.png"},
+                    {"type": "cache_point"},
+                ],
+            }
+        )
+        assert isinstance(msg.content, list)
+        assert [type(p).__name__ for p in msg.content] == ["TextContent", "ImageContent", "CachePointContent"]
+
+    def test_cache_point_ttl_is_open_string(self) -> None:
+        # TTL is provider-validated; lmux passes it through verbatim.
+        part = CachePointContent(ttl="30m")
+        assert part.ttl == "30m"
+        assert CachePointContent().ttl is None

@@ -8,6 +8,7 @@ import pytest
 
 from lmux.types import (
     AssistantMessage,
+    CachePointContent,
     ChatChunk,
     ChatResponse,
     ContentPart,
@@ -160,6 +161,10 @@ class TestMapMessages:
         assert system is None
         assert contents == [{"role": "user", "parts": [{"text": "Hello"}]}]
 
+    def test_originally_empty_content_list_is_forwarded(self) -> None:
+        _, contents = map_messages([UserMessage(content=[])])
+        assert contents == [{"role": "user", "parts": []}]
+
     def test_user_message_multimodal_base64(self) -> None:
         raw_bytes = b"\x89PNG\r\n"
         b64_data = base64.b64encode(raw_bytes).decode()
@@ -307,10 +312,16 @@ class TestMapMessages:
             {"role": "model", "parts": [{"text": "hello"}]},
         ]
 
+    def test_cache_points_dropped(self) -> None:
+        _, contents = map_messages([UserMessage(content=[TextContent(text="Hi"), CachePointContent()])])
+        assert contents == [{"role": "user", "parts": [{"text": "Hi"}]}]
+
+    def test_marker_only_message_skipped(self) -> None:
+        _, contents = map_messages([UserMessage(content="Hello"), UserMessage(content=[CachePointContent()])])
+        assert contents == [{"role": "user", "parts": [{"text": "Hello"}]}]
+
 
 # MARK: map_tools
-
-
 class TestMapTools:
     def test_full_tool(self) -> None:
         tools = [

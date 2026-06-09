@@ -357,6 +357,8 @@ class AnthropicProvider(
             kwargs["service_tier"] = params.service_tier
         if params.inference_geo is not None:
             kwargs["inference_geo"] = params.inference_geo
+        if params.cache_control is not None:
+            kwargs["cache_control"] = params.cache_control
         return kwargs
 
     @staticmethod

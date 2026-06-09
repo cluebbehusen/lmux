@@ -791,7 +791,7 @@ wheels = [
 
 [[package]]
 name = "lmux"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "packages/lmux" }
 dependencies = [
     { name = "pydantic" },
@@ -802,7 +802,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.4.2"
+version = "0.5.0"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "anthropic" },
@@ -811,13 +811,13 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = "~=0.80" },
+    { name = "anthropic", specifier = "~=0.83" },
     { name = "lmux", editable = "packages/lmux" },
 ]
 
 [[package]]
 name = "lmux-aws-bedrock"
-version = "0.5.3"
+version = "0.6.0"
 source = { editable = "packages/lmux-aws-bedrock" }
 dependencies = [
     { name = "boto3" },
@@ -832,14 +832,14 @@ async = [
 [package.metadata]
 requires-dist = [
     { name = "aiobotocore", marker = "extra == 'async'", specifier = "~=3.3.0" },
-    { name = "boto3", specifier = "~=1.42" },
+    { name = "boto3", specifier = ">=1.42.31,<2" },
     { name = "lmux", editable = "packages/lmux" },
 ]
 provides-extras = ["async"]
 
 [[package]]
 name = "lmux-azure-foundry"
-version = "0.5.2"
+version = "0.5.3"
 source = { editable = "packages/lmux-azure-foundry" }
 dependencies = [
     { name = "lmux" },
@@ -861,7 +861,7 @@ provides-extras = ["identity"]
 
 [[package]]
 name = "lmux-gcp-vertex"
-version = "0.6.4"
+version = "0.6.5"
 source = { editable = "packages/lmux-gcp-vertex" }
 dependencies = [
     { name = "google-genai" },
@@ -876,7 +876,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-groq"
-version = "0.4.3"
+version = "0.4.4"
 source = { editable = "packages/lmux-groq" }
 dependencies = [
     { name = "groq" },
@@ -891,7 +891,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-openai"
-version = "0.5.3"
+version = "0.5.4"
 source = { editable = "packages/lmux-openai" }
 dependencies = [
     { name = "lmux" },

@@ -13,3 +13,4 @@ class AnthropicParams(BaseProviderParams):
     top_k: int | None = None
     service_tier: Literal["auto", "standard_only"] | None = None
     inference_geo: Literal["us"] | None = None
+    cache_control: dict[str, object] | None = None

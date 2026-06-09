@@ -8,8 +8,9 @@ from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from mypy_boto3_bedrock_runtime.literals import ImageFormatType
+    from mypy_boto3_bedrock_runtime.literals import CacheTTLType, ImageFormatType
     from mypy_boto3_bedrock_runtime.type_defs import (
+        CachePointBlockTypeDef,
         ContentBlockDeltaEventTypeDef,
         ContentBlockStartEventTypeDef,
         ContentBlockTypeDef,
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
         ConverseStreamOutputTypeDef,
         MessageTypeDef,
         SystemContentBlockTypeDef,
+        TokenUsageTypeDef,
         ToolConfigurationTypeDef,
         ToolSpecificationTypeDef,
         ToolTypeDef,
@@ -27,6 +29,7 @@ from lmux.exceptions import UnsupportedFeatureError
 from lmux.schema import add_additional_properties_false
 from lmux.types import (
     AssistantMessage,
+    CachePointContent,
     ChatChunk,
     ChatResponse,
     ContentPart,
@@ -87,8 +90,11 @@ def map_messages(
         if isinstance(msg, SystemMessage | DeveloperMessage):
             system_parts.append({"text": msg.content})
         elif isinstance(msg, UserMessage):
-            content = _map_user_content(msg.content)
-            result.append({"role": "user", "content": content})
+            content, leading_cache_point = _map_user_content(msg.content)
+            if leading_cache_point is not None:
+                _attach_cache_point(result, system_parts, leading_cache_point)
+            if content or not msg.content:
+                result.append({"role": "user", "content": content})
         elif isinstance(msg, AssistantMessage):
             result.append(_map_assistant_message(msg))
         else:
@@ -98,13 +104,60 @@ def map_messages(
     return system, result
 
 
-def _map_user_content(content: str | list[ContentPart]) -> list["ContentBlockTypeDef"]:
+def _map_user_content(
+    content: str | list[ContentPart],
+) -> tuple[list["ContentBlockTypeDef"], CachePointContent | None]:
+    """Map user content, emitting cache points as inline ``cachePoint`` blocks.
+
+    Returns ``(blocks, leading_cache_point)`` — a cache point with no
+    preceding block in the same message is returned for the caller to place
+    after whatever precedes the message (the prior message, or the system
+    blocks), keeping marker-only messages out of the conversation.
+    """
     if isinstance(content, str):
-        return [{"text": content}]
-    return [_map_content_part(part) for part in content]
+        return [{"text": content}], None
+    blocks: list[ContentBlockTypeDef] = []
+    leading_cache_point: CachePointContent | None = None
+    for part in content:
+        if isinstance(part, CachePointContent):
+            if not blocks:
+                if leading_cache_point is None:
+                    leading_cache_point = part
+            elif "cachePoint" not in blocks[-1]:
+                blocks.append({"cachePoint": _map_cache_point(part)})
+        else:
+            blocks.append(_map_content_part(part))
+    return blocks, leading_cache_point
 
 
-def _map_content_part(part: ContentPart) -> "ContentBlockTypeDef":
+def _attach_cache_point(
+    result: list["MessageTypeDef"],
+    system_parts: list["SystemContentBlockTypeDef"],
+    cache_point: CachePointContent,
+) -> None:
+    """Place a leading cache point after the previous message, or after the system blocks.
+
+    No-ops when the target has nothing cacheable (empty content) or already
+    ends in a cache point (the first marker wins).
+    """
+    if result:
+        blocks = cast("list[ContentBlockTypeDef]", result[-1]["content"])
+        if blocks and "cachePoint" not in blocks[-1]:
+            blocks.append({"cachePoint": _map_cache_point(cache_point)})
+    elif system_parts and "cachePoint" not in system_parts[-1]:
+        system_parts.append({"cachePoint": _map_cache_point(cache_point)})
+    # else: a cache point at the very start of the request marks an empty prefix
+
+
+def _map_cache_point(cache_point: CachePointContent) -> "CachePointBlockTypeDef":
+    block: CachePointBlockTypeDef = {"type": "default"}
+    if cache_point.ttl is not None:
+        # ttl is a deliberate passthrough — the service validates the value
+        block["ttl"] = cast("CacheTTLType", cache_point.ttl)
+    return block
+
+
+def _map_content_part(part: TextContent | ImageContent) -> "ContentBlockTypeDef":
     if isinstance(part, TextContent):
         return {"text": part.text}
     return _map_image_content(part)
@@ -274,14 +327,32 @@ def _map_converse_usage(response: "ConverseResponseTypeDef") -> Usage | None:
     usage_data = response.get("usage")
     if usage_data is None:  # pyright: ignore[reportUnnecessaryComparison]
         return None
-    cache_read: int | None = usage_data.get("cacheReadInputTokenCount") or None
-    cache_write: int | None = usage_data.get("cacheWriteInputTokenCount") or None
+    return _map_token_usage(usage_data)
+
+
+def _map_token_usage(usage_data: "TokenUsageTypeDef") -> Usage:
+    cache_read: int = usage_data.get("cacheReadInputTokens") or 0
+    cache_write: int = usage_data.get("cacheWriteInputTokens") or 0
     return Usage(
-        input_tokens=usage_data.get("inputTokens", 0),
+        # Converse reports inputTokens exclusive of cached tokens; lmux's
+        # Usage convention is the inclusive total (see lmux.types.Usage).
+        input_tokens=usage_data.get("inputTokens", 0) + cache_read + cache_write,
         output_tokens=usage_data.get("outputTokens", 0),
-        cache_read_tokens=cache_read,
-        cache_creation_tokens=cache_write,
+        cache_read_tokens=cache_read or None,
+        cache_creation_tokens=cache_write or None,
+        cache_creation_tokens_by_ttl=_map_cache_details(usage_data),
     )
+
+
+def _map_cache_details(usage_data: "TokenUsageTypeDef") -> dict[str, int] | None:
+    """Aggregate the per-TTL cache-write breakdown (``cacheDetails``) if reported."""
+    breakdown: dict[str, int] = {}
+    for detail in usage_data.get("cacheDetails") or []:
+        tokens = detail["inputTokens"]
+        if tokens:
+            ttl = detail["ttl"]
+            breakdown[ttl] = breakdown.get(ttl, 0) + tokens
+    return breakdown or None
 
 
 # MARK: Stream Event Mappers
@@ -343,16 +414,7 @@ def _map_metadata_event(metadata: "ConverseStreamMetadataEventTypeDef") -> ChatC
     usage_data = metadata.get("usage")
     if usage_data is None:  # pyright: ignore[reportUnnecessaryComparison]
         return None
-    cache_read: int | None = usage_data.get("cacheReadInputTokenCount") or None
-    cache_write: int | None = usage_data.get("cacheWriteInputTokenCount") or None
-    return ChatChunk(
-        usage=Usage(
-            input_tokens=usage_data.get("inputTokens", 0),
-            output_tokens=usage_data.get("outputTokens", 0),
-            cache_read_tokens=cache_read,
-            cache_creation_tokens=cache_write,
-        )
-    )
+    return ChatChunk(usage=_map_token_usage(usage_data))
 
 
 # MARK: Embedding Mappers
