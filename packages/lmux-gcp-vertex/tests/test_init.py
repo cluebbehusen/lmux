@@ -5,7 +5,12 @@ import importlib
 import pytest
 
 import lmux_gcp_vertex
+import lmux_gcp_vertex.auth
+import lmux_gcp_vertex.cost
+import lmux_gcp_vertex.params
+import lmux_gcp_vertex.provider
 import lmux_google
+import lmux_google.provider
 
 
 class TestShim:
@@ -28,6 +33,18 @@ class TestShim:
         assert lmux_gcp_vertex.GoogleSearchTypes is lmux_google.GoogleSearchTypes
         assert lmux_gcp_vertex.SafetySetting is lmux_google.SafetySetting
         assert lmux_gcp_vertex.preload is lmux_google.preload
+
+    def test_submodule_imports_forward(self) -> None:
+        """0.6.x submodule import paths keep working."""
+        assert lmux_gcp_vertex.provider.GCPVertexProvider is lmux_google.GoogleProvider
+        assert lmux_gcp_vertex.provider.GCPVertexAuth is lmux_google.provider.GoogleAuth
+        assert lmux_gcp_vertex.provider.PROVIDER_NAME == "google"
+        assert lmux_gcp_vertex.auth.GCPVertexADCAuthProvider is lmux_google.GoogleADCAuthProvider
+        assert lmux_gcp_vertex.auth.GCPVertexAPIKeyAuthProvider is lmux_google.GoogleAPIKeyAuthProvider
+        assert lmux_gcp_vertex.auth.GCPVertexServiceAccountAuthProvider is lmux_google.GoogleServiceAccountAuthProvider
+        assert lmux_gcp_vertex.params.GCPVertexParams is lmux_google.GoogleParams
+        assert lmux_gcp_vertex.params.SafetySetting is lmux_google.SafetySetting
+        assert lmux_gcp_vertex.cost.calculate_gcp_vertex_cost is lmux_google.calculate_google_cost
 
     def test_all_matches_old_public_api(self) -> None:
         assert lmux_gcp_vertex.__all__ == [

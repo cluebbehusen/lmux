@@ -17,7 +17,7 @@ This final release is a compatibility shim: it depends on `lmux-google` and re-e
 | `GCPVertexServiceAccountAuthProvider` | `GoogleServiceAccountAuthProvider` |
 | `calculate_gcp_vertex_cost`           | `calculate_google_cost`            |
 
-All other exports (`GoogleSearchConfig`, `SafetySetting`, `preload`, ...) keep their names.
+All other exports (`GoogleSearchConfig`, `SafetySetting`, `preload`, ...) keep their names. Submodule import paths (`lmux_gcp_vertex.provider`, `.auth`, `.params`, `.cost`) also continue to work, forwarding to the corresponding `lmux_google` modules.
 
 ## Behavior changes vs. 0.6.x
 
