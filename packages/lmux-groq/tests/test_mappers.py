@@ -10,7 +10,7 @@ from groq.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from groq.types.chat.chat_completion_chunk import ChoiceDelta, ChoiceDeltaToolCall, ChoiceDeltaToolCallFunction
 from groq.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
 from groq.types.chat.chat_completion_message_tool_call import Function as ToolCallFunction
-from groq.types.completion_usage import CompletionUsage, PromptTokensDetails
+from groq.types.completion_usage import CompletionTokensDetails, CompletionUsage, PromptTokensDetails
 from pytest_mock import MockerFixture
 
 from lmux.types import (
@@ -282,6 +282,30 @@ class TestMapChatCompletion:
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
 
+    def test_with_reasoning_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        completion = ChatCompletion(
+            id="chatcmpl-123",
+            choices=[
+                Choice(
+                    finish_reason="stop",
+                    index=0,
+                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
+                )
+            ],
+            created=1234567890,
+            model="openai/gpt-oss-120b",
+            object="chat.completion",
+            usage=CompletionUsage(
+                prompt_tokens=10,
+                completion_tokens=5,
+                total_tokens=15,
+                completion_tokens_details=CompletionTokensDetails(reasoning_tokens=4),
+            ),
+        )
+        result = map_chat_completion(completion, "groq", noop_cost_fn)
+        assert result.usage is not None
+        assert result.usage.reasoning_tokens == 4
+
     def test_none_usage(self, chat_completion: ChatCompletion, noop_cost_fn: Any) -> None:  # noqa: ANN401
         chat_completion.usage = None
         result = map_chat_completion(chat_completion, "groq", noop_cost_fn)
@@ -411,6 +435,24 @@ class TestMapChatChunk:
         result = map_chat_chunk(chunk)
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 3
+
+    def test_usage_chunk_with_reasoning(self) -> None:
+        chunk = ChatCompletionChunk(
+            id="chatcmpl-123",
+            choices=[],
+            created=1234567890,
+            model="openai/gpt-oss-120b",
+            object="chat.completion.chunk",
+            usage=CompletionUsage(
+                prompt_tokens=10,
+                completion_tokens=5,
+                total_tokens=15,
+                completion_tokens_details=CompletionTokensDetails(reasoning_tokens=4),
+            ),
+        )
+        result = map_chat_chunk(chunk)
+        assert result.usage is not None
+        assert result.usage.reasoning_tokens == 4
 
     def test_empty_choices(self) -> None:
         chunk = ChatCompletionChunk(

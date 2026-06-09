@@ -184,10 +184,15 @@ def _map_completion_usage(completion: "ChatCompletion") -> Usage | None:
     if oai_usage.prompt_tokens_details and oai_usage.prompt_tokens_details.cached_tokens:
         cache_read = oai_usage.prompt_tokens_details.cached_tokens
 
+    reasoning_tokens = None
+    if oai_usage.completion_tokens_details and oai_usage.completion_tokens_details.reasoning_tokens:
+        reasoning_tokens = oai_usage.completion_tokens_details.reasoning_tokens
+
     return Usage(
         input_tokens=oai_usage.prompt_tokens,
         output_tokens=oai_usage.completion_tokens,
         cache_read_tokens=cache_read,
+        reasoning_tokens=reasoning_tokens,
     )
 
 
@@ -225,10 +230,14 @@ def map_chat_chunk(chunk: "ChatCompletionChunk") -> ChatChunk:
         cache_read = None
         if chunk.usage.prompt_tokens_details and chunk.usage.prompt_tokens_details.cached_tokens:
             cache_read = chunk.usage.prompt_tokens_details.cached_tokens
+        reasoning_tokens = None
+        if chunk.usage.completion_tokens_details and chunk.usage.completion_tokens_details.reasoning_tokens:
+            reasoning_tokens = chunk.usage.completion_tokens_details.reasoning_tokens
         usage = Usage(
             input_tokens=chunk.usage.prompt_tokens,
             output_tokens=chunk.usage.completion_tokens,
             cache_read_tokens=cache_read,
+            reasoning_tokens=reasoning_tokens,
         )
 
     return ChatChunk(
