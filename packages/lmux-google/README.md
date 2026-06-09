@@ -7,8 +7,6 @@ Google (Gemini) provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps
 
 Supports chat completions, streaming, and embeddings for Google-published models: Gemini and the Gemini/text embedding models.
 
-> **Formerly `lmux-gcp-vertex`.** Renamed because the package was never Vertex-specific — and because Vertex AI has no unified inference API across publishers. Partner models hosted on Vertex (Anthropic Claude, Mistral, Llama/DeepSeek/Grok MaaS, ...) use different endpoints and request formats (`rawPredict`, the OpenAI-compatible endpoint) that the google-genai SDK does not speak, so this package does not support them.
-
 Part of the [lmux](https://github.com/cluebbehusen/lmux) ecosystem: standardized interface, cost tracking on every response, and registry-based routing across providers.
 
 ## Auth
