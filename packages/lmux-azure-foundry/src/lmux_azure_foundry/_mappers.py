@@ -6,7 +6,7 @@ are identical to those used by the OpenAI provider.
 
 import copy
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from lmux.schema import add_additional_properties_false
 from lmux.types import (
@@ -24,6 +24,8 @@ from lmux.types import (
     JsonObjectResponseFormat,
     Message,
     ResponseFormat,
+    ResponseInputItem,
+    ResponseResponse,
     SystemMessage,
     TextContent,
     TextResponseFormat,
@@ -55,6 +57,7 @@ if TYPE_CHECKING:
     from openai.types.chat.chat_completion_tool_message_param import ChatCompletionToolMessageParam
     from openai.types.chat.chat_completion_user_message_param import ChatCompletionUserMessageParam
     from openai.types.create_embedding_response import CreateEmbeddingResponse
+    from openai.types.responses import Response as OAIResponse
     from openai.types.shared_params import (
         FunctionDefinition,
         ResponseFormatJSONObject,
@@ -292,6 +295,47 @@ def map_embedding_response(
     cost = cost_fn(response.model, usage)
     return EmbeddingResponse(
         embeddings=embeddings,
+        usage=usage,
+        cost=cost,
+        model=response.model,
+        provider=provider_name,
+    )
+
+
+def map_response_input(input: str | Sequence[ResponseInputItem]) -> Any:  # noqa: A002, ANN401
+    """Convert lmux ResponseInputItem sequence to OpenAI-compatible dicts.
+
+    Returns ``Any`` because the OpenAI SDK expects its own TypedDict union
+    (``ResponseInputItemParam``), which is structurally compatible with the
+    dicts produced by ``model_dump()`` but not assignable due to nominal typing.
+    """
+    if isinstance(input, str):
+        return input
+    return [item.model_dump(exclude_none=True) for item in input]
+
+
+def map_responses_response(
+    response: "OAIResponse",
+    provider_name: str,
+    cost_fn: CostCalculator,
+) -> ResponseResponse:
+    """Convert OpenAI Responses API Response to lmux ResponseResponse."""
+    usage_data = response.usage
+    usage: Usage | None = None
+    if usage_data:
+        cache_read: int | None = None
+        if usage_data.input_tokens_details and usage_data.input_tokens_details.cached_tokens:
+            cache_read = usage_data.input_tokens_details.cached_tokens
+        usage = Usage(
+            input_tokens=usage_data.input_tokens,
+            output_tokens=usage_data.output_tokens,
+            cache_read_tokens=cache_read,
+        )
+
+    cost = cost_fn(response.model, usage) if usage else None
+    return ResponseResponse(
+        id=response.id,
+        output_text=response.output_text,
         usage=usage,
         cost=cost,
         model=response.model,

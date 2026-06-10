@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     import openai
 
 from lmux.cost import ModelPricing, calculate_cost
-from lmux.protocols import AuthProvider, CompletionProvider, EmbeddingProvider, PricingProvider
+from lmux.protocols import AuthProvider, CompletionProvider, EmbeddingProvider, PricingProvider, ResponsesProvider
 from lmux.types import (
     ChatChunk,
     ChatResponse,
@@ -16,6 +16,8 @@ from lmux.types import (
     EmbeddingResponse,
     Message,
     ResponseFormat,
+    ResponseInputItem,
+    ResponseResponse,
     Tool,
     ToolChoice,
     Usage,
@@ -28,6 +30,8 @@ from lmux_azure_foundry._mappers import (
     map_embedding_response,
     map_messages,
     map_response_format,
+    map_response_input,
+    map_responses_response,
     map_tool_choice,
     map_tools,
 )
@@ -41,12 +45,14 @@ from lmux_azure_foundry.cost import (
 from lmux_azure_foundry.params import AzureFoundryParams
 
 PROVIDER_NAME = "azure-foundry"
-DEFAULT_API_VERSION = "2024-12-01-preview"
+# Minimum version that supports the Responses API (versions are cumulative).
+DEFAULT_API_VERSION = "2025-04-01-preview"
 
 
 class AzureFoundryProvider(
     CompletionProvider[AzureFoundryParams],
     EmbeddingProvider[AzureFoundryParams],
+    ResponsesProvider[AzureFoundryParams],
     PricingProvider,
 ):
     """Azure AI Foundry API provider.
@@ -340,6 +346,44 @@ class AzureFoundryProvider(
         result = map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
         return self._apply_embedding_multipliers(result, provider_params)
 
+    # MARK: Responses
+
+    @override
+    def create_response(
+        self,
+        model: str,
+        input: str | Sequence[ResponseInputItem],
+        *,
+        provider_params: AzureFoundryParams | None = None,
+    ) -> ResponseResponse:
+        extra = self._responses_kwargs(provider_params)
+        try:
+            client = self._get_sync_client()
+            response = client.responses.create(model=model, input=map_response_input(input), stream=False, **extra)
+        except Exception as e:
+            raise map_azure_foundry_error(e) from e
+        result = map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(result, provider_params)
+
+    @override
+    async def acreate_response(
+        self,
+        model: str,
+        input: str | Sequence[ResponseInputItem],
+        *,
+        provider_params: AzureFoundryParams | None = None,
+    ) -> ResponseResponse:
+        extra = self._responses_kwargs(provider_params)
+        try:
+            client = await self._get_async_client()
+            response = await client.responses.create(
+                model=model, input=map_response_input(input), stream=False, **extra
+            )
+        except Exception as e:
+            raise map_azure_foundry_error(e) from e
+        result = map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(result, provider_params)
+
     # MARK: Cost Multipliers
 
     @staticmethod
@@ -374,6 +418,15 @@ class AzureFoundryProvider(
         self, response: EmbeddingResponse, provider_params: AzureFoundryParams | None
     ) -> EmbeddingResponse:
         """Apply deployment_type cost multipliers to an embedding response."""
+        adjusted = self._apply_cost_multipliers(response.cost, provider_params)
+        if adjusted is response.cost:
+            return response
+        return response.model_copy(update={"cost": adjusted})
+
+    def _apply_response_multipliers(
+        self, response: ResponseResponse, provider_params: AzureFoundryParams | None
+    ) -> ResponseResponse:
+        """Apply deployment_type cost multipliers to a Responses API response."""
         adjusted = self._apply_cost_multipliers(response.cost, provider_params)
         if adjusted is response.cost:
             return response
@@ -433,3 +486,18 @@ class AzureFoundryProvider(
         if params.user is not None:
             kwargs["user"] = params.user
         return kwargs
+
+    @staticmethod
+    def _responses_kwargs(provider_params: AzureFoundryParams | None) -> dict[str, Any]:
+        """Build extra kwargs for the Responses API."""
+        if provider_params is None:
+            return {}
+        extra: dict[str, Any] = {}
+        # Responses API uses reasoning={"effort": ...}, not flat reasoning_effort
+        if provider_params.reasoning_effort is not None:
+            extra["reasoning"] = {"effort": provider_params.reasoning_effort}
+        if provider_params.seed is not None:
+            extra["seed"] = provider_params.seed
+        if provider_params.user is not None:
+            extra["user"] = provider_params.user
+        return extra

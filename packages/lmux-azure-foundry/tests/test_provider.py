@@ -22,6 +22,7 @@ from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderEr
 from lmux.types import (
     FunctionDefinition,
     JsonObjectResponseFormat,
+    ResponseInputMessage,
     Tool,
     UserMessage,
 )
@@ -149,8 +150,22 @@ def mock_async_client() -> MagicMock:
     mock = MagicMock()
     mock.chat.completions.create = AsyncMock()
     mock.embeddings.create = AsyncMock()
+    mock.responses.create = AsyncMock()
     mock.close = AsyncMock()
     return mock
+
+
+@pytest.fixture
+def responses_mock() -> MagicMock:
+    mock_response = MagicMock()
+    mock_response.id = "resp_123"
+    mock_response.output_text = "Hi!"
+    mock_response.model = "gpt-5-pro"
+    mock_response.usage = MagicMock()
+    mock_response.usage.input_tokens = 10
+    mock_response.usage.output_tokens = 5
+    mock_response.usage.input_tokens_details = None
+    return mock_response
 
 
 @pytest.fixture
@@ -972,7 +987,7 @@ class TestClientManagement:
         mock_sync_create.assert_called_once_with(
             credential="fake-api-key",
             azure_endpoint="https://test.openai.azure.com/",
-            api_version="2024-12-01-preview",
+            api_version="2025-04-01-preview",
             timeout=30.0,
             max_retries=5,
         )
@@ -1042,7 +1057,7 @@ class TestClientManagement:
         mock_async_create.assert_called_once_with(
             credential="fake-api-key",
             azure_endpoint="https://test.openai.azure.com/",
-            api_version="2024-12-01-preview",
+            api_version="2025-04-01-preview",
             timeout=30.0,
             max_retries=5,
         )
@@ -1060,7 +1075,7 @@ class TestClientManagement:
         mock_sync_create.assert_called_once_with(
             credential=AzureAdToken(token="fake-ad-token"),  # noqa: S106
             azure_endpoint="https://test.openai.azure.com/",
-            api_version="2024-12-01-preview",
+            api_version="2025-04-01-preview",
             timeout=None,
             max_retries=None,
         )
@@ -1079,7 +1094,7 @@ class TestClientManagement:
         mock_sync_create.assert_called_once_with(
             credential=FakeTokenProviderAuth._provider,  # pyright: ignore[reportPrivateUsage]
             azure_endpoint="https://test.openai.azure.com/",
-            api_version="2024-12-01-preview",
+            api_version="2025-04-01-preview",
             timeout=None,
             max_retries=None,
         )
@@ -1099,7 +1114,7 @@ class TestClientManagement:
         mock_sync_create.assert_called_once_with(
             credential="env-key",
             azure_endpoint="https://test.openai.azure.com/",
-            api_version="2024-12-01-preview",
+            api_version="2025-04-01-preview",
             timeout=None,
             max_retries=None,
         )
@@ -1284,3 +1299,124 @@ class TestAclose:
 class TestPreload:
     def test_preload_imports_openai(self) -> None:
         preload()  # should not raise
+
+
+# MARK: CreateResponse
+
+
+class TestCreateResponse:
+    def test_basic(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        mock_sync_client.responses.create.return_value = responses_mock
+
+        result = sync_provider.create_response("gpt-5-pro", "Hello")
+
+        assert result.id == "resp_123"
+        assert result.output_text == "Hi!"
+        assert result.provider == "azure-foundry"
+        assert result.usage is not None
+        assert result.usage.input_tokens == 10
+        assert result.cost is not None
+        mock_sync_client.responses.create.assert_called_once_with(model="gpt-5-pro", input="Hello", stream=False)
+        mock_sync_client.chat.completions.create.assert_not_called()
+
+    def test_input_items_mapped_to_dicts(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        mock_sync_client.responses.create.return_value = responses_mock
+
+        _ = sync_provider.create_response("gpt-5-pro", [ResponseInputMessage(role="user", content="Hello")])
+
+        mock_sync_client.responses.create.assert_called_once_with(
+            model="gpt-5-pro", input=[{"role": "user", "content": "Hello"}], stream=False
+        )
+
+    def test_with_provider_params(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        """The Responses API takes reasoning={"effort": ...} instead of flat reasoning_effort."""
+        mock_sync_client.responses.create.return_value = responses_mock
+        params = AzureFoundryParams(reasoning_effort="low", seed=42, user="u1")
+
+        _ = sync_provider.create_response("gpt-5-pro", "Hello", provider_params=params)
+
+        mock_sync_client.responses.create.assert_called_once_with(
+            model="gpt-5-pro", input="Hello", stream=False, reasoning={"effort": "low"}, seed=42, user="u1"
+        )
+
+    def test_deployment_multiplier_applied(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        mock_sync_client.responses.create.return_value = responses_mock
+
+        result_global = sync_provider.create_response("gpt-5-pro", "Hello")
+        result_data_zone = sync_provider.create_response(
+            "gpt-5-pro", "Hello", provider_params=AzureFoundryParams(deployment_type="data_zone")
+        )
+
+        assert result_global.cost is not None
+        assert result_data_zone.cost is not None
+        assert result_data_zone.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
+
+    def test_cached_tokens_mapped(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        responses_mock.usage.input_tokens_details = MagicMock(cached_tokens=3)
+        mock_sync_client.responses.create.return_value = responses_mock
+
+        result = sync_provider.create_response("gpt-5-pro", "Hello")
+
+        assert result.usage is not None
+        assert result.usage.cache_read_tokens == 3
+
+    def test_no_usage(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        responses_mock.usage = None
+        mock_sync_client.responses.create.return_value = responses_mock
+
+        result = sync_provider.create_response("gpt-5-pro", "Hello")
+
+        assert result.usage is None
+        assert result.cost is None
+
+    def test_exception_mapping(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, auth_error: openai.AuthenticationError
+    ) -> None:
+        mock_sync_client.responses.create.side_effect = auth_error
+
+        with pytest.raises(AuthenticationError):
+            _ = sync_provider.create_response("gpt-5-pro", "Hello")
+
+    async def test_acreate_response(
+        self, async_provider: AzureFoundryProvider, mock_async_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        mock_async_client.responses.create.return_value = responses_mock
+
+        result = await async_provider.acreate_response("gpt-5-pro", "Hello")
+
+        assert result.output_text == "Hi!"
+        assert result.provider == "azure-foundry"
+        mock_async_client.responses.create.assert_awaited_once_with(model="gpt-5-pro", input="Hello", stream=False)
+
+    async def test_acreate_response_with_provider_params(
+        self, async_provider: AzureFoundryProvider, mock_async_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        mock_async_client.responses.create.return_value = responses_mock
+
+        _ = await async_provider.acreate_response(
+            "gpt-5-pro", "Hello", provider_params=AzureFoundryParams(reasoning_effort="high")
+        )
+
+        mock_async_client.responses.create.assert_awaited_once_with(
+            model="gpt-5-pro", input="Hello", stream=False, reasoning={"effort": "high"}
+        )
+
+    async def test_acreate_response_exception_mapping(
+        self, async_provider: AzureFoundryProvider, mock_async_client: MagicMock, auth_error: openai.AuthenticationError
+    ) -> None:
+        mock_async_client.responses.create.side_effect = auth_error
+
+        with pytest.raises(AuthenticationError):
+            _ = await async_provider.acreate_response("gpt-5-pro", "Hello")

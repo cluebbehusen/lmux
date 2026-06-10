@@ -2,7 +2,7 @@
 
 Azure AI Foundry provider for [lmux](https://github.com/cluebbehusen/lmux). Uses the [openai](https://pypi.org/project/openai/) SDK's `AzureOpenAI` client.
 
-Supports chat completions, streaming, and embeddings.
+Supports chat completions, streaming, embeddings, and the Responses API.
 
 Part of the [lmux](https://github.com/cluebbehusen/lmux) ecosystem: standardized interface, cost tracking on every response, and registry-based routing across providers.
 
@@ -73,9 +73,18 @@ response = provider.embed("text-embedding-3-small", "Hello")
 print(response.embeddings)
 ```
 
+### Responses API
+
+Required for Responses-only deployments such as `gpt-5-pro`, `o3-pro`, the codex models, and `computer-use-preview`:
+
+```python
+response = provider.create_response("gpt-5-pro", "Hello")
+print(response.output_text)
+```
+
 ### Async
 
-All methods have async variants: `achat`, `achat_stream`, `aembed`.
+All methods have async variants: `achat`, `achat_stream`, `aembed`, `acreate_response`.
 
 ### Registry
 
@@ -114,7 +123,7 @@ response = provider.chat(
 AzureFoundryProvider(
     endpoint=...,      # required, Azure resource endpoint
     auth=...,          # AuthProvider, default: AzureFoundryKeyAuthProvider()
-    api_version=...,   # API version (default: "2024-12-01-preview")
+    api_version=...,   # API version (default: "2025-04-01-preview")
     timeout=...,       # Request timeout in seconds
     max_retries=...,   # Max retry attempts
 )
