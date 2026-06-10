@@ -1,17 +1,24 @@
 """Anthropic provider implementation."""
 
 import asyncio
+import os
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import TYPE_CHECKING, Any, Literal, override
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, override
 
 if TYPE_CHECKING:
     import anthropic
+    from google.auth.credentials import Credentials
 
 from lmux.cost import ModelPricing, calculate_cost
 from lmux.protocols import AuthProvider, CompletionProvider, PricingProvider
 from lmux.types import ChatChunk, ChatResponse, Cost, Message, ResponseFormat, Tool, ToolChoice, Usage
 from lmux_anthropic._exceptions import map_anthropic_error
-from lmux_anthropic._lazy import create_async_client, create_sync_client
+from lmux_anthropic._lazy import (
+    create_async_client,
+    create_async_vertex_client,
+    create_sync_client,
+    create_sync_vertex_client,
+)
 from lmux_anthropic._mappers import (
     map_content_block_delta,
     map_content_block_start,
@@ -23,16 +30,22 @@ from lmux_anthropic._mappers import (
     map_tool_choice,
     map_tools,
 )
-from lmux_anthropic.auth import AnthropicEnvAuthProvider
+from lmux_anthropic.auth import AnthropicEnvAuthProvider, AnthropicVertexADCAuthProvider
 from lmux_anthropic.cost import (
     US_INFERENCE_MULTIPLIER,
+    VERTEX_REGIONAL_MULTIPLIER,
     apply_cost_multiplier,
     calculate_anthropic_cost,
+    has_vertex_regional_premium,
 )
 from lmux_anthropic.params import AnthropicParams
 
 PROVIDER_NAME = "anthropic"
+VERTEX_PROVIDER_NAME = "anthropic-vertex"
 DEFAULT_MAX_TOKENS = 4096
+
+type SyncAnthropicClient = "anthropic.Anthropic | anthropic.AnthropicVertex"
+type AsyncAnthropicClient = "anthropic.AsyncAnthropic | anthropic.AsyncAnthropicVertex"
 
 
 class AnthropicProvider(
@@ -40,6 +53,8 @@ class AnthropicProvider(
     PricingProvider,
 ):
     """Anthropic API provider."""
+
+    _provider_name: ClassVar[str] = PROVIDER_NAME
 
     def __init__(
         self,
@@ -55,8 +70,8 @@ class AnthropicProvider(
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
         self._default_max_tokens: int = default_max_tokens
-        self._sync_client: anthropic.Anthropic | None = None
-        self._async_client: anthropic.AsyncAnthropic | None = None
+        self._sync_client: SyncAnthropicClient | None = None
+        self._async_client: AsyncAnthropicClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
@@ -72,25 +87,31 @@ class AnthropicProvider(
             return calculate_cost(usage, pricing)
         return calculate_anthropic_cost(model, usage)
 
-    def _get_sync_client(self) -> "anthropic.Anthropic":
+    def _create_sync_client(self) -> SyncAnthropicClient:
+        return create_sync_client(
+            api_key=self._auth.get_credentials(),
+            base_url=self._base_url,
+            timeout=self._timeout,
+            max_retries=self._max_retries,
+        )
+
+    async def _create_async_client(self) -> AsyncAnthropicClient:
+        return create_async_client(
+            api_key=await self._auth.aget_credentials(),
+            base_url=self._base_url,
+            timeout=self._timeout,
+            max_retries=self._max_retries,
+        )
+
+    def _get_sync_client(self) -> SyncAnthropicClient:
         if self._sync_client is None:
-            self._sync_client = create_sync_client(
-                api_key=self._auth.get_credentials(),
-                base_url=self._base_url,
-                timeout=self._timeout,
-                max_retries=self._max_retries,
-            )
+            self._sync_client = self._create_sync_client()
         return self._sync_client
 
-    async def _get_async_client(self) -> "anthropic.AsyncAnthropic":
+    async def _get_async_client(self) -> AsyncAnthropicClient:
         loop = asyncio.get_running_loop()
         if self._async_client is None or self._async_loop is not loop:
-            self._async_client = create_async_client(
-                api_key=await self._auth.aget_credentials(),
-                base_url=self._base_url,
-                timeout=self._timeout,
-                max_retries=self._max_retries,
-            )
+            self._async_client = await self._create_async_client()
             self._async_loop = loop
         return self._async_client
 
@@ -136,8 +157,8 @@ class AnthropicProvider(
             client = self._get_sync_client()
             message = client.messages.create(**kwargs, stream=False)
         except Exception as e:
-            raise map_anthropic_error(e) from e
-        response = map_message_response(message, PROVIDER_NAME, self._calculate_cost)
+            raise map_anthropic_error(e, self._provider_name) from e
+        response = map_message_response(message, self._provider_name, self._calculate_cost)
         return self._apply_multipliers(response, provider_params)
 
     @override
@@ -173,8 +194,8 @@ class AnthropicProvider(
             client = await self._get_async_client()
             message = await client.messages.create(**kwargs, stream=False)
         except Exception as e:
-            raise map_anthropic_error(e) from e
-        response = map_message_response(message, PROVIDER_NAME, self._calculate_cost)
+            raise map_anthropic_error(e, self._provider_name) from e
+        response = map_message_response(message, self._provider_name, self._calculate_cost)
         return self._apply_multipliers(response, provider_params)
 
     @override
@@ -210,7 +231,7 @@ class AnthropicProvider(
             client = self._get_sync_client()
             stream = client.messages.create(**kwargs, stream=True)
         except Exception as e:
-            raise map_anthropic_error(e) from e
+            raise map_anthropic_error(e, self._provider_name) from e
 
         start_usage: Usage | None = None
         try:
@@ -231,11 +252,11 @@ class AnthropicProvider(
                 if event.type == "message_delta" and start_usage is not None:
                     chunk = map_message_delta(event, start_usage)
                     cost = self._calculate_cost(model, chunk.usage) if chunk.usage else None
-                    cost = self._apply_cost_multipliers(cost, provider_params)
+                    cost = self._apply_cost_multipliers(cost, model, provider_params)
                     yield chunk.model_copy(update={"cost": cost})
                     continue
         except Exception as e:
-            raise map_anthropic_error(e) from e
+            raise map_anthropic_error(e, self._provider_name) from e
 
     @override
     async def achat_stream(
@@ -270,7 +291,7 @@ class AnthropicProvider(
             client = await self._get_async_client()
             stream = await client.messages.create(**kwargs, stream=True)
         except Exception as e:
-            raise map_anthropic_error(e) from e
+            raise map_anthropic_error(e, self._provider_name) from e
 
         start_usage: Usage | None = None
         try:
@@ -291,11 +312,11 @@ class AnthropicProvider(
                 if event.type == "message_delta" and start_usage is not None:
                     chunk = map_message_delta(event, start_usage)
                     cost = self._calculate_cost(model, chunk.usage) if chunk.usage else None
-                    cost = self._apply_cost_multipliers(cost, provider_params)
+                    cost = self._apply_cost_multipliers(cost, model, provider_params)
                     yield chunk.model_copy(update={"cost": cost})
                     continue
         except Exception as e:
-            raise map_anthropic_error(e) from e
+            raise map_anthropic_error(e, self._provider_name) from e
 
     # MARK: Internal Helpers
 
@@ -361,9 +382,8 @@ class AnthropicProvider(
             kwargs["cache_control"] = params.cache_control
         return kwargs
 
-    @staticmethod
-    def _cost_multiplier(provider_params: AnthropicParams | None) -> float:
-        """Compute the combined cost multiplier from provider params."""
+    def _cost_multiplier(self, model: str, provider_params: AnthropicParams | None) -> float:  # pyright: ignore[reportUnusedParameter]
+        """Compute the combined cost multiplier from provider params; ``model`` is a hook for subclasses."""
         multiplier = 1.0
         if provider_params is None:
             return multiplier
@@ -371,18 +391,97 @@ class AnthropicProvider(
             multiplier *= US_INFERENCE_MULTIPLIER
         return multiplier
 
-    @staticmethod
-    def _apply_cost_multipliers(cost: Cost | None, provider_params: AnthropicParams | None) -> Cost | None:
+    def _apply_cost_multipliers(
+        self, cost: Cost | None, model: str, provider_params: AnthropicParams | None
+    ) -> Cost | None:
         if cost is None:
             return None
-        multiplier = AnthropicProvider._cost_multiplier(provider_params)
+        multiplier = self._cost_multiplier(model, provider_params)
         if multiplier == 1.0:
             return cost
         return apply_cost_multiplier(cost, multiplier)
 
     def _apply_multipliers(self, response: ChatResponse, provider_params: AnthropicParams | None) -> ChatResponse:
-        """Apply inference_geo cost multipliers to a completed response."""
-        adjusted = self._apply_cost_multipliers(response.cost, provider_params)
+        """Apply cost multipliers to a completed response."""
+        adjusted = self._apply_cost_multipliers(response.cost, response.model, provider_params)
         if adjusted is response.cost:
             return response
         return response.model_copy(update={"cost": adjusted})
+
+
+class AnthropicVertexProvider(AnthropicProvider):
+    """Claude on Vertex AI provider.
+
+    Requires the ``[vertex]`` extra. Reuses the Anthropic API request/response
+    handling unchanged; only client creation and auth differ. ``service_tier``
+    and ``inference_geo`` are Anthropic-API-only parameters and are dropped
+    from outgoing requests; the US-inference cost multiplier never applies.
+    """
+
+    _provider_name: ClassVar[str] = VERTEX_PROVIDER_NAME
+
+    def __init__(  # noqa: PLR0913
+        self,
+        *,
+        auth: AuthProvider["Credentials"] | None = None,
+        project_id: str | None = None,
+        region: str | None = None,
+        base_url: str | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+        default_max_tokens: int = DEFAULT_MAX_TOKENS,
+    ) -> None:
+        super().__init__(
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            default_max_tokens=default_max_tokens,
+        )
+        self._vertex_auth: AuthProvider[Credentials] = auth or AnthropicVertexADCAuthProvider()
+        self._project_id: str | None = project_id
+        self._region: str | None = region
+
+    @override
+    def _create_sync_client(self) -> "anthropic.AnthropicVertex":
+        return create_sync_vertex_client(
+            credentials=self._vertex_auth.get_credentials(),
+            project_id=self._project_id,
+            region=self._region,
+            base_url=self._base_url,
+            timeout=self._timeout,
+            max_retries=self._max_retries,
+        )
+
+    @override
+    async def _create_async_client(self) -> "anthropic.AsyncAnthropicVertex":
+        return create_async_vertex_client(
+            credentials=await self._vertex_auth.aget_credentials(),
+            project_id=self._project_id,
+            region=self._region,
+            base_url=self._base_url,
+            timeout=self._timeout,
+            max_retries=self._max_retries,
+        )
+
+    @staticmethod
+    @override
+    def _provider_params_kwargs(params: AnthropicParams) -> dict[str, Any]:
+        """Convert AnthropicParams to SDK kwargs, dropping Anthropic-API-only parameters."""
+        kwargs = AnthropicProvider._provider_params_kwargs(params)
+        kwargs.pop("service_tier", None)
+        kwargs.pop("inference_geo", None)
+        return kwargs
+
+    @override
+    def _cost_multiplier(self, model: str, provider_params: AnthropicParams | None) -> float:
+        """Regional and multi-region Vertex endpoints bill a 10% premium on Claude 4.5+ models.
+
+        The global endpoint bills at list prices. ``inference_geo`` is
+        Anthropic-API-only and never contributes a multiplier here.
+        """
+        region = self._region or os.environ.get("CLOUD_ML_REGION")
+        if region == "global":
+            return 1.0
+        if has_vertex_regional_premium(model):
+            return VERTEX_REGIONAL_MULTIPLIER
+        return 1.0

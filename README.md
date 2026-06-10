@@ -131,7 +131,7 @@ provider.register_pricing("my-fine-tune", ModelPricing(tiers=[
 | Package                                           | Protocols                        | Auth                                              |
 | ------------------------------------------------- | -------------------------------- | ------------------------------------------------- |
 | [lmux-openai](packages/lmux-openai)               | Completion, Embedding, Responses | `OPENAI_API_KEY`                                  |
-| [lmux-anthropic](packages/lmux-anthropic)         | Completion                       | `ANTHROPIC_API_KEY`                               |
+| [lmux-anthropic](packages/lmux-anthropic)         | Completion                       | `ANTHROPIC_API_KEY`; Vertex: ADC, service account |
 | [lmux-azure-foundry](packages/lmux-azure-foundry) | Completion, Embedding            | `AZURE_FOUNDRY_API_KEY`, Azure AD, token provider |
 | [lmux-aws-bedrock](packages/lmux-aws-bedrock)     | Completion, Embedding            | boto3 credential chain                            |
 | [lmux-google](packages/lmux-google)               | Completion, Embedding            | ADC, service account, `GOOGLE_API_KEY`            |

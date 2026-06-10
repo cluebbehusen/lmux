@@ -163,6 +163,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0d/02/99bf351933bdea0545a2b6e2d812ed878899e9a95f618351dfa3d0de0e69/anthropic-0.87.0-py3-none-any.whl", hash = "sha256:e2669b86d42c739d3df163f873c51719552e263a3d85179297180fb4fa00a236", size = 472126, upload-time = "2026-03-31T17:52:40.174Z" },
 ]
 
+[package.optional-dependencies]
+vertex = [
+    { name = "google-auth", extra = ["requests"] },
+]
+
 [[package]]
 name = "anyio"
 version = "4.13.0"
@@ -803,18 +808,25 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.5.1"
+version = "0.6.0"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "anthropic" },
     { name = "lmux" },
 ]
 
+[package.optional-dependencies]
+vertex = [
+    { name = "anthropic", extra = ["vertex"] },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = "~=0.83" },
+    { name = "anthropic", extras = ["vertex"], marker = "extra == 'vertex'", specifier = "~=0.83" },
     { name = "lmux", editable = "packages/lmux" },
 ]
+provides-extras = ["vertex"]
 
 [[package]]
 name = "lmux-aws-bedrock"

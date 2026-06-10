@@ -3,7 +3,7 @@
 import pytest
 
 from lmux.types import Cost, Usage
-from lmux_anthropic.cost import apply_cost_multiplier, calculate_anthropic_cost
+from lmux_anthropic.cost import apply_cost_multiplier, calculate_anthropic_cost, has_vertex_regional_premium
 
 
 class TestCalculateAnthropicCost:
@@ -117,3 +117,24 @@ class TestApplyCostMultiplier:
         result = apply_cost_multiplier(cost, 2.0)
         assert result.cache_read_cost is None
         assert result.cache_creation_cost is None
+
+
+class TestHasVertexRegionalPremium:
+    def test_premium_for_new_models(self) -> None:
+        assert has_vertex_regional_premium("claude-sonnet-4-6") is True
+        assert has_vertex_regional_premium("claude-haiku-4-5") is True
+
+    def test_premium_for_vertex_model_id_with_version_suffix(self) -> None:
+        assert has_vertex_regional_premium("claude-sonnet-4-5@20250929") is True
+
+    def test_uniform_pricing_for_older_models(self) -> None:
+        assert has_vertex_regional_premium("claude-3-5-haiku") is False
+        assert has_vertex_regional_premium("claude-sonnet-4") is False
+
+    def test_longest_prefix_disambiguates_opus_generations(self) -> None:
+        """claude-opus-4-8 (premium) must not be shadowed by the claude-opus-4 (uniform) prefix."""
+        assert has_vertex_regional_premium("claude-opus-4-8") is True
+        assert has_vertex_regional_premium("claude-opus-4@20250514") is False
+
+    def test_unknown_future_models_default_to_premium(self) -> None:
+        assert has_vertex_regional_premium("claude-sonnet-5") is True

@@ -25,8 +25,9 @@ from lmux.types import (
     UserMessage,
 )
 from lmux_anthropic import preload
+from lmux_anthropic.auth import AnthropicVertexADCAuthProvider
 from lmux_anthropic.params import AnthropicParams
-from lmux_anthropic.provider import AnthropicProvider
+from lmux_anthropic.provider import AnthropicProvider, AnthropicVertexProvider
 
 # MARK: Shared Fixtures
 
@@ -1023,3 +1024,330 @@ class TestAclose:
 class TestPreload:
     def test_preload_imports_anthropic(self) -> None:
         preload()  # should not raise
+
+
+# MARK: Vertex
+
+
+class FakeVertexAuth:
+    """Fake Vertex auth provider for testing."""
+
+    def __init__(self) -> None:
+        self.credentials: MagicMock = MagicMock()
+
+    def get_credentials(self) -> MagicMock:
+        return self.credentials
+
+    async def aget_credentials(self) -> MagicMock:
+        return self.credentials
+
+
+@pytest.fixture
+def fake_vertex_auth() -> FakeVertexAuth:
+    return FakeVertexAuth()
+
+
+@pytest.fixture
+def mock_sync_vertex_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic.provider.create_sync_vertex_client", return_value=mock_sync_client)
+
+
+@pytest.fixture
+def mock_async_vertex_create(mock_async_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic.provider.create_async_vertex_client", return_value=mock_async_client)
+
+
+@pytest.fixture
+def vertex_sync_provider(
+    fake_vertex_auth: FakeVertexAuth, mock_sync_vertex_create: MagicMock
+) -> AnthropicVertexProvider:
+    assert mock_sync_vertex_create  # fixture activates the patch
+    return AnthropicVertexProvider(auth=fake_vertex_auth, project_id="my-proj", region="us-east5")
+
+
+@pytest.fixture
+def vertex_async_provider(
+    fake_vertex_auth: FakeVertexAuth, mock_async_vertex_create: MagicMock
+) -> AnthropicVertexProvider:
+    assert mock_async_vertex_create  # fixture activates the patch
+    return AnthropicVertexProvider(auth=fake_vertex_auth, project_id="my-proj", region="us-east5")
+
+
+class TestVertexChat:
+    def test_basic_chat(
+        self,
+        vertex_sync_provider: AnthropicVertexProvider,
+        mock_sync_client: MagicMock,
+        mock_sync_create: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        result = vertex_sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        assert result.content == "Hello!"
+        assert result.provider == "anthropic-vertex"
+        assert result.cost is not None
+        mock_sync_client.messages.create.assert_called_once()
+        mock_sync_create.assert_not_called()  # the Anthropic API client factory must never be used
+
+    def test_vertex_model_id_prefix_matches_pricing(
+        self, vertex_sync_provider: AnthropicVertexProvider, mock_sync_client: MagicMock
+    ) -> None:
+        """Vertex @-suffixed model IDs resolve cost via longest-prefix matching."""
+        mock_sync_client.messages.create.return_value = _make_message_response(model="claude-sonnet-4-5@20250929")
+
+        result = vertex_sync_provider.chat("claude-sonnet-4-5@20250929", [UserMessage(content="Hi")])
+
+        assert result.cost is not None
+        assert result.cost.total_cost > 0
+
+    def test_api_only_params_dropped(
+        self, vertex_sync_provider: AnthropicVertexProvider, mock_sync_client: MagicMock, message_response: MagicMock
+    ) -> None:
+        """service_tier and inference_geo are Anthropic-API-only and must not reach Vertex."""
+        mock_sync_client.messages.create.return_value = message_response
+
+        _ = vertex_sync_provider.chat(
+            "claude-sonnet-4-6",
+            [UserMessage(content="Hi")],
+            provider_params=AnthropicParams(
+                thinking={"type": "enabled", "budget_tokens": 1024},
+                metadata={"user_id": "u1"},
+                top_k=40,
+                service_tier="auto",
+                inference_geo="us",
+                cache_control={"type": "ephemeral"},
+            ),
+        )
+
+        call_kwargs = mock_sync_client.messages.create.call_args.kwargs
+        assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 1024}
+        assert call_kwargs["metadata"] == {"user_id": "u1"}
+        assert call_kwargs["top_k"] == 40
+        assert call_kwargs["cache_control"] == {"type": "ephemeral"}
+        assert "service_tier" not in call_kwargs
+        assert "inference_geo" not in call_kwargs
+
+    def test_inference_geo_multiplier_not_applied(
+        self, vertex_sync_provider: AnthropicVertexProvider, mock_sync_client: MagicMock, message_response: MagicMock
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        result_standard = vertex_sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        result_us = vertex_sync_provider.chat(
+            "claude-sonnet-4-6",
+            [UserMessage(content="Hi")],
+            provider_params=AnthropicParams(inference_geo="us"),
+        )
+
+        assert result_standard.cost is not None
+        assert result_us.cost is not None
+        assert result_us.cost.total_cost == result_standard.cost.total_cost
+
+    def test_regional_premium_applied(
+        self,
+        fake_vertex_auth: FakeVertexAuth,
+        mock_sync_vertex_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        """Regional endpoints bill Claude 4.5+ models at a 10% premium over the global endpoint."""
+        assert mock_sync_vertex_create  # fixture activates the patch
+        mock_sync_client.messages.create.return_value = message_response
+        global_provider = AnthropicVertexProvider(auth=fake_vertex_auth, project_id="p", region="global")
+        regional_provider = AnthropicVertexProvider(auth=fake_vertex_auth, project_id="p", region="us-east5")
+
+        result_global = global_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        result_regional = regional_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        assert result_global.cost is not None
+        assert result_regional.cost is not None
+        assert result_regional.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
+
+    def test_no_premium_for_uniform_pricing_models(
+        self,
+        fake_vertex_auth: FakeVertexAuth,
+        mock_sync_vertex_create: MagicMock,
+        mock_sync_client: MagicMock,
+    ) -> None:
+        """Older Claude models are priced uniformly across all Vertex endpoints."""
+        assert mock_sync_vertex_create  # fixture activates the patch
+        mock_sync_client.messages.create.return_value = _make_message_response(model="claude-3-5-haiku")
+        global_provider = AnthropicVertexProvider(auth=fake_vertex_auth, project_id="p", region="global")
+        regional_provider = AnthropicVertexProvider(auth=fake_vertex_auth, project_id="p", region="us-east5")
+
+        result_global = global_provider.chat("claude-3-5-haiku", [UserMessage(content="Hi")])
+        result_regional = regional_provider.chat("claude-3-5-haiku", [UserMessage(content="Hi")])
+
+        assert result_global.cost is not None
+        assert result_regional.cost is not None
+        assert result_regional.cost.total_cost == result_global.cost.total_cost
+
+    def test_region_falls_back_to_env(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_vertex_auth: FakeVertexAuth,
+        mock_sync_vertex_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        """Without an explicit region, the premium decision uses CLOUD_ML_REGION."""
+        assert mock_sync_vertex_create  # fixture activates the patch
+        mock_sync_client.messages.create.return_value = message_response
+        provider = AnthropicVertexProvider(auth=fake_vertex_auth, project_id="p")
+
+        monkeypatch.setenv("CLOUD_ML_REGION", "global")
+        result_global = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        monkeypatch.setenv("CLOUD_ML_REGION", "us-east5")
+        result_regional = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        assert result_global.cost is not None
+        assert result_regional.cost is not None
+        assert result_regional.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
+
+    def test_chat_exception_reports_vertex_provider(
+        self,
+        vertex_sync_provider: AnthropicVertexProvider,
+        mock_sync_client: MagicMock,
+        bad_request_error: anthropic.BadRequestError,
+    ) -> None:
+        mock_sync_client.messages.create.side_effect = bad_request_error
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            _ = vertex_sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        assert exc_info.value.provider == "anthropic-vertex"
+
+
+class TestVertexAchat:
+    async def test_basic_achat(
+        self,
+        vertex_async_provider: AnthropicVertexProvider,
+        mock_async_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_async_client.messages.create.return_value = message_response
+
+        result = await vertex_async_provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        assert result.content == "Hello!"
+        assert result.provider == "anthropic-vertex"
+        mock_async_client.messages.create.assert_awaited_once()
+
+
+class TestVertexChatStream:
+    def test_inference_geo_multiplier_not_applied_on_final_chunk(
+        self, vertex_sync_provider: AnthropicVertexProvider, mock_sync_client: MagicMock
+    ) -> None:
+        mock_sync_client.messages.create.side_effect = [iter(_make_stream_events()), iter(_make_stream_events())]
+
+        chunks_standard = list(vertex_sync_provider.chat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")]))
+        chunks_us = list(
+            vertex_sync_provider.chat_stream(
+                "claude-sonnet-4-6",
+                [UserMessage(content="Hi")],
+                provider_params=AnthropicParams(inference_geo="us"),
+            )
+        )
+
+        assert chunks_standard[-1].cost is not None
+        assert chunks_us[-1].cost is not None
+        assert chunks_us[-1].cost.total_cost == chunks_standard[-1].cost.total_cost
+
+    async def test_async_stream_yields_chunks(
+        self,
+        vertex_async_provider: AnthropicVertexProvider,
+        mock_async_client: MagicMock,
+        stream_events: list[MagicMock],
+    ) -> None:
+        async def _async_iter() -> Any:  # noqa: ANN401
+            for event in stream_events:
+                yield event
+
+        mock_async_client.messages.create.return_value = _async_iter()
+
+        chunks = [
+            chunk
+            async for chunk in vertex_async_provider.achat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        ]
+
+        assert len(chunks) == 3
+        assert chunks[2].finish_reason == "stop"
+        assert chunks[2].cost is not None
+
+
+class TestVertexClientManagement:
+    def test_factory_receives_constructor_args(
+        self,
+        fake_vertex_auth: FakeVertexAuth,
+        vertex_sync_provider: AnthropicVertexProvider,
+        mock_sync_vertex_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        _ = vertex_sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        mock_sync_vertex_create.assert_called_once_with(
+            credentials=fake_vertex_auth.credentials,
+            project_id="my-proj",
+            region="us-east5",
+            base_url=None,
+            timeout=None,
+            max_retries=None,
+        )
+
+    def test_factory_receives_overrides(
+        self,
+        fake_vertex_auth: FakeVertexAuth,
+        mock_sync_vertex_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+        provider = AnthropicVertexProvider(
+            auth=fake_vertex_auth,
+            project_id="my-proj",
+            region="global",
+            base_url="https://example.test",
+            timeout=30.0,
+            max_retries=5,
+        )
+
+        _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        mock_sync_vertex_create.assert_called_once_with(
+            credentials=fake_vertex_auth.credentials,
+            project_id="my-proj",
+            region="global",
+            base_url="https://example.test",
+            timeout=30.0,
+            max_retries=5,
+        )
+
+    async def test_async_factory_receives_constructor_args(
+        self,
+        fake_vertex_auth: FakeVertexAuth,
+        vertex_async_provider: AnthropicVertexProvider,
+        mock_async_vertex_create: MagicMock,
+        mock_async_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_async_client.messages.create.return_value = message_response
+
+        _ = await vertex_async_provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        mock_async_vertex_create.assert_called_once_with(
+            credentials=fake_vertex_auth.credentials,
+            project_id="my-proj",
+            region="us-east5",
+            base_url=None,
+            timeout=None,
+            max_retries=None,
+        )
+
+    def test_default_auth_is_adc(self) -> None:
+        provider = AnthropicVertexProvider()
+        assert isinstance(provider._vertex_auth, AnthropicVertexADCAuthProvider)  # pyright: ignore[reportPrivateUsage]
