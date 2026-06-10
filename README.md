@@ -210,6 +210,7 @@ Checked with ruff, basedpyright (strict), and pytest with 100% branch coverage.
 ### Scripts
 
 - `scripts/update_bedrock_pricing.py`: generates Bedrock pricing from the AWS Pricing API
+- `scripts/validate_pricing.py`: cross-references provider pricing against external databases (LiteLLM, OpenRouter, genai-prices)
 
 ## Requirements
 
