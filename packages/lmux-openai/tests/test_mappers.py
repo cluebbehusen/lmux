@@ -104,6 +104,7 @@ def responses_mock() -> MagicMock:
     mock.usage.input_tokens = 10
     mock.usage.output_tokens = 5
     mock.usage.input_tokens_details = None
+    mock.usage.output_tokens_details = None
     return mock
 
 
@@ -567,6 +568,12 @@ class TestMapResponsesResponse:
         result = map_responses_response(mock, "openai", noop_cost_fn)
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
+
+    def test_with_reasoning_tokens(self, responses_mock: MagicMock, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        responses_mock.usage.output_tokens_details = MagicMock(reasoning_tokens=4)
+        result = map_responses_response(responses_mock, "openai", noop_cost_fn)
+        assert result.usage is not None
+        assert result.usage.reasoning_tokens == 4
 
     def test_none_usage(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         mock = MagicMock()
