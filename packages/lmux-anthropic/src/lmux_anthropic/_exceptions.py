@@ -13,39 +13,39 @@ from lmux.exceptions import (
 PROVIDER = "anthropic"
 
 
-def map_anthropic_error(error: Exception) -> LmuxError:  # noqa: PLR0911
+def map_anthropic_error(error: Exception, provider: str = PROVIDER) -> LmuxError:  # noqa: PLR0911
     """Convert an Anthropic SDK exception to the corresponding lmux exception."""
     import anthropic  # noqa: PLC0415
 
     if isinstance(error, anthropic.AuthenticationError):
-        return AuthenticationError(str(error), provider=PROVIDER, status_code=401)
+        return AuthenticationError(str(error), provider=provider, status_code=401)
 
     if isinstance(error, anthropic.PermissionDeniedError):
-        return AuthenticationError(str(error), provider=PROVIDER, status_code=403)
+        return AuthenticationError(str(error), provider=provider, status_code=403)
 
     if isinstance(error, anthropic.RateLimitError):
         retry_after = _extract_retry_after(error)
-        return RateLimitError(str(error), provider=PROVIDER, status_code=429, retry_after=retry_after)
+        return RateLimitError(str(error), provider=provider, status_code=429, retry_after=retry_after)
 
     if isinstance(error, anthropic.BadRequestError):
-        return InvalidRequestError(str(error), provider=PROVIDER, status_code=400)
+        return InvalidRequestError(str(error), provider=provider, status_code=400)
 
     if isinstance(error, anthropic.NotFoundError):
-        return NotFoundError(str(error), provider=PROVIDER, status_code=404)
+        return NotFoundError(str(error), provider=provider, status_code=404)
 
     if isinstance(error, anthropic.InternalServerError):
-        return ProviderError(str(error), provider=PROVIDER, status_code=error.status_code)
+        return ProviderError(str(error), provider=provider, status_code=error.status_code)
 
     if isinstance(error, anthropic.APITimeoutError):
-        return TimeoutError(str(error), provider=PROVIDER)
+        return TimeoutError(str(error), provider=provider)
 
     if isinstance(error, anthropic.APIStatusError):
-        return ProviderError(str(error), provider=PROVIDER, status_code=error.status_code)
+        return ProviderError(str(error), provider=provider, status_code=error.status_code)
 
     if isinstance(error, anthropic.APIError):
-        return ProviderError(str(error), provider=PROVIDER)
+        return ProviderError(str(error), provider=provider)
 
-    return ProviderError(str(error), provider=PROVIDER)
+    return ProviderError(str(error), provider=provider)
 
 
 def _extract_retry_after(error: Exception) -> float | None:

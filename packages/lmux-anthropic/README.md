@@ -91,6 +91,47 @@ messages = [
 
 Cache reads/writes are reported on `response.usage` (`cache_read_tokens`, `cache_creation_tokens`, and the per-TTL `cache_creation_tokens_by_ttl` breakdown) and priced into `response.cost`, including the 2x write rate for `ttl="1h"`.
 
+## Claude on Vertex AI
+
+Requires the `vertex` extra, which pulls in `google-auth` via `anthropic[vertex]`:
+
+```bash
+uv add "lmux-anthropic[vertex]"
+```
+
+`AnthropicVertexProvider` serves Claude through GCP Vertex AI with the same chat/streaming interface:
+
+```python
+from lmux_anthropic import AnthropicVertexProvider
+
+provider = AnthropicVertexProvider(project_id="my-project", region="global")
+response = provider.chat("claude-sonnet-4-5@20250929", [UserMessage(content="Hello")])
+print(response.provider)  # "anthropic-vertex"
+print(response.cost)
+```
+
+`project_id` falls back to the `ANTHROPIC_VERTEX_PROJECT_ID` environment variable, then to the project resolved by the auth provider (e.g. the `gcloud` default project under ADC, or the service account key file's project). `region` falls back to `CLOUD_ML_REGION`; a request without a region raises at first call. `region` accepts `"global"`, a multi-region (`"us"`, `"eu"`), or a specific region (`"us-east5"`, ...). Model IDs use Vertex's `@`-versioned format (`claude-sonnet-4-5@20250929`) or plain names for newer models (`claude-opus-4-6`).
+
+### Vertex Auth
+
+Application Default Credentials by default; a service account file is also supported:
+
+```python
+from lmux_anthropic import AnthropicVertexServiceAccountAuthProvider
+
+provider = AnthropicVertexProvider(
+    project_id="my-project",
+    region="global",
+    auth=AnthropicVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json"),
+)
+```
+
+Any `AuthProvider` that returns `google.auth` `Credentials` works — either bare, or as a `(credentials, project_id)` tuple so the provider can infer the project.
+
+### Vertex Params Caveat
+
+`AnthropicParams.service_tier` and `AnthropicParams.inference_geo` are Anthropic-API-only: the Vertex provider drops them from outgoing requests, and the `inference_geo` US cost multiplier never applies.
+
 ## Constructor Options
 
 ```python

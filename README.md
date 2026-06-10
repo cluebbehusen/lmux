@@ -10,7 +10,7 @@ Provider packages include `lmux` as a dependency, so there's no need to install 
 
 ```bash
 uv add lmux-openai         # OpenAI
-uv add lmux-anthropic      # Anthropic
+uv add lmux-anthropic      # Anthropic ([vertex] extra: Claude on Vertex AI)
 uv add lmux-azure-foundry  # Azure AI Foundry
 uv add lmux-aws-bedrock    # AWS Bedrock
 uv add lmux-google         # Google (Gemini)
@@ -128,14 +128,15 @@ provider.register_pricing("my-fine-tune", ModelPricing(tiers=[
 
 ## Providers
 
-| Package                                           | Protocols                        | Auth                                              |
-| ------------------------------------------------- | -------------------------------- | ------------------------------------------------- |
-| [lmux-openai](packages/lmux-openai)               | Completion, Embedding, Responses | `OPENAI_API_KEY`                                  |
-| [lmux-anthropic](packages/lmux-anthropic)         | Completion                       | `ANTHROPIC_API_KEY`                               |
-| [lmux-azure-foundry](packages/lmux-azure-foundry) | Completion, Embedding            | `AZURE_FOUNDRY_API_KEY`, Azure AD, token provider |
-| [lmux-aws-bedrock](packages/lmux-aws-bedrock)     | Completion, Embedding            | boto3 credential chain                            |
-| [lmux-google](packages/lmux-google)               | Completion, Embedding            | ADC, service account, `GOOGLE_API_KEY`            |
-| [lmux-groq](packages/lmux-groq)                   | Completion                       | `GROQ_API_KEY`                                    |
+| Package                                             | Protocols                        | Auth                                              |
+| --------------------------------------------------- | -------------------------------- | ------------------------------------------------- |
+| [lmux-openai](packages/lmux-openai)                 | Completion, Embedding, Responses | `OPENAI_API_KEY`                                  |
+| [lmux-anthropic](packages/lmux-anthropic)           | Completion                       | `ANTHROPIC_API_KEY`                               |
+| [lmux-anthropic\[vertex\]](packages/lmux-anthropic) | Completion                       | ADC, service account                              |
+| [lmux-azure-foundry](packages/lmux-azure-foundry)   | Completion, Embedding            | `AZURE_FOUNDRY_API_KEY`, Azure AD, token provider |
+| [lmux-aws-bedrock](packages/lmux-aws-bedrock)       | Completion, Embedding            | boto3 credential chain                            |
+| [lmux-google](packages/lmux-google)                 | Completion, Embedding            | ADC, service account, `GOOGLE_API_KEY`            |
+| [lmux-groq](packages/lmux-groq)                     | Completion                       | `GROQ_API_KEY`                                    |
 
 ## Custom Providers
 
@@ -209,6 +210,7 @@ Checked with ruff, basedpyright (strict), and pytest with 100% branch coverage.
 ### Scripts
 
 - `scripts/update_bedrock_pricing.py`: generates Bedrock pricing from the AWS Pricing API
+- `scripts/validate_pricing.py`: cross-references provider pricing against external databases (LiteLLM, OpenRouter, genai-prices)
 
 ## Requirements
 

@@ -98,6 +98,11 @@ class TestMapAnthropicError:
         assert result.provider == "anthropic"
         assert result.status_code == 401
 
+    def test_custom_provider_propagated(self, auth_error: anthropic.AuthenticationError) -> None:
+        result = map_anthropic_error(auth_error, "anthropic-vertex")
+        assert isinstance(result, AuthenticationError)
+        assert result.provider == "anthropic-vertex"
+
     def test_permission_denied_error(self, permission_denied_error: anthropic.PermissionDeniedError) -> None:
         result = map_anthropic_error(permission_denied_error)
         assert isinstance(result, AuthenticationError)

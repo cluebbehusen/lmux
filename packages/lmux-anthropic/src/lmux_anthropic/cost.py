@@ -1,6 +1,13 @@
 """Anthropic pricing data and cost calculation.
 
 Pricing source: https://platform.claude.com/docs/en/about-claude/pricing
+
+Claude on Vertex AI bills these same list prices on the global endpoint, so
+this table also covers AnthropicVertexProvider. Regional and multi-region
+Vertex endpoints carry a 10% premium on Claude Sonnet 4.5/Haiku 4.5/Opus 4.5
+and all later models (see VERTEX_REGIONAL_MULTIPLIER); older models are
+priced uniformly across all endpoints. Vertex pricing reference:
+https://cloud.google.com/vertex-ai/generative-ai/pricing
 """
 
 from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
@@ -228,6 +235,53 @@ _PRICING: dict[str, ModelPricing] = {
 _PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
 
 US_INFERENCE_MULTIPLIER = 1.1
+
+VERTEX_REGIONAL_MULTIPLIER = 1.1
+
+# The 10% Vertex regional/multi-region premium applies to Claude Sonnet 4.5,
+# Haiku 4.5, Opus 4.5, and all later models. These older models keep uniform
+# pricing across every Vertex endpoint, so they are exempt.
+_VERTEX_UNIFORM_PRICING_MODELS = (
+    "claude-opus-4-1",
+    "claude-opus-4",
+    "claude-sonnet-4",
+    "claude-3-7-sonnet",
+    "claude-3-5-sonnet",
+    "claude-3-5-haiku",
+    "claude-3-opus",
+    "claude-3-haiku",
+)
+_VERTEX_PREMIUM_PRICING_MODELS = (
+    "claude-fable-5",
+    "claude-mythos-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-opus-4-5",
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-5",
+    "claude-haiku-4-5",
+)
+# Sorted by prefix length descending so the longest match wins — needed to
+# tell e.g. claude-opus-4-8 (premium) apart from claude-opus-4 (uniform).
+_VERTEX_PREMIUM_BY_PREFIX = sorted(
+    [(prefix, True) for prefix in _VERTEX_PREMIUM_PRICING_MODELS]
+    + [(prefix, False) for prefix in _VERTEX_UNIFORM_PRICING_MODELS],
+    key=lambda item: len(item[0]),
+    reverse=True,
+)
+
+
+def has_vertex_regional_premium(model: str) -> bool:
+    """Whether the model carries the 10% premium on regional/multi-region Vertex endpoints.
+
+    Unknown models default to True — the premium applies to all models newer
+    than the fixed set of exempt older models.
+    """
+    for prefix, premium in _VERTEX_PREMIUM_BY_PREFIX:
+        if model.startswith(prefix):
+            return premium
+    return True
 
 
 def calculate_anthropic_cost(model: str, usage: Usage) -> Cost | None:
