@@ -808,7 +808,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "anthropic" },

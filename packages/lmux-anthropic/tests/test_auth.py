@@ -8,6 +8,8 @@ from pytest_mock import MockerFixture
 from lmux.exceptions import AuthenticationError
 from lmux_anthropic.auth import (
     AnthropicEnvAuthProvider,
+    AnthropicFoundryEnvAuthProvider,
+    AnthropicFoundryTokenAuthProvider,
     AnthropicVertexADCAuthProvider,
     AnthropicVertexServiceAccountAuthProvider,
 )
@@ -114,3 +116,38 @@ class TestAnthropicVertexServiceAccountAuthProvider:
         provider = AnthropicVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json")
         with pytest.raises(ImportError, match=r"\[vertex\] extra group is required"):
             _ = provider.get_credentials()
+
+
+class TestAnthropicFoundryEnvAuthProvider:
+    def test_get_credentials_returns_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANTHROPIC_FOUNDRY_API_KEY", "foundry-test-key")
+        provider = AnthropicFoundryEnvAuthProvider()
+        assert provider.get_credentials() == "foundry-test-key"
+
+    def test_get_credentials_raises_when_not_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ANTHROPIC_FOUNDRY_API_KEY", raising=False)
+        provider = AnthropicFoundryEnvAuthProvider()
+        with pytest.raises(AuthenticationError, match="ANTHROPIC_FOUNDRY_API_KEY") as exc_info:
+            _ = provider.get_credentials()
+        assert exc_info.value.provider == "anthropic-foundry"
+
+    async def test_aget_credentials_returns_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANTHROPIC_FOUNDRY_API_KEY", "foundry-test-key")
+        provider = AnthropicFoundryEnvAuthProvider()
+        assert await provider.aget_credentials() == "foundry-test-key"
+
+
+class TestAnthropicFoundryTokenAuthProvider:
+    def test_get_credentials_returns_token_provider(self) -> None:
+        def token_provider() -> str:
+            return "entra-token"  # pragma: no cover
+
+        provider = AnthropicFoundryTokenAuthProvider(token_provider=token_provider)
+        assert provider.get_credentials() is token_provider
+
+    async def test_aget_credentials_returns_token_provider(self) -> None:
+        def token_provider() -> str:
+            return "entra-token"  # pragma: no cover
+
+        provider = AnthropicFoundryTokenAuthProvider(token_provider=token_provider)
+        assert await provider.aget_credentials() is token_provider

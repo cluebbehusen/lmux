@@ -8,6 +8,10 @@ Vertex endpoints carry a 10% premium on Claude Sonnet 4.5/Haiku 4.5/Opus 4.5
 and all later models (see VERTEX_REGIONAL_MULTIPLIER); older models are
 priced uniformly across all endpoints. Vertex pricing reference:
 https://cloud.google.com/vertex-ai/generative-ai/pricing
+
+Claude in Microsoft Foundry bills Anthropic's standard API pricing (Global
+Standard deployments only), so this table also covers
+AnthropicFoundryProvider with no multiplier.
 """
 
 from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens

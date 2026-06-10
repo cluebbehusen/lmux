@@ -156,6 +156,10 @@ multi-region endpoint premium) and the `_VERTEX_PREMIUM_PRICING_MODELS` /
 `_VERTEX_UNIFORM_PRICING_MODELS` scope lists against the Vertex page's
 per-endpoint tables.
 
+Claude in Microsoft Foundry bills Anthropic's standard API pricing, so it
+needs no separate pricing check — but if the Anthropic docs start describing
+Foundry-specific deployment types or premiums, flag that in Caveats.
+
 ---
 
 ## Subagent Instructions

@@ -1,6 +1,7 @@
-"""Auth providers for the Anthropic API and Claude on Vertex AI."""
+"""Auth providers for the Anthropic API, Claude on Vertex AI, and Claude in Microsoft Foundry."""
 
 import os
+from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
 from lmux.exceptions import AuthenticationError
@@ -79,3 +80,36 @@ class AnthropicVertexServiceAccountAuthProvider:
 
     async def aget_credentials(self) -> "tuple[Credentials, str | None]":
         return self.get_credentials()
+
+
+class AnthropicFoundryEnvAuthProvider:
+    """Auth provider that reads the API key from the ANTHROPIC_FOUNDRY_API_KEY environment variable."""
+
+    def get_credentials(self) -> str:
+        api_key = os.environ.get("ANTHROPIC_FOUNDRY_API_KEY")
+        if api_key is None:
+            msg = "ANTHROPIC_FOUNDRY_API_KEY environment variable is not set"
+            raise AuthenticationError(msg, provider="anthropic-foundry")
+        return api_key
+
+    async def aget_credentials(self) -> str:
+        return self.get_credentials()
+
+
+class AnthropicFoundryTokenAuthProvider:
+    """Foundry auth provider that wraps a Microsoft Entra ID token provider.
+
+    Pass a callable that returns a bearer token, e.g.
+    ``azure.identity.get_bearer_token_provider(DefaultAzureCredential(),
+    "https://cognitiveservices.azure.com/.default")``. The SDK invokes the
+    callable on every request.
+    """
+
+    def __init__(self, *, token_provider: Callable[[], str]) -> None:
+        self._token_provider: Callable[[], str] = token_provider
+
+    def get_credentials(self) -> Callable[[], str]:
+        return self._token_provider
+
+    async def aget_credentials(self) -> Callable[[], str]:
+        return self._token_provider
