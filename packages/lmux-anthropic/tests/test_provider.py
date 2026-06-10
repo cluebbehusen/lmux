@@ -1,6 +1,7 @@
 """Tests for Anthropic provider."""
 
 import asyncio
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -25,9 +26,9 @@ from lmux.types import (
     UserMessage,
 )
 from lmux_anthropic import preload
-from lmux_anthropic.auth import AnthropicVertexADCAuthProvider
+from lmux_anthropic.auth import AnthropicFoundryEnvAuthProvider, AnthropicVertexADCAuthProvider
 from lmux_anthropic.params import AnthropicParams
-from lmux_anthropic.provider import AnthropicProvider, AnthropicVertexProvider
+from lmux_anthropic.provider import AnthropicFoundryProvider, AnthropicProvider, AnthropicVertexProvider
 
 # MARK: Shared Fixtures
 
@@ -1436,3 +1437,250 @@ class TestVertexClientManagement:
     def test_default_auth_is_adc(self) -> None:
         provider = AnthropicVertexProvider()
         assert isinstance(provider._vertex_auth, AnthropicVertexADCAuthProvider)  # pyright: ignore[reportPrivateUsage]
+
+
+# MARK: Foundry
+
+
+class FakeFoundryAuth:
+    """Fake Foundry auth provider returning an API key."""
+
+    def get_credentials(self) -> str:
+        return "foundry-key"
+
+    async def aget_credentials(self) -> str:
+        return "foundry-key"
+
+
+class FakeFoundryTokenAuth:
+    """Fake Foundry auth provider returning an Entra ID token-provider callable."""
+
+    def __init__(self) -> None:
+        def _token_provider() -> str:
+            return "entra-token"  # pragma: no cover
+
+        self.token_provider: Callable[[], str] = _token_provider
+
+    def get_credentials(self) -> Callable[[], str]:
+        return self.token_provider
+
+    async def aget_credentials(self) -> Callable[[], str]:
+        return self.token_provider
+
+
+@pytest.fixture
+def fake_foundry_auth() -> FakeFoundryAuth:
+    return FakeFoundryAuth()
+
+
+@pytest.fixture
+def mock_sync_foundry_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic.provider.create_sync_foundry_client", return_value=mock_sync_client)
+
+
+@pytest.fixture
+def mock_async_foundry_create(mock_async_client: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic.provider.create_async_foundry_client", return_value=mock_async_client)
+
+
+@pytest.fixture
+def foundry_sync_provider(
+    fake_foundry_auth: FakeFoundryAuth, mock_sync_foundry_create: MagicMock
+) -> AnthropicFoundryProvider:
+    assert mock_sync_foundry_create  # fixture activates the patch
+    return AnthropicFoundryProvider(auth=fake_foundry_auth, resource="my-resource")
+
+
+@pytest.fixture
+def foundry_async_provider(
+    fake_foundry_auth: FakeFoundryAuth, mock_async_foundry_create: MagicMock
+) -> AnthropicFoundryProvider:
+    assert mock_async_foundry_create  # fixture activates the patch
+    return AnthropicFoundryProvider(auth=fake_foundry_auth, resource="my-resource")
+
+
+class TestFoundryChat:
+    def test_basic_chat(
+        self,
+        foundry_sync_provider: AnthropicFoundryProvider,
+        mock_sync_client: MagicMock,
+        mock_sync_create: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        result = foundry_sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        assert result.content == "Hello!"
+        assert result.provider == "anthropic-foundry"
+        assert result.cost is not None
+        mock_sync_client.messages.create.assert_called_once()
+        mock_sync_create.assert_not_called()  # the Anthropic API client factory must never be used
+
+    def test_api_only_params_dropped(
+        self,
+        foundry_sync_provider: AnthropicFoundryProvider,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        """service_tier and inference_geo are Anthropic-API-only and must not reach Foundry."""
+        mock_sync_client.messages.create.return_value = message_response
+
+        _ = foundry_sync_provider.chat(
+            "claude-sonnet-4-6",
+            [UserMessage(content="Hi")],
+            provider_params=AnthropicParams(
+                thinking={"type": "enabled", "budget_tokens": 1024},
+                top_k=40,
+                service_tier="auto",
+                inference_geo="us",
+            ),
+        )
+
+        call_kwargs = mock_sync_client.messages.create.call_args.kwargs
+        assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 1024}
+        assert call_kwargs["top_k"] == 40
+        assert "service_tier" not in call_kwargs
+        assert "inference_geo" not in call_kwargs
+
+    def test_inference_geo_multiplier_not_applied(
+        self,
+        foundry_sync_provider: AnthropicFoundryProvider,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        """Foundry bills Anthropic list prices; no multiplier ever applies."""
+        mock_sync_client.messages.create.return_value = message_response
+
+        result_standard = foundry_sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+        result_us = foundry_sync_provider.chat(
+            "claude-sonnet-4-6",
+            [UserMessage(content="Hi")],
+            provider_params=AnthropicParams(inference_geo="us"),
+        )
+
+        assert result_standard.cost is not None
+        assert result_us.cost is not None
+        assert result_us.cost.total_cost == result_standard.cost.total_cost
+
+    def test_chat_exception_reports_foundry_provider(
+        self,
+        foundry_sync_provider: AnthropicFoundryProvider,
+        mock_sync_client: MagicMock,
+        bad_request_error: anthropic.BadRequestError,
+    ) -> None:
+        mock_sync_client.messages.create.side_effect = bad_request_error
+
+        with pytest.raises(InvalidRequestError) as exc_info:
+            _ = foundry_sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        assert exc_info.value.provider == "anthropic-foundry"
+
+
+class TestFoundryAchat:
+    async def test_basic_achat(
+        self,
+        foundry_async_provider: AnthropicFoundryProvider,
+        mock_async_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_async_client.messages.create.return_value = message_response
+
+        result = await foundry_async_provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        assert result.content == "Hello!"
+        assert result.provider == "anthropic-foundry"
+        mock_async_client.messages.create.assert_awaited_once()
+
+
+class TestFoundryClientManagement:
+    def test_factory_receives_api_key_auth(
+        self,
+        foundry_sync_provider: AnthropicFoundryProvider,
+        mock_sync_foundry_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        _ = foundry_sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        mock_sync_foundry_create.assert_called_once_with(
+            api_key="foundry-key",
+            azure_ad_token_provider=None,
+            resource="my-resource",
+            base_url=None,
+            timeout=None,
+            max_retries=None,
+        )
+
+    def test_factory_receives_token_provider_auth(
+        self,
+        mock_sync_foundry_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+        token_auth = FakeFoundryTokenAuth()
+        provider = AnthropicFoundryProvider(auth=token_auth, resource="my-resource")
+
+        _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        mock_sync_foundry_create.assert_called_once_with(
+            api_key=None,
+            azure_ad_token_provider=token_auth.token_provider,
+            resource="my-resource",
+            base_url=None,
+            timeout=None,
+            max_retries=None,
+        )
+
+    def test_factory_receives_overrides(
+        self,
+        fake_foundry_auth: FakeFoundryAuth,
+        mock_sync_foundry_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+        provider = AnthropicFoundryProvider(
+            auth=fake_foundry_auth,
+            base_url="https://example-resource.services.ai.azure.com/anthropic/",
+            timeout=30.0,
+            max_retries=5,
+        )
+
+        _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        mock_sync_foundry_create.assert_called_once_with(
+            api_key="foundry-key",
+            azure_ad_token_provider=None,
+            resource=None,
+            base_url="https://example-resource.services.ai.azure.com/anthropic/",
+            timeout=30.0,
+            max_retries=5,
+        )
+
+    async def test_async_factory_receives_api_key_auth(
+        self,
+        foundry_async_provider: AnthropicFoundryProvider,
+        mock_async_foundry_create: MagicMock,
+        mock_async_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        mock_async_client.messages.create.return_value = message_response
+
+        _ = await foundry_async_provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        mock_async_foundry_create.assert_called_once_with(
+            api_key="foundry-key",
+            azure_ad_token_provider=None,
+            resource="my-resource",
+            base_url=None,
+            timeout=None,
+            max_retries=None,
+        )
+
+    def test_default_auth_is_env(self) -> None:
+        provider = AnthropicFoundryProvider()
+        assert isinstance(provider._foundry_auth, AnthropicFoundryEnvAuthProvider)  # pyright: ignore[reportPrivateUsage]

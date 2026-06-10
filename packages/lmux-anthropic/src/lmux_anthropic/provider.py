@@ -2,7 +2,7 @@
 
 import asyncio
 import os
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, override
 
 if TYPE_CHECKING:
@@ -15,8 +15,10 @@ from lmux.types import ChatChunk, ChatResponse, Cost, Message, ResponseFormat, T
 from lmux_anthropic._exceptions import map_anthropic_error
 from lmux_anthropic._lazy import (
     create_async_client,
+    create_async_foundry_client,
     create_async_vertex_client,
     create_sync_client,
+    create_sync_foundry_client,
     create_sync_vertex_client,
 )
 from lmux_anthropic._mappers import (
@@ -30,7 +32,11 @@ from lmux_anthropic._mappers import (
     map_tool_choice,
     map_tools,
 )
-from lmux_anthropic.auth import AnthropicEnvAuthProvider, AnthropicVertexADCAuthProvider
+from lmux_anthropic.auth import (
+    AnthropicEnvAuthProvider,
+    AnthropicFoundryEnvAuthProvider,
+    AnthropicVertexADCAuthProvider,
+)
 from lmux_anthropic.cost import (
     US_INFERENCE_MULTIPLIER,
     VERTEX_REGIONAL_MULTIPLIER,
@@ -42,14 +48,21 @@ from lmux_anthropic.params import AnthropicParams
 
 PROVIDER_NAME = "anthropic"
 VERTEX_PROVIDER_NAME = "anthropic-vertex"
+FOUNDRY_PROVIDER_NAME = "anthropic-foundry"
 DEFAULT_MAX_TOKENS = 4096
 
-type SyncAnthropicClient = "anthropic.Anthropic | anthropic.AnthropicVertex"
-type AsyncAnthropicClient = "anthropic.AsyncAnthropic | anthropic.AsyncAnthropicVertex"
+type SyncAnthropicClient = "anthropic.Anthropic | anthropic.AnthropicVertex | anthropic.AnthropicFoundry"
+type AsyncAnthropicClient = (
+    "anthropic.AsyncAnthropic | anthropic.AsyncAnthropicVertex | anthropic.AsyncAnthropicFoundry"
+)
 
 # Vertex auth providers may return bare credentials, or credentials together
 # with the project ID they resolved (e.g. from ADC or a service account file).
 type VertexAuthResult = "Credentials | tuple[Credentials, str | None]"
+
+# Foundry auth providers return an API key, or a Microsoft Entra ID bearer
+# token provider that the SDK invokes on every request.
+type FoundryAuthResult = "str | Callable[[], str]"
 
 
 class AnthropicProvider(
@@ -509,4 +522,83 @@ class AnthropicVertexProvider(AnthropicProvider):
             return 1.0
         if has_vertex_regional_premium(model):
             return VERTEX_REGIONAL_MULTIPLIER
+        return 1.0
+
+
+class AnthropicFoundryProvider(AnthropicProvider):
+    """Claude in Microsoft Foundry provider.
+
+    Reuses the Anthropic API request/response handling unchanged; only client
+    creation and auth differ. ``service_tier`` and ``inference_geo`` are
+    Anthropic-API-only parameters and are dropped from outgoing requests; the
+    US-inference cost multiplier never applies.
+    """
+
+    _provider_name: ClassVar[str] = FOUNDRY_PROVIDER_NAME
+
+    def __init__(  # noqa: PLR0913
+        self,
+        *,
+        auth: AuthProvider["FoundryAuthResult"] | None = None,
+        resource: str | None = None,
+        base_url: str | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+        default_max_tokens: int = DEFAULT_MAX_TOKENS,
+    ) -> None:
+        super().__init__(
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            default_max_tokens=default_max_tokens,
+        )
+        self._foundry_auth: AuthProvider[FoundryAuthResult] = auth or AnthropicFoundryEnvAuthProvider()
+        self._resource: str | None = resource
+
+    @staticmethod
+    def _split_foundry_auth(auth_result: "FoundryAuthResult") -> "tuple[str | None, Callable[[], str] | None]":
+        if isinstance(auth_result, str):
+            return auth_result, None
+        return None, auth_result
+
+    @override
+    def _create_sync_client(self) -> "anthropic.AnthropicFoundry":
+        api_key, azure_ad_token_provider = self._split_foundry_auth(self._foundry_auth.get_credentials())
+        return create_sync_foundry_client(
+            api_key=api_key,
+            azure_ad_token_provider=azure_ad_token_provider,
+            resource=self._resource,
+            base_url=self._base_url,
+            timeout=self._timeout,
+            max_retries=self._max_retries,
+        )
+
+    @override
+    async def _create_async_client(self) -> "anthropic.AsyncAnthropicFoundry":
+        api_key, azure_ad_token_provider = self._split_foundry_auth(await self._foundry_auth.aget_credentials())
+        return create_async_foundry_client(
+            api_key=api_key,
+            azure_ad_token_provider=azure_ad_token_provider,
+            resource=self._resource,
+            base_url=self._base_url,
+            timeout=self._timeout,
+            max_retries=self._max_retries,
+        )
+
+    @staticmethod
+    @override
+    def _provider_params_kwargs(params: AnthropicParams) -> dict[str, Any]:
+        """Convert AnthropicParams to SDK kwargs, dropping Anthropic-API-only parameters."""
+        kwargs = AnthropicProvider._provider_params_kwargs(params)
+        kwargs.pop("service_tier", None)
+        kwargs.pop("inference_geo", None)
+        return kwargs
+
+    @override
+    def _cost_multiplier(self, model: str, provider_params: AnthropicParams | None) -> float:
+        """Foundry bills Anthropic's standard API pricing (Global Standard deployments only).
+
+        ``inference_geo`` is Anthropic-API-only and never contributes a
+        multiplier here.
+        """
         return 1.0

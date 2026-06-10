@@ -132,6 +132,44 @@ Any `AuthProvider` that returns `google.auth` `Credentials` works — either bar
 
 `AnthropicParams.service_tier` and `AnthropicParams.inference_geo` are Anthropic-API-only: the Vertex provider drops them from outgoing requests, and the `inference_geo` US cost multiplier never applies.
 
+## Claude in Microsoft Foundry
+
+No extra needed — `AnthropicFoundryProvider` ships with the base package and serves Claude through a Foundry resource with the same chat/streaming interface:
+
+```python
+from lmux_anthropic import AnthropicFoundryProvider
+
+provider = AnthropicFoundryProvider(resource="example-resource")
+response = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hello")])
+print(response.provider)  # "anthropic-foundry"
+print(response.cost)
+```
+
+`resource` and the mutually exclusive `base_url` fall back to the `ANTHROPIC_FOUNDRY_RESOURCE` and `ANTHROPIC_FOUNDRY_BASE_URL` environment variables. Model IDs are Foundry deployment names, which default to the plain model IDs (`claude-sonnet-4-6`, ...). Foundry bills Anthropic's standard API pricing through the Microsoft Marketplace, so costs come from the same pricing table with no multiplier.
+
+### Foundry Auth
+
+The default `AnthropicFoundryEnvAuthProvider` reads an API key from `ANTHROPIC_FOUNDRY_API_KEY`. For Microsoft Entra ID, wrap a bearer-token provider:
+
+```python
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from lmux_anthropic import AnthropicFoundryProvider, AnthropicFoundryTokenAuthProvider
+
+token_provider = get_bearer_token_provider(
+    DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default"
+)
+provider = AnthropicFoundryProvider(
+    resource="example-resource",
+    auth=AnthropicFoundryTokenAuthProvider(token_provider=token_provider),
+)
+```
+
+Any `AuthProvider` that returns an API key string or a `() -> str` token-provider callable works.
+
+### Foundry Params Caveat
+
+Same as Vertex: `service_tier` and `inference_geo` are dropped from outgoing requests, and the `inference_geo` US cost multiplier never applies.
+
 ## Constructor Options
 
 ```python
