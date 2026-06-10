@@ -318,10 +318,14 @@ def map_responses_response(
         cache_read: int | None = None
         if usage_data.input_tokens_details and usage_data.input_tokens_details.cached_tokens:
             cache_read = usage_data.input_tokens_details.cached_tokens
+        reasoning_tokens: int | None = None
+        if usage_data.output_tokens_details and usage_data.output_tokens_details.reasoning_tokens:
+            reasoning_tokens = usage_data.output_tokens_details.reasoning_tokens
         usage = Usage(
             input_tokens=usage_data.input_tokens,
             output_tokens=usage_data.output_tokens,
             cache_read_tokens=cache_read,
+            reasoning_tokens=reasoning_tokens,
         )
 
     cost = cost_fn(response.model, usage) if usage else None

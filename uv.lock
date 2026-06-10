@@ -915,7 +915,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-openai"
-version = "0.5.4"
+version = "0.5.5"
 source = { editable = "packages/lmux-openai" }
 dependencies = [
     { name = "lmux" },

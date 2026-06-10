@@ -165,6 +165,7 @@ def responses_mock() -> MagicMock:
     mock_response.usage.input_tokens = 10
     mock_response.usage.output_tokens = 5
     mock_response.usage.input_tokens_details = None
+    mock_response.usage.output_tokens_details = None
     return mock_response
 
 
@@ -1369,6 +1370,17 @@ class TestCreateResponse:
 
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 3
+
+    def test_reasoning_tokens_mapped(
+        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        responses_mock.usage.output_tokens_details = MagicMock(reasoning_tokens=4)
+        mock_sync_client.responses.create.return_value = responses_mock
+
+        result = sync_provider.create_response("gpt-5-pro", "Hello")
+
+        assert result.usage is not None
+        assert result.usage.reasoning_tokens == 4
 
     def test_no_usage(
         self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock

@@ -113,6 +113,7 @@ def responses_mock() -> MagicMock:
     mock_response.usage.input_tokens = 10
     mock_response.usage.output_tokens = 5
     mock_response.usage.input_tokens_details = None
+    mock_response.usage.output_tokens_details = None
     return mock_response
 
 
@@ -807,6 +808,17 @@ class TestCreateResponse:
         mock_sync_client.responses.create.assert_called_once_with(
             model="gpt-4o", input="Hello", stream=False, service_tier="flex"
         )
+
+    def test_reasoning_tokens_mapped(
+        self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
+    ) -> None:
+        responses_mock.usage.output_tokens_details = MagicMock(reasoning_tokens=4)
+        mock_sync_client.responses.create.return_value = responses_mock
+
+        result = sync_provider.create_response("gpt-4o", "Hello")
+
+        assert result.usage is not None
+        assert result.usage.reasoning_tokens == 4
 
     def test_exception_mapping(
         self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, not_found_error: openai.NotFoundError

@@ -75,7 +75,7 @@ print(response.embeddings)
 
 ### Responses API
 
-Required for Responses-only deployments such as `gpt-5-pro`, `o3-pro`, the codex models, and `computer-use-preview`:
+Required for models that are only served through the Responses API:
 
 ```python
 response = provider.create_response("gpt-5-pro", "Hello")
