@@ -110,7 +110,7 @@ print(response.provider)  # "anthropic-vertex"
 print(response.cost)
 ```
 
-`project_id` and `region` fall back to the `ANTHROPIC_VERTEX_PROJECT_ID` and `CLOUD_ML_REGION` environment variables; a request without a region raises at first call. `region` accepts `"global"`, a multi-region (`"us"`, `"eu"`), or a specific region (`"us-east5"`, ...). Model IDs use Vertex's `@`-versioned format (`claude-sonnet-4-5@20250929`) or plain names for newer models (`claude-opus-4-6`).
+`project_id` falls back to the `ANTHROPIC_VERTEX_PROJECT_ID` environment variable, then to the project resolved by the auth provider (e.g. the `gcloud` default project under ADC, or the service account key file's project). `region` falls back to `CLOUD_ML_REGION`; a request without a region raises at first call. `region` accepts `"global"`, a multi-region (`"us"`, `"eu"`), or a specific region (`"us-east5"`, ...). Model IDs use Vertex's `@`-versioned format (`claude-sonnet-4-5@20250929`) or plain names for newer models (`claude-opus-4-6`).
 
 ### Vertex Auth
 
@@ -126,29 +126,11 @@ provider = AnthropicVertexProvider(
 )
 ```
 
-Any `AuthProvider` that returns `google.auth` `Credentials` works.
-
-### Vertex Pricing
-
-Vertex bills Claude at the same list prices as the Anthropic API on the **global** endpoint, so costs come from the same pricing table ([Vertex pricing reference](https://cloud.google.com/vertex-ai/generative-ai/pricing)). Regional and multi-region endpoints carry a [10% premium](https://platform.claude.com/docs/en/build-with-claude/claude-on-vertex-ai) on Claude Sonnet 4.5/Haiku 4.5/Opus 4.5 and all later models — applied automatically to `response.cost` based on the provider's `region`; older models are priced uniformly across all endpoints.
+Any `AuthProvider` that returns `google.auth` `Credentials` works — either bare, or as a `(credentials, project_id)` tuple so the provider can infer the project.
 
 ### Vertex Params Caveat
 
 `AnthropicParams.service_tier` and `AnthropicParams.inference_geo` are Anthropic-API-only: the Vertex provider drops them from outgoing requests, and the `inference_geo` US cost multiplier never applies.
-
-### Vertex Constructor Options
-
-```python
-AnthropicVertexProvider(
-    auth=...,               # AuthProvider[Credentials], default: AnthropicVertexADCAuthProvider()
-    project_id=...,         # GCP project ID (default: ANTHROPIC_VERTEX_PROJECT_ID env var)
-    region=...,             # "global", multi-region, or region (default: CLOUD_ML_REGION env var)
-    base_url=...,           # Optional base URL override
-    timeout=...,            # Request timeout in seconds
-    max_retries=...,        # Max retry attempts
-    default_max_tokens=..., # Default max tokens (default: 4096)
-)
-```
 
 ## Constructor Options
 

@@ -1030,7 +1030,20 @@ class TestPreload:
 
 
 class FakeVertexAuth:
-    """Fake Vertex auth provider for testing."""
+    """Fake Vertex auth provider returning (credentials, project_id), like the ADC provider."""
+
+    def __init__(self) -> None:
+        self.credentials: MagicMock = MagicMock()
+
+    def get_credentials(self) -> tuple[MagicMock, str]:
+        return (self.credentials, "auth-project")
+
+    async def aget_credentials(self) -> tuple[MagicMock, str]:
+        return (self.credentials, "auth-project")
+
+
+class FakeBareVertexAuth:
+    """Fake Vertex auth provider returning bare credentials without a project ID."""
 
     def __init__(self) -> None:
         self.credentials: MagicMock = MagicMock()
@@ -1343,6 +1356,78 @@ class TestVertexClientManagement:
             credentials=fake_vertex_auth.credentials,
             project_id="my-proj",
             region="us-east5",
+            base_url=None,
+            timeout=None,
+            max_retries=None,
+        )
+
+    def test_project_id_falls_back_to_auth_provider(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_vertex_auth: FakeVertexAuth,
+        mock_sync_vertex_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        """Without an explicit project_id or env var, the auth-derived project (e.g. from ADC) is used."""
+        monkeypatch.delenv("ANTHROPIC_VERTEX_PROJECT_ID", raising=False)
+        mock_sync_client.messages.create.return_value = message_response
+        provider = AnthropicVertexProvider(auth=fake_vertex_auth, region="global")
+
+        _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        mock_sync_vertex_create.assert_called_once_with(
+            credentials=fake_vertex_auth.credentials,
+            project_id="auth-project",
+            region="global",
+            base_url=None,
+            timeout=None,
+            max_retries=None,
+        )
+
+    def test_env_project_id_beats_auth_derived(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_vertex_auth: FakeVertexAuth,
+        mock_sync_vertex_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        """ANTHROPIC_VERTEX_PROJECT_ID wins over the auth-derived project, matching the SDK's precedence."""
+        monkeypatch.setenv("ANTHROPIC_VERTEX_PROJECT_ID", "env-project")
+        mock_sync_client.messages.create.return_value = message_response
+        provider = AnthropicVertexProvider(auth=fake_vertex_auth, region="global")
+
+        _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        mock_sync_vertex_create.assert_called_once_with(
+            credentials=fake_vertex_auth.credentials,
+            project_id="env-project",
+            region="global",
+            base_url=None,
+            timeout=None,
+            max_retries=None,
+        )
+
+    def test_bare_credentials_auth_supported(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_sync_vertex_create: MagicMock,
+        mock_sync_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        """Auth providers returning bare credentials (no project tuple) still work."""
+        monkeypatch.delenv("ANTHROPIC_VERTEX_PROJECT_ID", raising=False)
+        mock_sync_client.messages.create.return_value = message_response
+        bare_auth = FakeBareVertexAuth()
+        provider = AnthropicVertexProvider(auth=bare_auth, region="global")
+
+        _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        mock_sync_vertex_create.assert_called_once_with(
+            credentials=bare_auth.credentials,
+            project_id=None,
+            region="global",
             base_url=None,
             timeout=None,
             max_retries=None,

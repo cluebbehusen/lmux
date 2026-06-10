@@ -10,7 +10,7 @@ Provider packages include `lmux` as a dependency, so there's no need to install 
 
 ```bash
 uv add lmux-openai         # OpenAI
-uv add lmux-anthropic      # Anthropic
+uv add lmux-anthropic      # Anthropic ([vertex] extra: Claude on Vertex AI)
 uv add lmux-azure-foundry  # Azure AI Foundry
 uv add lmux-aws-bedrock    # AWS Bedrock
 uv add lmux-google         # Google (Gemini)

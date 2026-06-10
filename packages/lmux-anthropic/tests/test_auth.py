@@ -27,6 +27,7 @@ def mock_google_auth_default(mock_credentials: MagicMock, mocker: MockerFixture)
 
 @pytest.fixture
 def mock_from_service_account_file(mock_credentials: MagicMock, mocker: MockerFixture) -> MagicMock:
+    mock_credentials.project_id = "sa-project"
     return mocker.patch(
         "google.oauth2.service_account.Credentials.from_service_account_file",
         return_value=mock_credentials,
@@ -65,17 +66,17 @@ class TestAnthropicEnvAuthProvider:
 class TestAnthropicVertexADCAuthProvider:
     def test_get_credentials(self, mock_google_auth_default: MagicMock, mock_credentials: MagicMock) -> None:
         provider = AnthropicVertexADCAuthProvider()
-        assert provider.get_credentials() is mock_credentials
+        assert provider.get_credentials() == (mock_credentials, "test-project")
         mock_google_auth_default.assert_called_once_with(scopes=[CLOUD_PLATFORM_SCOPE])
 
     def test_custom_scopes(self, mock_google_auth_default: MagicMock, mock_credentials: MagicMock) -> None:
         provider = AnthropicVertexADCAuthProvider(scopes=["https://www.googleapis.com/auth/custom"])
-        assert provider.get_credentials() is mock_credentials
+        assert provider.get_credentials() == (mock_credentials, "test-project")
         mock_google_auth_default.assert_called_once_with(scopes=["https://www.googleapis.com/auth/custom"])
 
     async def test_aget_credentials(self, mock_google_auth_default: MagicMock, mock_credentials: MagicMock) -> None:
         provider = AnthropicVertexADCAuthProvider()
-        assert await provider.aget_credentials() is mock_credentials
+        assert await provider.aget_credentials() == (mock_credentials, "test-project")
         mock_google_auth_default.assert_called_once_with(scopes=[CLOUD_PLATFORM_SCOPE])
 
     def test_get_raises_import_error_without_extra(self, mock_missing_google_auth: None) -> None:
@@ -88,7 +89,7 @@ class TestAnthropicVertexADCAuthProvider:
 class TestAnthropicVertexServiceAccountAuthProvider:
     def test_get_credentials(self, mock_from_service_account_file: MagicMock, mock_credentials: MagicMock) -> None:
         provider = AnthropicVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json")
-        assert provider.get_credentials() is mock_credentials
+        assert provider.get_credentials() == (mock_credentials, "sa-project")
         mock_from_service_account_file.assert_called_once_with("/path/to/key.json", scopes=[CLOUD_PLATFORM_SCOPE])
 
     def test_custom_scopes(self, mock_from_service_account_file: MagicMock, mock_credentials: MagicMock) -> None:
@@ -96,7 +97,7 @@ class TestAnthropicVertexServiceAccountAuthProvider:
             service_account_file="/path/to/key.json",
             scopes=["https://www.googleapis.com/auth/custom"],
         )
-        assert provider.get_credentials() is mock_credentials
+        assert provider.get_credentials() == (mock_credentials, "sa-project")
         mock_from_service_account_file.assert_called_once_with(
             "/path/to/key.json", scopes=["https://www.googleapis.com/auth/custom"]
         )
@@ -105,7 +106,7 @@ class TestAnthropicVertexServiceAccountAuthProvider:
         self, mock_from_service_account_file: MagicMock, mock_credentials: MagicMock
     ) -> None:
         provider = AnthropicVertexServiceAccountAuthProvider(service_account_file="/path/to/key.json")
-        assert await provider.aget_credentials() is mock_credentials
+        assert await provider.aget_credentials() == (mock_credentials, "sa-project")
         mock_from_service_account_file.assert_called_once_with("/path/to/key.json", scopes=[CLOUD_PLATFORM_SCOPE])
 
     def test_get_raises_import_error_without_extra(self, mock_missing_google_oauth2: None) -> None:

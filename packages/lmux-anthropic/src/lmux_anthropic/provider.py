@@ -47,6 +47,10 @@ DEFAULT_MAX_TOKENS = 4096
 type SyncAnthropicClient = "anthropic.Anthropic | anthropic.AnthropicVertex"
 type AsyncAnthropicClient = "anthropic.AsyncAnthropic | anthropic.AsyncAnthropicVertex"
 
+# Vertex auth providers may return bare credentials, or credentials together
+# with the project ID they resolved (e.g. from ADC or a service account file).
+type VertexAuthResult = "Credentials | tuple[Credentials, str | None]"
+
 
 class AnthropicProvider(
     CompletionProvider[AnthropicParams],
@@ -423,7 +427,7 @@ class AnthropicVertexProvider(AnthropicProvider):
     def __init__(  # noqa: PLR0913
         self,
         *,
-        auth: AuthProvider["Credentials"] | None = None,
+        auth: AuthProvider["VertexAuthResult"] | None = None,
         project_id: str | None = None,
         region: str | None = None,
         base_url: str | None = None,
@@ -437,15 +441,35 @@ class AnthropicVertexProvider(AnthropicProvider):
             max_retries=max_retries,
             default_max_tokens=default_max_tokens,
         )
-        self._vertex_auth: AuthProvider[Credentials] = auth or AnthropicVertexADCAuthProvider()
+        self._vertex_auth: AuthProvider[VertexAuthResult] = auth or AnthropicVertexADCAuthProvider()
         self._project_id: str | None = project_id
         self._region: str | None = region
 
+    @staticmethod
+    def _split_auth_result(auth_result: "VertexAuthResult") -> "tuple[Credentials, str | None]":
+        if isinstance(auth_result, tuple):
+            return auth_result
+        return auth_result, None
+
+    def _resolve_project_id(self, auth_project_id: str | None) -> str | None:
+        """Resolve the project ID: explicit argument, then env var, then auth-derived.
+
+        Matches the SDK's own precedence — the env var wins over a project
+        inferred from credentials.
+        """
+        if self._project_id is not None:
+            return self._project_id
+        env_project_id = os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID")
+        if env_project_id:
+            return env_project_id
+        return auth_project_id
+
     @override
     def _create_sync_client(self) -> "anthropic.AnthropicVertex":
+        credentials, auth_project_id = self._split_auth_result(self._vertex_auth.get_credentials())
         return create_sync_vertex_client(
-            credentials=self._vertex_auth.get_credentials(),
-            project_id=self._project_id,
+            credentials=credentials,
+            project_id=self._resolve_project_id(auth_project_id),
             region=self._region,
             base_url=self._base_url,
             timeout=self._timeout,
@@ -454,9 +478,10 @@ class AnthropicVertexProvider(AnthropicProvider):
 
     @override
     async def _create_async_client(self) -> "anthropic.AsyncAnthropicVertex":
+        credentials, auth_project_id = self._split_auth_result(await self._vertex_auth.aget_credentials())
         return create_async_vertex_client(
-            credentials=await self._vertex_auth.aget_credentials(),
-            project_id=self._project_id,
+            credentials=credentials,
+            project_id=self._resolve_project_id(auth_project_id),
             region=self._region,
             base_url=self._base_url,
             timeout=self._timeout,
