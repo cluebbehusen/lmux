@@ -72,6 +72,18 @@ class TestCalculateBedrockCost:
         # No as_of defaults to the latest (standard) schedule.
         assert latest.input_cost == pytest.approx(3.3)
 
+    def test_regional_profile_falls_back_to_base(self) -> None:
+        """A cross-region inference profile with no dedicated entry uses the base model's pricing.
+
+        Guards the 3.5 Haiku regression: AWS delisted its us. profile, so only the base dated key
+        is generated; a real ``us.anthropic.claude-3-5-haiku-20241022-v1:0`` call must still price.
+        """
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_bedrock_cost("us.anthropic.claude-3-5-haiku-20241022-v1:0", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1000 * 0.80 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 4.00 / 1_000_000)
+
     def test_embedding_model(self) -> None:
         usage = Usage(input_tokens=100, output_tokens=0)
         cost = calculate_bedrock_cost("amazon.titan-embed-text-v2", usage)
@@ -165,11 +177,14 @@ class TestCalculateBedrockCost:
         assert base_cost is not None
         assert cost.total_cost == pytest.approx(base_cost.total_cost)
 
-    def test_inference_profile_model_without_profiles(self) -> None:
-        """Models without inference profiles return None for prefixed IDs."""
+    def test_inference_profile_falls_back_to_base(self) -> None:
+        """A regional inference-profile id without its own entry falls back to the base model's pricing."""
         usage = Usage(input_tokens=1000, output_tokens=500)
         cost = calculate_bedrock_cost("us.ai21.jamba-1-5-large-v1", usage)
-        assert cost is None
+        base = calculate_bedrock_cost("ai21.jamba-1-5-large-v1", usage)
+        assert cost is not None
+        assert base is not None
+        assert cost.total_cost == pytest.approx(base.total_cost)
 
     def test_regional_pricing_exact_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Regional pricing returns different cost when region has overrides."""

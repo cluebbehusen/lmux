@@ -1776,6 +1776,31 @@ _REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {}
 _PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
 
 
+# Cross-region inference profile prefixes. A profile call (e.g. "us.anthropic...")
+# with no dedicated regional entry falls back to the base model's pricing.
+_INFERENCE_PROFILE_PREFIXES = ("global.", "us.", "eu.", "apac.", "au.", "jp.", "ca.")
+
+
+def _strip_profile_prefix(model: str) -> str:
+    for prefix in _INFERENCE_PROFILE_PREFIXES:
+        if model.startswith(prefix):
+            return model[len(prefix) :]
+    return model
+
+
+def _lookup_default_pricing(model: str) -> ModelPricing | None:
+    pricing = _PRICING.get(model)
+    if pricing is not None:
+        return pricing
+    for prefix, p in _PRICING_BY_PREFIX:
+        if model.startswith(prefix):
+            return p
+    bare = _strip_profile_prefix(model)
+    if bare != model:
+        return _lookup_default_pricing(bare)
+    return None
+
+
 def calculate_bedrock_cost(
     model: str, usage: Usage, *, region: str | None = None, as_of: date | None = None
 ) -> Cost | None:
@@ -1798,12 +1823,7 @@ def calculate_bedrock_cost(
             return calculate_cost(usage, pricing, as_of)
 
     # Fall back to default (us-east-1) pricing
-    pricing = _PRICING.get(model)
-    if pricing is None:
-        for prefix, p in _PRICING_BY_PREFIX:
-            if model.startswith(prefix):
-                pricing = p
-                break
+    pricing = _lookup_default_pricing(model)
     if pricing is None:
         return None
     return calculate_cost(usage, pricing, as_of)
