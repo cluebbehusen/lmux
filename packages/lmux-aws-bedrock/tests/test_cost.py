@@ -39,6 +39,23 @@ class TestCalculateBedrockCost:
         assert cost.cache_read_cost is not None
         assert cost.cache_read_cost == pytest.approx(200 * 0.2 / 1_000_000)
 
+    def test_grok_4_3_unit_corrected_pricing(self) -> None:
+        """Regression guard: grok-4.3 uses the AWS '1M tokens' unit, not the default 1000x scaling."""
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)
+        cost = calculate_bedrock_cost("xai.grok-4.3", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(800 * 1.25 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 2.50 / 1_000_000)
+        assert cost.cache_read_cost == pytest.approx(200 * 0.20 / 1_000_000)
+
+    def test_claude_3_5_haiku_dated_key_still_prices(self) -> None:
+        """The dated 3.5 Haiku key is retained so real calls still price after AWS delisted it."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_bedrock_cost("anthropic.claude-3-5-haiku-20241022-v1:0", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1000 * 0.80 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 4.00 / 1_000_000)
+
     def test_embedding_model(self) -> None:
         usage = Usage(input_tokens=100, output_tokens=0)
         cost = calculate_bedrock_cost("amazon.titan-embed-text-v2", usage)
