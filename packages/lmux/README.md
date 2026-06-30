@@ -26,8 +26,9 @@ You don't need to install this directly; provider packages (e.g., `lmux-openai`)
 - `Usage`: token counts (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`)
 - `Cost`: cost breakdown (`input_cost`, `output_cost`, `total_cost`, plus cache costs)
 - `ModelPricing` / `PricingTier`: tiered pricing configuration
+- `PricingSchedule`: dated price overrides for models whose rate changes on a known date (e.g. an introductory rate)
 - `per_million_tokens()`: converts per-million price to per-token price
-- `calculate_cost()`: calculates cost from usage and pricing
+- `calculate_cost()`: calculates cost from usage and pricing; pass `as_of=<date>` to bill at the rate in effect on that day (defaults to the latest schedule)
 
 ### Tools
 
