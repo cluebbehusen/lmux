@@ -19,6 +19,11 @@ For each file found:
    `Pricing source:` line. If a cost.py has no `Pricing source:` line, skip
    it and warn the user.
 
+`lmux-gcp-vertex` is a deprecated shim that re-exports its cost calculation
+from `lmux-google` — it has no pricing of its own and should **never** be
+covered. Silently exclude it from discovery (no warning); its pricing is
+already validated via `lmux-google`.
+
 Build a list of `(provider_name, cost_py_path, pricing_url)` tuples.
 
 ### Step 2: Select providers
