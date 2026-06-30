@@ -3,6 +3,7 @@
 import json
 from collections.abc import AsyncIterator, Iterator, Sequence
 from contextlib import AbstractAsyncContextManager
+from datetime import date
 from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
@@ -42,6 +43,11 @@ from lmux_aws_bedrock.params import BedrockParams
 PROVIDER_NAME = "aws-bedrock"
 
 
+def _today() -> date:
+    """Return today's date, indirected so tests can pin the pricing clock."""
+    return date.today()
+
+
 class BedrockProvider(
     CompletionProvider[BedrockParams],
     EmbeddingProvider[BedrockParams],
@@ -69,11 +75,18 @@ class BedrockProvider(
     def register_pricing(self, model: str, pricing: ModelPricing) -> None:
         self._custom_pricing[model] = pricing
 
-    def _calculate_cost(self, model: str, usage: Usage) -> Cost | None:
+    @staticmethod
+    def _resolve_pricing_as_of(provider_params: BedrockParams | None) -> date:
+        """Effective pricing date: an explicit ``pricing_as_of`` override, else today."""
+        if provider_params is not None and provider_params.pricing_as_of is not None:
+            return provider_params.pricing_as_of
+        return _today()
+
+    def _calculate_cost(self, model: str, usage: Usage, as_of: date) -> Cost | None:
         pricing = self._custom_pricing.get(model)
         if pricing is not None:
-            return calculate_cost(usage, pricing)
-        return calculate_bedrock_cost(model, usage, region=self._region)
+            return calculate_cost(usage, pricing, as_of)
+        return calculate_bedrock_cost(model, usage, region=self._region, as_of=as_of)
 
     # MARK: Client Management
 
@@ -129,7 +142,8 @@ class BedrockProvider(
             response = client.converse(**kwargs)
         except Exception as e:
             raise map_bedrock_error(e) from e
-        return map_converse_response(response, model, PROVIDER_NAME, self._calculate_cost)
+        as_of = self._resolve_pricing_as_of(provider_params)
+        return map_converse_response(response, model, PROVIDER_NAME, lambda m, u: self._calculate_cost(m, u, as_of))
 
     @override
     async def achat(
@@ -165,7 +179,8 @@ class BedrockProvider(
                 response = await client.converse(**kwargs)
         except Exception as e:
             raise map_bedrock_error(e) from e
-        return map_converse_response(response, model, PROVIDER_NAME, self._calculate_cost)
+        as_of = self._resolve_pricing_as_of(provider_params)
+        return map_converse_response(response, model, PROVIDER_NAME, lambda m, u: self._calculate_cost(m, u, as_of))
 
     @override
     def chat_stream(
@@ -196,6 +211,7 @@ class BedrockProvider(
             reasoning_effort,
             provider_params,
         )
+        as_of = self._resolve_pricing_as_of(provider_params)
         try:
             client = self._get_sync_client()
             response = client.converse_stream(**kwargs)
@@ -208,7 +224,7 @@ class BedrockProvider(
                 chunk = map_stream_event(event)
                 if chunk is not None:
                     if chunk.usage is not None:
-                        chunk = chunk.model_copy(update={"cost": self._calculate_cost(model, chunk.usage)})
+                        chunk = chunk.model_copy(update={"cost": self._calculate_cost(model, chunk.usage, as_of)})
                     yield chunk
         except Exception as e:
             raise map_bedrock_error(e) from e
@@ -242,6 +258,7 @@ class BedrockProvider(
             reasoning_effort,
             provider_params,
         )
+        as_of = self._resolve_pricing_as_of(provider_params)
         try:
             async with await self._get_async_client_ctx() as client:
                 response = await client.converse_stream(**kwargs)
@@ -250,7 +267,7 @@ class BedrockProvider(
                     chunk = map_stream_event(event)
                     if chunk is not None:
                         if chunk.usage is not None:
-                            chunk = chunk.model_copy(update={"cost": self._calculate_cost(model, chunk.usage)})
+                            chunk = chunk.model_copy(update={"cost": self._calculate_cost(model, chunk.usage, as_of)})
                         yield chunk
         except Exception as e:
             raise map_bedrock_error(e) from e
@@ -292,7 +309,7 @@ class BedrockProvider(
             total_input_tokens += result.get("inputTextTokenCount", 0)
 
         usage = Usage(input_tokens=total_input_tokens, output_tokens=0)
-        cost = self._calculate_cost(model, usage)
+        cost = self._calculate_cost(model, usage, self._resolve_pricing_as_of(provider_params))
 
         return EmbeddingResponse(
             embeddings=all_embeddings,
@@ -334,7 +351,7 @@ class BedrockProvider(
                 total_input_tokens += result.get("inputTextTokenCount", 0)
 
         usage = Usage(input_tokens=total_input_tokens, output_tokens=0)
-        cost = self._calculate_cost(model, usage)
+        cost = self._calculate_cost(model, usage, self._resolve_pricing_as_of(provider_params))
 
         return EmbeddingResponse(
             embeddings=all_embeddings,

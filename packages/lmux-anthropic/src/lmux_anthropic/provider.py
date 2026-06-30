@@ -3,6 +3,7 @@
 import asyncio
 import os
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from datetime import date
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, override
 
 if TYPE_CHECKING:
@@ -65,6 +66,11 @@ type VertexAuthResult = "Credentials | tuple[Credentials, str | None]"
 type FoundryAuthResult = "str | Callable[[], str]"
 
 
+def _today() -> date:
+    """Return today's date, indirected so tests can pin the pricing clock."""
+    return date.today()
+
+
 class AnthropicProvider(
     CompletionProvider[AnthropicParams],
     PricingProvider,
@@ -98,11 +104,18 @@ class AnthropicProvider(
     def register_pricing(self, model: str, pricing: ModelPricing) -> None:
         self._custom_pricing[model] = pricing
 
-    def _calculate_cost(self, model: str, usage: Usage) -> Cost | None:
+    @staticmethod
+    def _resolve_pricing_as_of(provider_params: AnthropicParams | None) -> date:
+        """Effective pricing date: an explicit ``pricing_as_of`` override, else today."""
+        if provider_params is not None and provider_params.pricing_as_of is not None:
+            return provider_params.pricing_as_of
+        return _today()
+
+    def _calculate_cost(self, model: str, usage: Usage, as_of: date) -> Cost | None:
         pricing = self._custom_pricing.get(model)
         if pricing is not None:
-            return calculate_cost(usage, pricing)
-        return calculate_anthropic_cost(model, usage)
+            return calculate_cost(usage, pricing, as_of)
+        return calculate_anthropic_cost(model, usage, as_of)
 
     def _create_sync_client(self) -> SyncAnthropicClient:
         return create_sync_client(
@@ -175,7 +188,8 @@ class AnthropicProvider(
             message = client.messages.create(**kwargs, stream=False)
         except Exception as e:
             raise map_anthropic_error(e, self._provider_name) from e
-        response = map_message_response(message, self._provider_name, self._calculate_cost)
+        as_of = self._resolve_pricing_as_of(provider_params)
+        response = map_message_response(message, self._provider_name, lambda m, u: self._calculate_cost(m, u, as_of))
         return self._apply_multipliers(response, provider_params)
 
     @override
@@ -212,7 +226,8 @@ class AnthropicProvider(
             message = await client.messages.create(**kwargs, stream=False)
         except Exception as e:
             raise map_anthropic_error(e, self._provider_name) from e
-        response = map_message_response(message, self._provider_name, self._calculate_cost)
+        as_of = self._resolve_pricing_as_of(provider_params)
+        response = map_message_response(message, self._provider_name, lambda m, u: self._calculate_cost(m, u, as_of))
         return self._apply_multipliers(response, provider_params)
 
     @override
@@ -250,6 +265,7 @@ class AnthropicProvider(
         except Exception as e:
             raise map_anthropic_error(e, self._provider_name) from e
 
+        as_of = self._resolve_pricing_as_of(provider_params)
         start_usage: Usage | None = None
         try:
             for event in stream:
@@ -268,7 +284,7 @@ class AnthropicProvider(
                     continue
                 if event.type == "message_delta" and start_usage is not None:
                     chunk = map_message_delta(event, start_usage)
-                    cost = self._calculate_cost(model, chunk.usage) if chunk.usage else None
+                    cost = self._calculate_cost(model, chunk.usage, as_of) if chunk.usage else None
                     cost = self._apply_cost_multipliers(cost, model, provider_params)
                     yield chunk.model_copy(update={"cost": cost})
                     continue
@@ -310,6 +326,7 @@ class AnthropicProvider(
         except Exception as e:
             raise map_anthropic_error(e, self._provider_name) from e
 
+        as_of = self._resolve_pricing_as_of(provider_params)
         start_usage: Usage | None = None
         try:
             async for event in stream:
@@ -328,7 +345,7 @@ class AnthropicProvider(
                     continue
                 if event.type == "message_delta" and start_usage is not None:
                     chunk = map_message_delta(event, start_usage)
-                    cost = self._calculate_cost(model, chunk.usage) if chunk.usage else None
+                    cost = self._calculate_cost(model, chunk.usage, as_of) if chunk.usage else None
                     cost = self._apply_cost_multipliers(cost, model, provider_params)
                     yield chunk.model_copy(update={"cost": cost})
                     continue

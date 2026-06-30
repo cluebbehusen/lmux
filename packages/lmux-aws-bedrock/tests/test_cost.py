@@ -1,5 +1,7 @@
 """Tests for AWS Bedrock pricing and cost calculation."""
 
+from datetime import date
+
 import pytest
 
 from lmux.cost import ModelPricing, PricingTier, per_million_tokens
@@ -55,6 +57,20 @@ class TestCalculateBedrockCost:
         assert cost is not None
         assert cost.input_cost == pytest.approx(1000 * 0.80 / 1_000_000)
         assert cost.output_cost == pytest.approx(500 * 4.00 / 1_000_000)
+
+    def test_sonnet_5_dated_schedule(self) -> None:
+        """Sonnet 5 bills the introductory rate before 2026-09-01 and standard (1.5x) on/after."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        intro = calculate_bedrock_cost("anthropic.claude-sonnet-5", usage, as_of=date(2026, 7, 1))
+        standard = calculate_bedrock_cost("anthropic.claude-sonnet-5", usage, as_of=date(2026, 9, 1))
+        latest = calculate_bedrock_cost("anthropic.claude-sonnet-5", usage)
+        assert intro is not None
+        assert standard is not None
+        assert latest is not None
+        assert (intro.input_cost, intro.output_cost) == pytest.approx((2.2, 11.0))
+        assert (standard.input_cost, standard.output_cost) == pytest.approx((3.3, 16.5))
+        # No as_of defaults to the latest (standard) schedule.
+        assert latest.input_cost == pytest.approx(3.3)
 
     def test_embedding_model(self) -> None:
         usage = Usage(input_tokens=100, output_tokens=0)

@@ -21,7 +21,8 @@ import re
 import sys
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
@@ -132,6 +133,16 @@ USAGETYPE_KEY_MAP: dict[str, str] = {
     "TitanTextG1-Express": "amazon.titan-text-express-v1",
     "TitanTextG1-Lite": "amazon.titan-text-lite-v1",
     "TitanText-Premier": "amazon.titan-text-premier-v1",
+}
+
+# Models with a known future list-price change. Maps a model-id substring to the
+# date the new rate takes effect and its multiplier vs the current (base) rate.
+# Claude Sonnet 5 ships introductory pricing now; the standard rate (1.5x the
+# introductory rate, uniform across every field and regional variant) starts
+# 2026-09-01. The base tier stays the AWS-reported (introductory) rate; the
+# scheduled override is derived from it.
+DATED_PRICE_SCHEDULES: dict[str, tuple[date, Decimal]] = {
+    "anthropic.claude-sonnet-5": (date(2026, 9, 1), Decimal("1.5")),
 }
 
 # Provider groups for comment headers in generated code
@@ -906,14 +917,17 @@ def generate_cost_py(
 ) -> str:
     """Generate the complete cost.py source code."""
     lines: list[str] = []
-    _emit_header(lines, has_regional=bool(regional))
+    has_dated = any(_dated_schedule_for(mid) for mid in pricing) or any(
+        _dated_schedule_for(mid) for region in (regional or {}).values() for mid in region
+    )
+    _emit_header(lines, has_regional=bool(regional), has_dated=has_dated)
     _emit_pricing_dict(lines, pricing)
     _emit_regional_dict(lines, regional)
     _emit_function(lines)
     return "\n".join(lines)
 
 
-def _emit_header(lines: list[str], *, has_regional: bool) -> None:
+def _emit_header(lines: list[str], *, has_regional: bool, has_dated: bool) -> None:
     """Emit module docstring and imports."""
     lines.append('"""AWS Bedrock pricing data and cost calculation.')
     lines.append("")
@@ -928,7 +942,14 @@ def _emit_header(lines: list[str], *, has_regional: bool) -> None:
     lines.append("Pricing source: https://aws.amazon.com/bedrock/pricing/")
     lines.append('"""')
     lines.append("")
-    lines.append("from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens")
+    lines.append("from datetime import date")
+    lines.append("")
+    if has_dated:
+        lines.append(
+            "from lmux.cost import ModelPricing, PricingSchedule, PricingTier, calculate_cost, per_million_tokens"
+        )
+    else:
+        lines.append("from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens")
     lines.append("from lmux.types import Cost, Usage")
     lines.append("")
 
@@ -980,8 +1001,15 @@ def _emit_regional_dict(
 
 
 _FUNCTION_BODY = """\
-def calculate_bedrock_cost(model: str, usage: Usage, *, region: str | None = None) -> Cost | None:
-    \"\"\"Calculate cost for a Bedrock API call. Returns None if model pricing is unknown.\"\"\"
+def calculate_bedrock_cost(
+    model: str, usage: Usage, *, region: str | None = None, as_of: date | None = None
+) -> Cost | None:
+    \"\"\"Calculate cost for a Bedrock API call. Returns None if model pricing is unknown.
+
+    ``as_of`` selects dated pricing for models with scheduled rate changes
+    (e.g. Claude Sonnet 5's introductory period); it defaults to the latest
+    schedule. See ``lmux.cost.calculate_cost``.
+    \"\"\"
     # Try regional pricing first if region specified
     if region is not None and region != "us-east-1":
         regional = _REGIONAL_PRICING.get(region, {})
@@ -992,7 +1020,7 @@ def calculate_bedrock_cost(model: str, usage: Usage, *, region: str | None = Non
                     pricing = p
                     break
         if pricing is not None:
-            return calculate_cost(usage, pricing)
+            return calculate_cost(usage, pricing, as_of)
 
     # Fall back to default (us-east-1) pricing
     pricing = _PRICING.get(model)
@@ -1003,7 +1031,7 @@ def calculate_bedrock_cost(model: str, usage: Usage, *, region: str | None = Non
                 break
     if pricing is None:
         return None
-    return calculate_cost(usage, pricing)
+    return calculate_cost(usage, pricing, as_of)
 """
 
 
@@ -1013,22 +1041,48 @@ def _emit_function(lines: list[str]) -> None:
     lines.append("")
 
 
+def _dated_schedule_for(model_id: str) -> tuple[date, Decimal] | None:
+    """Return (valid_from, multiplier) if ``model_id`` has a scheduled future price change."""
+    for needle, schedule in DATED_PRICE_SCHEDULES.items():
+        if needle in model_id:
+            return schedule
+    return None
+
+
+def _scale_prices(mp: ModelPrices, multiplier: Decimal) -> ModelPrices:
+    """Return a copy of ``mp`` with every non-None cost scaled by ``multiplier``."""
+    scaled = {field.name: value * multiplier for field in fields(mp) if (value := getattr(mp, field.name)) is not None}
+    return replace(mp, **scaled)
+
+
+def _emit_tiers_block(lines: list[str], mp: ModelPrices, is_emb: bool, tiers_indent: int) -> None:
+    """Emit a ``tiers=[...]`` block: the standard tier plus the long-context tier if present."""
+    pad = " " * tiers_indent
+    lines.append(f"{pad}tiers=[")
+    _emit_tier(lines, mp, is_emb, tiers_indent + 4, is_lctx=False)
+    if mp.has_lctx:
+        _emit_tier(lines, mp, is_emb, tiers_indent + 4, is_lctx=True)
+    lines.append(f"{pad}],")
+
+
 def _emit_model_pricing(lines: list[str], model_id: str, mp: ModelPrices, indent: int = 4) -> None:
-    """Emit a single ModelPricing entry."""
+    """Emit a single ModelPricing entry, including a dated schedule override if one applies."""
     pad = " " * indent
     is_emb = _is_embedding(model_id)
 
     lines.append(f'{pad}"{model_id}": ModelPricing(')
-    lines.append(f"{pad}    tiers=[")
+    _emit_tiers_block(lines, mp, is_emb, indent + 4)
 
-    # Standard tier
-    _emit_tier(lines, mp, is_emb, indent + 8, is_lctx=False)
+    schedule = _dated_schedule_for(model_id)
+    if schedule is not None:
+        valid_from, multiplier = schedule
+        lines.append(f"{pad}    schedules=[")
+        lines.append(f"{pad}        PricingSchedule(")
+        lines.append(f"{pad}            valid_from=date({valid_from.year}, {valid_from.month}, {valid_from.day}),")
+        _emit_tiers_block(lines, _scale_prices(mp, multiplier), is_emb, indent + 12)
+        lines.append(f"{pad}        ),")
+        lines.append(f"{pad}    ],")
 
-    # Long-context tier (if present)
-    if mp.has_lctx:
-        _emit_tier(lines, mp, is_emb, indent + 8, is_lctx=True)
-
-    lines.append(f"{pad}    ],")
     lines.append(f"{pad}),")
 
 
