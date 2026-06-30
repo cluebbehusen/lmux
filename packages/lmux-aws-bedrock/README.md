@@ -98,6 +98,7 @@ response = provider.chat(
 | `guardrail_config`                      | `GuardrailConfig` | Bedrock guardrail to apply       |
 | `additional_model_request_fields`       | `dict`            | Extra fields passed to the model |
 | `additional_model_response_field_paths` | `list[str]`       | Extra response fields to return  |
+| `pricing_as_of`                         | `datetime.date`   | Override the date used for dated pricing; defaults to the current date |
 
 ## Prompt Caching
 

@@ -1,6 +1,6 @@
 [project]
 name = "lmux-openai"
-version = "0.5.5"
+version = "0.5.6"
 description = "OpenAI provider for lmux"
 requires-python = ">=3.13"
 license = "MIT"

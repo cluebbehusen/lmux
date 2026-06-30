@@ -15,6 +15,13 @@ class TestCalculateGroqCost:
         assert cost.output_cost == pytest.approx(500 * 0.79 / 1_000_000)
         assert cost.total_cost == pytest.approx(cost.input_cost + cost.output_cost)
 
+    def test_qwen3_6_model(self) -> None:
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_groq_cost("qwen/qwen3.6-27b", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1000 * 0.60 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 3.00 / 1_000_000)
+
     def test_unknown_model_returns_none(self) -> None:
         usage = Usage(input_tokens=100, output_tokens=50)
         cost = calculate_groq_cost("unknown-model-xyz", usage)

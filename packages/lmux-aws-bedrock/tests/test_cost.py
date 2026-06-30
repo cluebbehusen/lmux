@@ -1,5 +1,7 @@
 """Tests for AWS Bedrock pricing and cost calculation."""
 
+from datetime import date
+
 import pytest
 
 from lmux.cost import ModelPricing, PricingTier, per_million_tokens
@@ -38,6 +40,49 @@ class TestCalculateBedrockCost:
         assert cost is not None
         assert cost.cache_read_cost is not None
         assert cost.cache_read_cost == pytest.approx(200 * 0.2 / 1_000_000)
+
+    def test_grok_4_3_unit_corrected_pricing(self) -> None:
+        """Regression guard: grok-4.3 uses the AWS '1M tokens' unit, not the default 1000x scaling."""
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)
+        cost = calculate_bedrock_cost("xai.grok-4.3", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(800 * 1.25 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 2.50 / 1_000_000)
+        assert cost.cache_read_cost == pytest.approx(200 * 0.20 / 1_000_000)
+
+    def test_claude_3_5_haiku_dated_key_still_prices(self) -> None:
+        """The dated 3.5 Haiku key is retained so real calls still price after AWS delisted it."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_bedrock_cost("anthropic.claude-3-5-haiku-20241022-v1:0", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1000 * 0.80 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 4.00 / 1_000_000)
+
+    def test_sonnet_5_dated_schedule(self) -> None:
+        """Sonnet 5 bills the introductory rate before 2026-09-01 and standard (1.5x) on/after."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        intro = calculate_bedrock_cost("anthropic.claude-sonnet-5", usage, as_of=date(2026, 7, 1))
+        standard = calculate_bedrock_cost("anthropic.claude-sonnet-5", usage, as_of=date(2026, 9, 1))
+        latest = calculate_bedrock_cost("anthropic.claude-sonnet-5", usage)
+        assert intro is not None
+        assert standard is not None
+        assert latest is not None
+        assert (intro.input_cost, intro.output_cost) == pytest.approx((2.2, 11.0))
+        assert (standard.input_cost, standard.output_cost) == pytest.approx((3.3, 16.5))
+        # No as_of defaults to the latest (standard) schedule.
+        assert latest.input_cost == pytest.approx(3.3)
+
+    def test_regional_profile_falls_back_to_base(self) -> None:
+        """A cross-region inference profile with no dedicated entry uses the base model's pricing.
+
+        Guards the 3.5 Haiku regression: AWS delisted its us. profile, so only the base dated key
+        is generated; a real ``us.anthropic.claude-3-5-haiku-20241022-v1:0`` call must still price.
+        """
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_bedrock_cost("us.anthropic.claude-3-5-haiku-20241022-v1:0", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1000 * 0.80 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 4.00 / 1_000_000)
 
     def test_embedding_model(self) -> None:
         usage = Usage(input_tokens=100, output_tokens=0)
@@ -132,11 +177,14 @@ class TestCalculateBedrockCost:
         assert base_cost is not None
         assert cost.total_cost == pytest.approx(base_cost.total_cost)
 
-    def test_inference_profile_model_without_profiles(self) -> None:
-        """Models without inference profiles return None for prefixed IDs."""
+    def test_inference_profile_falls_back_to_base(self) -> None:
+        """A regional inference-profile id without its own entry falls back to the base model's pricing."""
         usage = Usage(input_tokens=1000, output_tokens=500)
         cost = calculate_bedrock_cost("us.ai21.jamba-1-5-large-v1", usage)
-        assert cost is None
+        base = calculate_bedrock_cost("ai21.jamba-1-5-large-v1", usage)
+        assert cost is not None
+        assert base is not None
+        assert cost.total_cost == pytest.approx(base.total_cost)
 
     def test_regional_pricing_exact_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Regional pricing returns different cost when region has overrides."""

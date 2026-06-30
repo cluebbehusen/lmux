@@ -1,9 +1,35 @@
 """Tests for lmux cost calculation utilities."""
 
+from datetime import date
+
 import pytest
 
-from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
+from lmux.cost import ModelPricing, PricingSchedule, PricingTier, calculate_cost, per_million_tokens
 from lmux.types import Usage
+
+
+@pytest.fixture
+def dated_pricing() -> ModelPricing:
+    """A model with introductory base pricing and a dated standard-rate override."""
+    return ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(10.00),
+            )
+        ],
+        schedules=[
+            PricingSchedule(
+                valid_from=date(2026, 9, 1),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(3.00),
+                        output_cost_per_token=per_million_tokens(15.00),
+                    )
+                ],
+            )
+        ],
+    )
 
 
 class TestPerMillionTokens:
@@ -36,6 +62,20 @@ class TestPricingTier:
         )
         assert tier.cache_read_cost_per_token == 0.0000003
         assert tier.cache_creation_cost_per_token == 0.00000375
+
+
+class TestPricingSchedule:
+    def test_basic(self) -> None:
+        schedule = PricingSchedule(
+            valid_from=date(2026, 9, 1),
+            tiers=[PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015)],
+        )
+        assert schedule.valid_from == date(2026, 9, 1)
+        assert schedule.tiers[0].input_cost_per_token == 0.000003
+
+    def test_invalid_tiers_rejected(self) -> None:
+        with pytest.raises(ValueError, match="tiers must not be empty"):
+            _ = PricingSchedule(valid_from=date(2026, 9, 1), tiers=[])
 
 
 class TestModelPricing:
@@ -101,6 +141,53 @@ class TestModelPricing:
                     PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015),
                     PricingTier(input_cost_per_token=0.000006, output_cost_per_token=0.00003, min_input_tokens=200_000),
                     PricingTier(input_cost_per_token=0.000009, output_cost_per_token=0.00004, min_input_tokens=200_000),
+                ],
+            )
+
+    def test_with_single_schedule(self, dated_pricing: ModelPricing) -> None:
+        assert dated_pricing.schedules is not None
+        assert len(dated_pricing.schedules) == 1
+        assert dated_pricing.schedules[0].valid_from == date(2026, 9, 1)
+        # The base ``tiers`` are unaffected by the dated override.
+        assert dated_pricing.tiers[0].input_cost_per_token == per_million_tokens(2.00)
+
+    def test_with_multiple_schedules(self) -> None:
+        p = ModelPricing(
+            tiers=[PricingTier(input_cost_per_token=0.000002, output_cost_per_token=0.00001)],
+            schedules=[
+                PricingSchedule(
+                    valid_from=date(2026, 9, 1),
+                    tiers=[PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015)],
+                ),
+                PricingSchedule(
+                    valid_from=date(2027, 1, 1),
+                    tiers=[PricingTier(input_cost_per_token=0.000004, output_cost_per_token=0.00002)],
+                ),
+            ],
+        )
+        assert p.schedules is not None
+        assert [s.valid_from for s in p.schedules] == [date(2026, 9, 1), date(2027, 1, 1)]
+
+    def test_empty_schedules_rejected(self) -> None:
+        with pytest.raises(ValueError, match="schedules must not be empty when provided"):
+            _ = ModelPricing(
+                tiers=[PricingTier(input_cost_per_token=0.000002, output_cost_per_token=0.00001)],
+                schedules=[],
+            )
+
+    def test_unordered_schedules_rejected(self) -> None:
+        with pytest.raises(ValueError, match="schedules must be ordered by strictly ascending valid_from"):
+            _ = ModelPricing(
+                tiers=[PricingTier(input_cost_per_token=0.000002, output_cost_per_token=0.00001)],
+                schedules=[
+                    PricingSchedule(
+                        valid_from=date(2026, 9, 1),
+                        tiers=[PricingTier(input_cost_per_token=0.000003, output_cost_per_token=0.000015)],
+                    ),
+                    PricingSchedule(
+                        valid_from=date(2026, 9, 1),
+                        tiers=[PricingTier(input_cost_per_token=0.000004, output_cost_per_token=0.00002)],
+                    ),
                 ],
             )
 
@@ -389,3 +476,59 @@ class TestCalculateCost:
         usage = Usage(input_tokens=100, output_tokens=10)
         cost = calculate_cost(usage, pricing)
         assert cost.cache_creation_cost is None
+
+    def test_as_of_none_uses_latest_schedule(self, dated_pricing: ModelPricing) -> None:
+        """With no ``as_of``, the latest schedule (standard rate) applies."""
+        cost = calculate_cost(Usage(input_tokens=1_000_000, output_tokens=0), dated_pricing)
+        assert cost.input_cost == pytest.approx(per_million_tokens(3.00) * 1_000_000)
+
+    def test_as_of_before_override_uses_base(self, dated_pricing: ModelPricing) -> None:
+        """An ``as_of`` before every schedule's ``valid_from`` falls back to the base tiers."""
+        cost = calculate_cost(Usage(input_tokens=1_000_000, output_tokens=0), dated_pricing, as_of=date(2026, 7, 1))
+        assert cost.input_cost == pytest.approx(per_million_tokens(2.00) * 1_000_000)
+
+    def test_as_of_on_override_date_uses_override(self, dated_pricing: ModelPricing) -> None:
+        """An ``as_of`` on the override's ``valid_from`` uses the override (boundary is inclusive)."""
+        cost = calculate_cost(Usage(input_tokens=1_000_000, output_tokens=0), dated_pricing, as_of=date(2026, 9, 1))
+        assert cost.input_cost == pytest.approx(per_million_tokens(3.00) * 1_000_000)
+
+    def test_as_of_ignored_without_schedules(self) -> None:
+        """``as_of`` has no effect on a model without dated schedules."""
+        pricing = ModelPricing(
+            tiers=[PricingTier(input_cost_per_token=per_million_tokens(2.00), output_cost_per_token=0.0)]
+        )
+        cost = calculate_cost(Usage(input_tokens=1_000_000, output_tokens=0), pricing, as_of=date(2026, 9, 1))
+        assert cost.input_cost == pytest.approx(per_million_tokens(2.00) * 1_000_000)
+
+    def test_resolves_among_multiple_schedules(self) -> None:
+        """With 3+ schedules, the latest whose ``valid_from`` is on or before ``as_of`` wins."""
+        # 1M input tokens means input_cost == the per-million rate, so each assertion reads as $/M.
+        usage = Usage(input_tokens=1_000_000, output_tokens=0)
+        pricing = ModelPricing(
+            tiers=[PricingTier(input_cost_per_token=per_million_tokens(2.00), output_cost_per_token=0.0)],
+            schedules=[
+                PricingSchedule(
+                    valid_from=date(2026, 9, 1),
+                    tiers=[PricingTier(input_cost_per_token=per_million_tokens(3.00), output_cost_per_token=0.0)],
+                ),
+                PricingSchedule(
+                    valid_from=date(2027, 1, 1),
+                    tiers=[PricingTier(input_cost_per_token=per_million_tokens(4.00), output_cost_per_token=0.0)],
+                ),
+                PricingSchedule(
+                    valid_from=date(2027, 6, 1),
+                    tiers=[PricingTier(input_cost_per_token=per_million_tokens(5.00), output_cost_per_token=0.0)],
+                ),
+            ],
+        )
+        # Before any schedule -> base tiers ($2).
+        assert calculate_cost(usage, pricing, as_of=date(2026, 7, 1)).input_cost == pytest.approx(2.00)
+        # Strictly between the 2nd and 3rd valid_from -> 2nd schedule ($4): kills both an
+        # early-break mutant (would give $3) and an always-use-last mutant (would give $5).
+        assert calculate_cost(usage, pricing, as_of=date(2027, 3, 1)).input_cost == pytest.approx(4.00)
+        # Exactly on a non-first schedule's valid_from -> that schedule (inclusive boundary).
+        assert calculate_cost(usage, pricing, as_of=date(2027, 1, 1)).input_cost == pytest.approx(4.00)
+        # On/after the last schedule -> last schedule ($5).
+        assert calculate_cost(usage, pricing, as_of=date(2027, 6, 1)).input_cost == pytest.approx(5.00)
+        # No as_of -> latest schedule ($5).
+        assert calculate_cost(usage, pricing).input_cost == pytest.approx(5.00)

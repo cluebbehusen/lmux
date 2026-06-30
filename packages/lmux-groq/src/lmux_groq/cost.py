@@ -70,6 +70,11 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(input_cost_per_token=per_million_tokens(0.29), output_cost_per_token=per_million_tokens(0.59))
         ],
     ),
+    "qwen/qwen3.6-27b": ModelPricing(
+        tiers=[
+            PricingTier(input_cost_per_token=per_million_tokens(0.60), output_cost_per_token=per_million_tokens(3.00))
+        ],
+    ),
     # Meta Llama 3.x family
     "llama-3.3-70b-versatile": ModelPricing(
         tiers=[

@@ -60,6 +60,29 @@ class TestCalculateGoogleCost:
         assert cost.input_cost == pytest.approx(1000 * 0.15 / 1_000_000)
         assert cost.output_cost == 0.0
 
+    def test_computer_use_base_tier_has_no_cache_pricing(self) -> None:
+        """The dedicated computer-use key prices the base tier and has no cache rate.
+
+        gemini-2.5-pro shares the same base/>200K token rates, so the no-cache
+        signal is what distinguishes the dedicated key: if it were dropped and
+        prefix-matched to gemini-2.5-pro (cache 0.125/M), cache_read_cost would
+        be non-zero.
+        """
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)
+        cost = calculate_google_cost("gemini-2.5-pro-computer-use-preview", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx((1000 - 200) * 1.25 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 10.00 / 1_000_000)
+        assert cost.cache_read_cost == pytest.approx(0.0)
+
+    def test_computer_use_long_context_tier(self) -> None:
+        """gemini-2.5-pro-computer-use-preview uses the >200K tier above 200K input tokens."""
+        usage = Usage(input_tokens=250_000, output_tokens=1000)
+        cost = calculate_google_cost("gemini-2.5-pro-computer-use-preview", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(250_000 * 2.50 / 1_000_000)
+        assert cost.output_cost == pytest.approx(1000 * 15.00 / 1_000_000)
+
     def test_zero_tokens(self) -> None:
         usage = Usage(input_tokens=0, output_tokens=0)
         cost = calculate_google_cost("gemini-2.0-flash", usage)

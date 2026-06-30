@@ -1,5 +1,6 @@
 """AWS Bedrock-specific provider parameters."""
 
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -21,3 +22,6 @@ class BedrockParams(BaseProviderParams):
     guardrail_config: GuardrailConfig | None = None
     additional_model_request_fields: dict[str, Any] | None = None
     additional_model_response_field_paths: list[str] | None = None
+    # Override the date used to resolve dated pricing (e.g. a model's
+    # introductory-rate window); defaults to the current date when unset.
+    pricing_as_of: date | None = None

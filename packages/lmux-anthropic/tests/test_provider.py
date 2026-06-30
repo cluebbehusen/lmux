@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -171,6 +172,76 @@ def server_error() -> anthropic.InternalServerError:
 
 
 # MARK: Chat
+
+
+class TestPricingAsOf:
+    def test_live_cost_uses_current_date_in_intro_window(
+        self,
+        sync_provider: AnthropicProvider,
+        mock_sync_client: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """During the introductory window, live Sonnet 5 cost bills the introductory rate."""
+        monkeypatch.setattr("lmux_anthropic.provider._today", lambda: date(2026, 7, 1))
+        mock_sync_client.messages.create.return_value = _make_message_response(
+            model="claude-sonnet-5", input_tokens=1000, output_tokens=500
+        )
+        response = sync_provider.chat("claude-sonnet-5", [UserMessage(content="Hi")])
+        assert response.cost is not None
+        assert response.cost.input_cost == pytest.approx(1000 * 2.0 / 1_000_000)
+        assert response.cost.output_cost == pytest.approx(500 * 10.0 / 1_000_000)
+
+    def test_live_cost_uses_current_date_after_switch(
+        self,
+        sync_provider: AnthropicProvider,
+        mock_sync_client: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """After 2026-09-01, live Sonnet 5 cost bills the standard rate."""
+        monkeypatch.setattr("lmux_anthropic.provider._today", lambda: date(2026, 9, 15))
+        mock_sync_client.messages.create.return_value = _make_message_response(
+            model="claude-sonnet-5", input_tokens=1000, output_tokens=500
+        )
+        response = sync_provider.chat("claude-sonnet-5", [UserMessage(content="Hi")])
+        assert response.cost is not None
+        assert response.cost.input_cost == pytest.approx(1000 * 3.0 / 1_000_000)
+        assert response.cost.output_cost == pytest.approx(500 * 15.0 / 1_000_000)
+
+    def test_pricing_as_of_override_wins_over_clock(
+        self,
+        sync_provider: AnthropicProvider,
+        mock_sync_client: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An explicit pricing_as_of overrides the current date (e.g. for cost replay)."""
+        monkeypatch.setattr("lmux_anthropic.provider._today", lambda: date(2026, 9, 15))
+        mock_sync_client.messages.create.return_value = _make_message_response(
+            model="claude-sonnet-5", input_tokens=1000, output_tokens=500
+        )
+        response = sync_provider.chat(
+            "claude-sonnet-5",
+            [UserMessage(content="Hi")],
+            provider_params=AnthropicParams(pricing_as_of=date(2026, 7, 1)),
+        )
+        assert response.cost is not None
+        # The override date lands in the intro window, so the introductory rate wins.
+        assert response.cost.input_cost == pytest.approx(1000 * 2.0 / 1_000_000)
+        assert response.cost.output_cost == pytest.approx(500 * 10.0 / 1_000_000)
+
+    async def test_achat_applies_dated_pricing(
+        self,
+        async_provider: AnthropicProvider,
+        mock_async_client: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The async path resolves and applies the dated pricing date like the sync path."""
+        monkeypatch.setattr("lmux_anthropic.provider._today", lambda: date(2026, 7, 1))
+        mock_async_client.messages.create.return_value = _make_message_response(
+            model="claude-sonnet-5", input_tokens=1000, output_tokens=500
+        )
+        response = await async_provider.achat("claude-sonnet-5", [UserMessage(content="Hi")])
+        assert response.cost is not None
+        assert response.cost.input_cost == pytest.approx(1000 * 2.0 / 1_000_000)
 
 
 class TestChat:

@@ -99,6 +99,45 @@ class TestCalculateAzureFoundryCost:
         assert cost.input_cost == pytest.approx(2.50)
         assert cost.output_cost == pytest.approx(10.00)
 
+    def test_grok_4_2_corrected_pricing(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("grok-4.2", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1.25)
+        assert cost.output_cost == pytest.approx(2.50)
+
+    def test_grok_4_3_model(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("grok-4.3", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1.25)
+        assert cost.output_cost == pytest.approx(2.50)
+
+    def test_deepseek_v4_models(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        pro = calculate_azure_foundry_cost("deepseek-v4-pro", usage)
+        flash = calculate_azure_foundry_cost("deepseek-v4-flash", usage)
+        assert pro is not None
+        assert flash is not None
+        assert pro.input_cost == pytest.approx(1.74)
+        assert pro.output_cost == pytest.approx(3.48)
+        assert flash.input_cost == pytest.approx(0.19)
+        assert flash.output_cost == pytest.approx(0.51)
+
+    def test_gpt_5_5_base_tier(self) -> None:
+        usage = Usage(input_tokens=100_000, output_tokens=100_000)
+        cost = calculate_azure_foundry_cost("gpt-5.5", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(100_000 * 5.00 / 1_000_000)
+        assert cost.output_cost == pytest.approx(100_000 * 30.00 / 1_000_000)
+
+    def test_gpt_5_5_long_context_tier(self) -> None:
+        usage = Usage(input_tokens=300_000, output_tokens=1000)
+        cost = calculate_azure_foundry_cost("gpt-5.5", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(300_000 * 10.00 / 1_000_000)
+        assert cost.output_cost == pytest.approx(1000 * 45.00 / 1_000_000)
+
 
 class TestApplyCostMultiplier:
     def test_applies_multiplier_to_all_fields(self) -> None:

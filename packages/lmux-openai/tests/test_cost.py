@@ -62,6 +62,17 @@ class TestCalculateOpenAICost:
         assert mini_cost is not None
         assert cost.total_cost == pytest.approx(mini_cost.total_cost)
 
+    def test_gpt_5_5_cyber_has_dedicated_pricing(self) -> None:
+        """gpt-5.5-cyber must use its own (pricier) rate, not prefix-match gpt-5.5."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cyber = calculate_openai_cost("gpt-5.5-cyber", usage)
+        base = calculate_openai_cost("gpt-5.5", usage)
+        assert cyber is not None
+        assert base is not None
+        assert cyber.input_cost == pytest.approx(1000 * 12.50 / 1_000_000)
+        assert cyber.output_cost == pytest.approx(500 * 75.00 / 1_000_000)
+        assert cyber.input_cost > base.input_cost
+
 
 class TestRegionalUpliftApplies:
     @pytest.mark.parametrize(

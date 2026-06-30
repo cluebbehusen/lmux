@@ -1,5 +1,7 @@
 """Tests for Anthropic cost calculation."""
 
+from datetime import date
+
 import pytest
 
 from lmux.types import Cost, Usage
@@ -95,6 +97,42 @@ class TestCalculateAnthropicCost:
         assert cost.input_cost == pytest.approx(500_000 * 5.0 / 1_000_000)
         assert cost.output_cost == pytest.approx(1000 * 25.0 / 1_000_000)
 
+    def test_sonnet_5_introductory_pricing_before_sep_2026(self) -> None:
+        """Before 2026-09-01, Claude Sonnet 5 bills at the introductory rate."""
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200, cache_creation_tokens=100)
+        cost = calculate_anthropic_cost("claude-sonnet-5", usage, as_of=date(2026, 7, 1))
+        assert cost is not None
+        assert cost.input_cost == pytest.approx((1000 - 200 - 100) * 2.0 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 10.0 / 1_000_000)
+        assert cost.cache_read_cost == pytest.approx(200 * 0.20 / 1_000_000)
+        assert cost.cache_creation_cost == pytest.approx(100 * 2.50 / 1_000_000)
+
+    def test_sonnet_5_standard_pricing_from_sep_2026(self) -> None:
+        """On/after 2026-09-01, Claude Sonnet 5 bills at the standard rate."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_anthropic_cost("claude-sonnet-5", usage, as_of=date(2026, 9, 1))
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1000 * 3.0 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 15.0 / 1_000_000)
+
+    def test_sonnet_5_defaults_to_standard_pricing(self) -> None:
+        """With no ``as_of``, Claude Sonnet 5 bills at the latest (standard) schedule."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_anthropic_cost("claude-sonnet-5", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1000 * 3.0 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 15.0 / 1_000_000)
+
+    def test_sonnet_5_per_ttl_cache_write_rates_differ_by_schedule(self) -> None:
+        """The 1h cache-write rate is $4.00/M introductory and $6.00/M standard."""
+        usage = Usage(input_tokens=1000, output_tokens=0, cache_creation_tokens_by_ttl={"1h": 1000})
+        intro = calculate_anthropic_cost("claude-sonnet-5", usage, as_of=date(2026, 7, 1))
+        standard = calculate_anthropic_cost("claude-sonnet-5", usage, as_of=date(2026, 9, 1))
+        assert intro is not None
+        assert standard is not None
+        assert intro.cache_creation_cost == pytest.approx(1000 * 4.0 / 1_000_000)
+        assert standard.cache_creation_cost == pytest.approx(1000 * 6.0 / 1_000_000)
+
 
 class TestApplyCostMultiplier:
     def test_applies_multiplier_to_all_fields(self) -> None:
@@ -137,4 +175,4 @@ class TestHasVertexRegionalPremium:
         assert has_vertex_regional_premium("claude-opus-4@20250514") is False
 
     def test_unknown_future_models_default_to_premium(self) -> None:
-        assert has_vertex_regional_premium("claude-sonnet-5") is True
+        assert has_vertex_regional_premium("claude-sonnet-6") is True

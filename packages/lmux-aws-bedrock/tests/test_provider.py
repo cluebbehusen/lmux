@@ -1,6 +1,7 @@
 """Tests for AWS Bedrock provider."""
 
 import json
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -131,6 +132,55 @@ def server_error() -> Exception:
 
 
 # MARK: Chat
+
+
+class TestPricingAsOf:
+    def test_live_cost_uses_current_date(
+        self,
+        sync_provider: BedrockProvider,
+        mock_sync_client: MagicMock,
+        converse_response: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Live Sonnet 5 cost reflects the current date (introductory rate before 2026-09-01)."""
+        monkeypatch.setattr("lmux_aws_bedrock.provider._today", lambda: date(2026, 7, 1))
+        mock_sync_client.converse.return_value = converse_response
+        result = sync_provider.chat("anthropic.claude-sonnet-5", [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(10 * 2.2 / 1_000_000)
+
+    def test_pricing_as_of_override_wins_over_clock(
+        self,
+        sync_provider: BedrockProvider,
+        mock_sync_client: MagicMock,
+        converse_response: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """An explicit pricing_as_of overrides the current date (e.g. for cost replay)."""
+        monkeypatch.setattr("lmux_aws_bedrock.provider._today", lambda: date(2026, 9, 15))
+        mock_sync_client.converse.return_value = converse_response
+        result = sync_provider.chat(
+            "anthropic.claude-sonnet-5",
+            [UserMessage(content="Hi")],
+            provider_params=BedrockParams(pricing_as_of=date(2026, 7, 1)),
+        )
+        assert result.cost is not None
+        # The override date lands in the intro window, so the introductory rate wins.
+        assert result.cost.input_cost == pytest.approx(10 * 2.2 / 1_000_000)
+
+    def test_live_cost_uses_current_date_after_switch(
+        self,
+        sync_provider: BedrockProvider,
+        mock_sync_client: MagicMock,
+        converse_response: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """After 2026-09-01, the clock-resolved date bills the standard (1.5x) rate."""
+        monkeypatch.setattr("lmux_aws_bedrock.provider._today", lambda: date(2026, 9, 15))
+        mock_sync_client.converse.return_value = converse_response
+        result = sync_provider.chat("anthropic.claude-sonnet-5", [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(10 * 3.3 / 1_000_000)
 
 
 class TestChat:

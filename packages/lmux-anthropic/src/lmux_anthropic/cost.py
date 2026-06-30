@@ -9,12 +9,16 @@ and all later models (see VERTEX_REGIONAL_MULTIPLIER); older models are
 priced uniformly across all endpoints. Vertex pricing reference:
 https://cloud.google.com/vertex-ai/generative-ai/pricing
 
-Claude in Microsoft Foundry bills Anthropic's standard API pricing (Global
-Standard deployments only), so this table also covers
-AnthropicFoundryProvider with no multiplier.
+Claude in Microsoft Foundry bills Anthropic's standard API pricing, so this
+table also covers AnthropicFoundryProvider. Global Standard deployments use
+these list prices with no multiplier; Foundry's US Data Zone Standard
+deployment type (equivalent to inference_geo "us") applies the same 1.1x
+premium as US_INFERENCE_MULTIPLIER.
 """
 
-from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
+from datetime import date
+
+from lmux.cost import ModelPricing, PricingSchedule, PricingTier, calculate_cost, per_million_tokens
 from lmux.types import Cost, Usage
 
 # Standard (global) pricing. Cache writes default to the 5-minute rate (1.25x
@@ -41,6 +45,34 @@ _PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(1.00),
                 cache_creation_cost_per_token=per_million_tokens(12.50),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(20.00)},
+            ),
+        ],
+    ),
+    # Claude Sonnet 5 family — introductory pricing through 2026-08-31, then
+    # standard pricing (matching Sonnet 4.6) from 2026-09-01. Full 1M context
+    # at standard pricing, so there is no >200K tier.
+    "claude-sonnet-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.00)},
+            ),
+        ],
+        schedules=[
+            PricingSchedule(
+                valid_from=date(2026, 9, 1),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(3.00),
+                        output_cost_per_token=per_million_tokens(15.00),
+                        cache_read_cost_per_token=per_million_tokens(0.30),
+                        cache_creation_cost_per_token=per_million_tokens(3.75),
+                        cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(6.00)},
+                    ),
+                ],
             ),
         ],
     ),
@@ -258,6 +290,7 @@ _VERTEX_UNIFORM_PRICING_MODELS = (
 _VERTEX_PREMIUM_PRICING_MODELS = (
     "claude-fable-5",
     "claude-mythos-5",
+    "claude-sonnet-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
@@ -288,8 +321,13 @@ def has_vertex_regional_premium(model: str) -> bool:
     return True
 
 
-def calculate_anthropic_cost(model: str, usage: Usage) -> Cost | None:
-    """Calculate cost for an Anthropic API call. Returns None if model pricing is unknown."""
+def calculate_anthropic_cost(model: str, usage: Usage, as_of: date | None = None) -> Cost | None:
+    """Calculate cost for an Anthropic API call. Returns None if model pricing is unknown.
+
+    ``as_of`` selects dated pricing for models with scheduled rate changes
+    (e.g. Claude Sonnet 5's introductory period); it defaults to the latest
+    schedule. See ``lmux.cost.calculate_cost``.
+    """
     pricing = _PRICING.get(model)
     if pricing is None:
         for prefix, p in _PRICING_BY_PREFIX:
@@ -298,7 +336,7 @@ def calculate_anthropic_cost(model: str, usage: Usage) -> Cost | None:
                 break
     if pricing is None:
         return None
-    return calculate_cost(usage, pricing)
+    return calculate_cost(usage, pricing, as_of)
 
 
 def apply_cost_multiplier(cost: Cost, multiplier: float) -> Cost:

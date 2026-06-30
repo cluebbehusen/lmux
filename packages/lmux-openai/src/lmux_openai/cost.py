@@ -36,6 +36,17 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    # "cyber" tier is materially pricier than gpt-5.5, so it needs an explicit key
+    # (it would otherwise prefix-match gpt-5.5 and be under-priced).
+    "gpt-5.5-cyber": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(12.50),
+                output_cost_per_token=per_million_tokens(75.00),
+                cache_read_cost_per_token=per_million_tokens(1.25),
+            ),
+        ],
+    ),
     "gpt-5.4-pro": ModelPricing(
         tiers=[
             PricingTier(
