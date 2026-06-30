@@ -60,6 +60,14 @@ class TestCalculateGoogleCost:
         assert cost.input_cost == pytest.approx(1000 * 0.15 / 1_000_000)
         assert cost.output_cost == 0.0
 
+    def test_computer_use_long_context_tier(self) -> None:
+        """gemini-2.5-pro-computer-use-preview uses the >200K tier above 200K input tokens."""
+        usage = Usage(input_tokens=250_000, output_tokens=1000)
+        cost = calculate_google_cost("gemini-2.5-pro-computer-use-preview", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(250_000 * 2.50 / 1_000_000)
+        assert cost.output_cost == pytest.approx(1000 * 15.00 / 1_000_000)
+
     def test_zero_tokens(self) -> None:
         usage = Usage(input_tokens=0, output_tokens=0)
         cost = calculate_google_cost("gemini-2.0-flash", usage)
