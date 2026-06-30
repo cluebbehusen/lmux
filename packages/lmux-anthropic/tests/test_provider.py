@@ -228,6 +228,21 @@ class TestPricingAsOf:
         assert response.cost.input_cost == pytest.approx(1000 * 2.0 / 1_000_000)
         assert response.cost.output_cost == pytest.approx(500 * 10.0 / 1_000_000)
 
+    async def test_achat_applies_dated_pricing(
+        self,
+        async_provider: AnthropicProvider,
+        mock_async_client: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The async path resolves and applies the dated pricing date like the sync path."""
+        monkeypatch.setattr("lmux_anthropic.provider._today", lambda: date(2026, 7, 1))
+        mock_async_client.messages.create.return_value = _make_message_response(
+            model="claude-sonnet-5", input_tokens=1000, output_tokens=500
+        )
+        response = await async_provider.achat("claude-sonnet-5", [UserMessage(content="Hi")])
+        assert response.cost is not None
+        assert response.cost.input_cost == pytest.approx(1000 * 2.0 / 1_000_000)
+
 
 class TestChat:
     def test_basic_chat(

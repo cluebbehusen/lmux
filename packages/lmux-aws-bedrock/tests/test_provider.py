@@ -168,6 +168,20 @@ class TestPricingAsOf:
         # The override date lands in the intro window, so the introductory rate wins.
         assert result.cost.input_cost == pytest.approx(10 * 2.2 / 1_000_000)
 
+    def test_live_cost_uses_current_date_after_switch(
+        self,
+        sync_provider: BedrockProvider,
+        mock_sync_client: MagicMock,
+        converse_response: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """After 2026-09-01, the clock-resolved date bills the standard (1.5x) rate."""
+        monkeypatch.setattr("lmux_aws_bedrock.provider._today", lambda: date(2026, 9, 15))
+        mock_sync_client.converse.return_value = converse_response
+        result = sync_provider.chat("anthropic.claude-sonnet-5", [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(10 * 3.3 / 1_000_000)
+
 
 class TestChat:
     def test_basic_chat(
