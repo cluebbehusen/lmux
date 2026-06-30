@@ -15,7 +15,13 @@ from lmux.types import Cost, Usage
 # MARK: Deployment-type multipliers
 
 DATA_ZONE_MULTIPLIER = 1.1
-"""Data Zone deployments are consistently 1.1x global pricing across all models."""
+"""Commercial US/EU Data Zone Standard deployments are 1.1x global pricing.
+
+This holds uniformly across input, output, and cache for every model, and the
+US and EU Data Zone prices are identical. Non-commercial data zones are not
+modeled and run higher — the Asia-Pacific data zone is ~1.2x and the US
+Government sovereign cloud is ~1.375x; use ``register_pricing()`` for those.
+"""
 
 REGIONAL_MULTIPLIER = 1.1
 """Regional deployments are approximately 1.1x global pricing.
@@ -54,6 +60,22 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(0.40),
                 cache_read_cost_per_token=per_million_tokens(0.005),
             )
+        ],
+    ),
+    # --- OpenAI: GPT-5.5 family ---
+    "gpt-5.5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(45.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                min_input_tokens=272_000,
+            ),
         ],
     ),
     # --- OpenAI: GPT-5.4 family ---
@@ -390,6 +412,22 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "deepseek-v4-pro": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.74),
+                output_cost_per_token=per_million_tokens(3.48),
+            )
+        ],
+    ),
+    "deepseek-v4-flash": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.19),
+                output_cost_per_token=per_million_tokens(0.51),
+            )
+        ],
+    ),
     # --- xAI (Grok) ---
     "grok-3": ModelPricing(
         tiers=[
@@ -410,8 +448,16 @@ _PRICING: dict[str, ModelPricing] = {
     "grok-4.2": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(2.00),
-                output_cost_per_token=per_million_tokens(6.00),
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(2.50),
+            )
+        ],
+    ),
+    "grok-4.3": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(2.50),
             )
         ],
     ),

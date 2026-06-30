@@ -181,6 +181,11 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(1.25),
                 output_cost_per_token=per_million_tokens(10.00),
             ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(15.00),
+                min_input_tokens=200_000,
+            ),
         ],
     ),
     # ── Embedding models ───────────────────────────────────────
