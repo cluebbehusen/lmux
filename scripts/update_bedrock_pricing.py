@@ -44,6 +44,7 @@ LCTX_THRESHOLD = 200_000
 FM_SERVICENAME_MAP: dict[str, str] = {
     # Anthropic Claude
     "Claude Fable 5": "anthropic.claude-fable-5-v1",
+    "Claude Sonnet 5": "anthropic.claude-sonnet-5-v1",
     "Claude Opus 4.8": "anthropic.claude-opus-4-8-v1",
     "Claude Opus 4.7": "anthropic.claude-opus-4-7-v1",
     "Claude Opus 4.6": "anthropic.claude-opus-4-6-v1",
@@ -57,7 +58,10 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     "Claude 3.7 Sonnet": "anthropic.claude-3-7-sonnet-v1",
     "Claude 3.5 Sonnet v2": "anthropic.claude-3-5-sonnet-v2",
     "Claude 3.5 Sonnet": "anthropic.claude-3-5-sonnet-v1",
-    "Claude 3.5 Haiku": "anthropic.claude-3-5-haiku-v1",
+    # AWS delisted 3.5 Haiku from list_foundation_models, so the catalog resolver
+    # can no longer map a simplified key to the real dated ID. Hardcode the dated
+    # model ID directly so prefix matching still prices existing 3.5 Haiku calls.
+    "Claude 3.5 Haiku": "anthropic.claude-3-5-haiku-20241022-v1",
     "Claude 3 Opus": "anthropic.claude-3-opus-v1",
     "Claude 3 Sonnet": "anthropic.claude-3-sonnet-v1",
     "Claude 3 Haiku": "anthropic.claude-3-haiku-v1",
@@ -420,7 +424,12 @@ def fetch_pricing(service: str, region: str) -> dict[str, Any]:
 
 
 def parse_mantle_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
-    """Parse mantle entries from AmazonBedrock API. Prices are per 1K tokens."""
+    """Parse mantle entries from AmazonBedrock API.
+
+    Token prices are scaled to per-million based on each dimension's ``unit``
+    (usually ``1K tokens``, but AWS ships ``1M tokens`` for some models such as
+    xAI Grok).
+    """
     products = data.get("products", {})
     terms = data.get("terms", {}).get("OnDemand", {})
     result: dict[str, ModelPrices] = {}
@@ -438,12 +447,15 @@ def parse_mantle_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
         model_id = ut[prefix_end:mantle_idx]
         dimension_part = ut[mantle_idx + len("-mantle-") : -len("-standard")]
 
-        price = _get_price(sku, terms)
-        if price is None:
+        priced = _get_price_with_unit(sku, terms)
+        if priced is None:
             continue
+        price, unit = priced
 
-        # Prices are per 1K tokens -> multiply by 1000 to get per-M
-        price_per_m = price * 1000
+        price_per_m = _scale_to_per_million(price, unit)
+        if price_per_m is None:
+            _warn(f"Unrecognized price unit {unit!r} for {ut}; skipping dimension")
+            continue
 
         if model_id not in result:
             result[model_id] = ModelPrices()
@@ -453,9 +465,9 @@ def parse_mantle_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
             mp.input_cost = price_per_m
         elif dimension_part == "output-tokens":
             mp.output_cost = price_per_m
-        elif dimension_part == "cache-read-input-tokens":
+        elif dimension_part in ("cache-read-input-tokens", "cache-read-tokens"):
             mp.cache_read_cost = price_per_m
-        elif dimension_part == "cache-write-input-tokens":
+        elif dimension_part in ("cache-write-input-tokens", "cache-write-tokens"):
             mp.cache_write_cost = price_per_m
 
     # Remove models with incomplete pricing
@@ -563,11 +575,15 @@ def parse_amazon_models(data: dict[str, Any]) -> tuple[dict[str, ModelPrices], d
         if model_id is None:
             continue
 
-        price = _get_price(sku, terms)
-        if price is None:
+        priced = _get_price_with_unit(sku, terms)
+        if priced is None:
             continue
+        price, unit = priced
 
-        price_per_m = price * 1000  # per 1K tokens -> per-M
+        price_per_m = _scale_to_per_million(price, unit)
+        if price_per_m is None:
+            _warn(f"Unrecognized price unit {unit!r} for {ut}; skipping dimension")
+            continue
         collected.setdefault(model_id, {}).setdefault(dimension, {})[_is_global_usagetype(ut)] = price_per_m
 
     # Build result: separate default (non-global) and global pricing
@@ -1066,6 +1082,33 @@ def _get_price(sku: str, terms: dict[str, Any]) -> Decimal | None:
             usd = dim.get("pricePerUnit", {}).get("USD")
             if usd is not None:
                 return Decimal(usd)
+    return None
+
+
+def _get_price_with_unit(sku: str, terms: dict[str, Any]) -> tuple[Decimal, str] | None:
+    """Extract the USD price and its billing unit from OnDemand terms for a SKU."""
+    if sku not in terms:
+        return None
+    for offer in terms[sku].values():
+        for dim in offer.get("priceDimensions", {}).values():
+            usd = dim.get("pricePerUnit", {}).get("USD")
+            if usd is not None:
+                return Decimal(usd), dim.get("unit", "")
+    return None
+
+
+def _scale_to_per_million(price: Decimal, unit: str) -> Decimal | None:
+    """Scale a token price to per-million based on its AWS billing unit.
+
+    AWS labels token dimensions either ``1K tokens`` (the common case) or
+    ``1M tokens`` (e.g. xAI Grok). Returns None for an unrecognized unit so the
+    caller can skip the dimension rather than emit a 1000x-wrong price.
+    """
+    normalized = unit.strip().lower()
+    if normalized in ("1k tokens", "1000 tokens"):
+        return price * 1000
+    if normalized in ("1m tokens", "1000000 tokens"):
+        return price
     return None
 
 

@@ -487,6 +487,17 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "anthropic.claude-sonnet-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(11.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.4)},
+            ),
+        ],
+    ),
     "anthropic.claude-v2": ModelPricing(
         tiers=[
             PricingTier(
@@ -518,6 +529,17 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(15.0),
                 cache_read_cost_per_token=per_million_tokens(0.3),
                 cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+        ],
+    ),
+    "au.anthropic.claude-fable-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(11.0),
+                output_cost_per_token=per_million_tokens(55.0),
+                cache_read_cost_per_token=per_million_tokens(1.1),
+                cache_creation_cost_per_token=per_million_tokens(13.75),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(22.0)},
             ),
         ],
     ),
@@ -799,6 +821,17 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "global.anthropic.claude-sonnet-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(10.0),
+                cache_read_cost_per_token=per_million_tokens(0.2),
+                cache_creation_cost_per_token=per_million_tokens(2.5),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.0)},
+            ),
+        ],
+    ),
     "jp.anthropic.claude-haiku-4-5-20251001-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -854,16 +887,6 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
-    "us.anthropic.claude-3-5-haiku-20241022-v1": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(0.8),
-                output_cost_per_token=per_million_tokens(4.0),
-                cache_read_cost_per_token=per_million_tokens(0.08),
-                cache_creation_cost_per_token=per_million_tokens(1.0),
-            ),
-        ],
-    ),
     "us.anthropic.claude-3-haiku-20240307-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -877,6 +900,17 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(3.0),
                 output_cost_per_token=per_million_tokens(15.0),
+            ),
+        ],
+    ),
+    "us.anthropic.claude-fable-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(11.0),
+                output_cost_per_token=per_million_tokens(55.0),
+                cache_read_cost_per_token=per_million_tokens(1.1),
+                cache_creation_cost_per_token=per_million_tokens(13.75),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(22.0)},
             ),
         ],
     ),
@@ -974,6 +1008,17 @@ _PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.33),
                 cache_creation_cost_per_token=per_million_tokens(4.125),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(6.6)},
+            ),
+        ],
+    ),
+    "us.anthropic.claude-sonnet-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(11.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.4)},
             ),
         ],
     ),
@@ -1109,6 +1154,30 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     "google.gemma-3-4b-it": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.04),
+                output_cost_per_token=per_million_tokens(0.08),
+            ),
+        ],
+    ),
+    "google.gemma-4-26b-a4b": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.13),
+                output_cost_per_token=per_million_tokens(0.4),
+            ),
+        ],
+    ),
+    "google.gemma-4-31b": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.14),
+                output_cost_per_token=per_million_tokens(0.4),
+            ),
+        ],
+    ),
+    "google.gemma-4-e2b": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.04),
@@ -1642,6 +1711,16 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(1.0),
                 output_cost_per_token=per_million_tokens(3.2),
+            ),
+        ],
+    ),
+    # -- Other ---------------------------------------------------
+    "xai.grok-4.3": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(2.5),
+                cache_read_cost_per_token=per_million_tokens(0.2),
             ),
         ],
     ),
