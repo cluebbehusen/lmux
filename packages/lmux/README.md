@@ -16,8 +16,8 @@ You don't need to install this directly; provider packages (e.g., `lmux-openai`)
 
 ### Responses
 
-- `ChatResponse`: chat completion result with `content`, `usage`, `cost`, `model`, `provider`, `finish_reason`
-- `ChatChunk`: streaming chunk with `delta`, `tool_call_deltas`, `usage`, `cost`
+- `ChatResponse`: chat completion result with `content`, `usage`, `cost`, `model`, `provider`, `finish_reason`, and optional `provider_metadata` (a provider-specific `BaseProviderMetadata` subclass)
+- `ChatChunk`: streaming chunk with `delta`, `tool_call_deltas`, `usage`, `cost`, plus the serving `model`/`provider` stamped on the terminal chunk and optional `provider_metadata`
 - `EmbeddingResponse`: embedding result with `embeddings`, `usage`, `cost`
 - `ResponseResponse`: Responses API result with `output_text`, `usage`, `cost`
 
@@ -73,6 +73,8 @@ response = registry.chat("anthropic/claude-sonnet-4-20250514", messages)
 # Close all providers that implement AsyncCloseable
 await registry.aclose()
 ```
+
+`registry.registered_prefixes` returns a `frozenset` of the registered prefixes, useful for a composite provider that validates its delegation targets.
 
 ## Exceptions
 
