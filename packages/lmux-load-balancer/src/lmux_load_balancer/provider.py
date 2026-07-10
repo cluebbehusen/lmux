@@ -198,12 +198,11 @@ class LoadBalancerProvider:
                     raise
                 continue
             # Committed to this endpoint: failover cannot happen once output has started.
+            # Metadata rides the first chunk so it survives even a mid-stream failure; the rest pass
+            # through as-is, and a mid-stream error propagates after them without dropping any chunk.
             meta = LoadBalancerMetadata(primary=candidates[0], served=child, attempted=list(attempted))
-            previous = first
-            for chunk in stream:
-                yield previous
-                previous = chunk
-            yield previous.model_copy(update={"provider_metadata": meta})
+            yield first.model_copy(update={"provider_metadata": meta})
+            yield from stream
             return
         raise AssertionError  # pragma: no cover
 
@@ -249,11 +248,11 @@ class LoadBalancerProvider:
                     raise
                 continue
             # Committed to this endpoint: failover cannot happen once output has started.
+            # Metadata rides the first chunk so it survives even a mid-stream failure; the rest pass
+            # through as-is, and a mid-stream error propagates after them without dropping any chunk.
             meta = LoadBalancerMetadata(primary=candidates[0], served=child, attempted=list(attempted))
-            previous = first
+            yield first.model_copy(update={"provider_metadata": meta})
             async for chunk in stream:
-                yield previous
-                previous = chunk
-            yield previous.model_copy(update={"provider_metadata": meta})
+                yield chunk
             return
         raise AssertionError  # pragma: no cover

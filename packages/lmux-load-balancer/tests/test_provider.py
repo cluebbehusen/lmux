@@ -226,7 +226,7 @@ class TestFailoverModes:
 
 
 class TestChatStream:
-    def test_streams_and_stamps_terminal(self, chunks: list[ChatChunk]) -> None:
+    def test_streams_and_stamps_first(self, chunks: list[ChatChunk]) -> None:
         registry = Registry()
         registry.register("a", MockProvider(chat_stream_responses=[chunks]))
         registry.register("b", MockProvider(chat_stream_responses=[chunks]))
@@ -235,8 +235,8 @@ class TestChatStream:
         out = list(lb.chat_stream("m", _messages()))
 
         assert [c.delta for c in out] == ["he", "llo"]
-        assert out[0].provider_metadata is None
-        assert out[-1].provider_metadata == LoadBalancerMetadata(primary="a/x", served="a/x", attempted=["a/x"])
+        assert out[0].provider_metadata == LoadBalancerMetadata(primary="a/x", served="a/x", attempted=["a/x"])
+        assert out[-1].provider_metadata is None
 
     def test_single_chunk_gets_metadata(self) -> None:
         only = [ChatChunk(delta="x", usage=Usage(input_tokens=1, output_tokens=1))]
@@ -264,7 +264,7 @@ class TestChatStream:
 
         out = list(lb.chat_stream("m", _messages()))
 
-        assert out[-1].provider_metadata == LoadBalancerMetadata(primary="a/x", served="b/x", attempted=["a/x", "b/x"])
+        assert out[0].provider_metadata == LoadBalancerMetadata(primary="a/x", served="b/x", attempted=["a/x", "b/x"])
 
     def test_non_retryable_propagates(self) -> None:
         registry = Registry()
@@ -289,7 +289,7 @@ class TestChatStream:
 
 
 class TestAchatStream:
-    async def test_streams_and_stamps_terminal(self, chunks: list[ChatChunk]) -> None:
+    async def test_streams_and_stamps_first(self, chunks: list[ChatChunk]) -> None:
         registry = Registry()
         registry.register("a", MockProvider(chat_stream_responses=[chunks]))
         registry.register("b", MockProvider(chat_stream_responses=[chunks]))
@@ -298,7 +298,7 @@ class TestAchatStream:
         out = [chunk async for chunk in lb.achat_stream("m", _messages())]
 
         assert [c.delta for c in out] == ["he", "llo"]
-        assert out[-1].provider_metadata == LoadBalancerMetadata(primary="a/x", served="a/x", attempted=["a/x"])
+        assert out[0].provider_metadata == LoadBalancerMetadata(primary="a/x", served="a/x", attempted=["a/x"])
 
     async def test_single_chunk_gets_metadata(self) -> None:
         only = [ChatChunk(delta="x", usage=Usage(input_tokens=1, output_tokens=1))]
@@ -326,7 +326,7 @@ class TestAchatStream:
 
         out = [chunk async for chunk in lb.achat_stream("m", _messages())]
 
-        assert out[-1].provider_metadata == LoadBalancerMetadata(primary="a/x", served="b/x", attempted=["a/x", "b/x"])
+        assert out[0].provider_metadata == LoadBalancerMetadata(primary="a/x", served="b/x", attempted=["a/x", "b/x"])
 
     async def test_non_retryable_propagates(self) -> None:
         registry = Registry()
