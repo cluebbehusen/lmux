@@ -8,6 +8,59 @@ from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
     # GPT-5 family
+    # gpt-5.6 family (sol/terra/luna). Cache writes are billed on gpt-5.6+ only,
+    # at a flat 1.25x the input rate (no per-TTL split), via cache_creation_cost_per_token.
+    "gpt-5.6-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(45.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-5.6-terra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.25),
+                cache_creation_cost_per_token=per_million_tokens(3.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(22.50),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-5.6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.00),
+                output_cost_per_token=per_million_tokens(6.00),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+                cache_creation_cost_per_token=per_million_tokens(1.25),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(9.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
     "gpt-5.5-pro": ModelPricing(
         tiers=[
             PricingTier(
@@ -422,10 +475,10 @@ _PRICING: dict[str, ModelPricing] = {
 _PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
 
 # 10% uplift for regional processing (data residency) endpoints. Per OpenAI, this
-# applies to the gpt-5.4 family (gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-pro)
-# and the gpt-5.5 family (gpt-5.5, gpt-5.5-pro).
+# applies to the gpt-5.4 family (gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-pro),
+# the gpt-5.5 family (gpt-5.5, gpt-5.5-pro), and the gpt-5.6 family (sol/terra/luna).
 REGIONAL_UPLIFT = 1.1
-_REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4", "gpt-5.5")
+_REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4", "gpt-5.5", "gpt-5.6")
 
 
 def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:

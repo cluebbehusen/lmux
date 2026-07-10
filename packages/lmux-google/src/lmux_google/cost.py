@@ -35,6 +35,8 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    # Deprecated: gemini-3-pro-preview was shut down 2026-03-09, superseded by
+    # gemini-3.1-pro-preview above. Kept for historical cost lookups.
     "gemini-3-pro-preview": ModelPricing(
         tiers=[
             PricingTier(
@@ -64,6 +66,15 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.50),
                 output_cost_per_token=per_million_tokens(3.00),
+            ),
+        ],
+    ),
+    # Text I/O rates only; image-output tokens are billed separately and not modeled.
+    "gemini-3.1-flash-lite-image-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.25),
+                output_cost_per_token=per_million_tokens(1.50),
             ),
         ],
     ),

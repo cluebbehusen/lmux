@@ -32,3 +32,6 @@ Thumbs.db
 tmp/
 
 PLANNING.md
+
+# playwright-cli session scratch
+.playwright-cli/

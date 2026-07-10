@@ -39,7 +39,7 @@ class TestCalculateAzureFoundryCost:
         usage = Usage(input_tokens=100, output_tokens=0)
         cost = calculate_azure_foundry_cost("text-embedding-3-small", usage)
         assert cost is not None
-        assert cost.input_cost == pytest.approx(100 * 0.022 / 1_000_000)
+        assert cost.input_cost == pytest.approx(100 * 0.02 / 1_000_000)
         assert cost.output_cost == 0.0
 
     def test_zero_tokens(self) -> None:

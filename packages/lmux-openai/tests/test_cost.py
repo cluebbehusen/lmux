@@ -73,6 +73,40 @@ class TestCalculateOpenAICost:
         assert cyber.output_cost == pytest.approx(500 * 75.00 / 1_000_000)
         assert cyber.input_cost > base.input_cost
 
+    @pytest.mark.parametrize(
+        ("model", "input_rate", "output_rate", "cache_read_rate", "cache_write_rate"),
+        [
+            ("gpt-5.6-sol", 5.00, 30.00, 0.50, 6.25),
+            ("gpt-5.6-terra", 2.50, 15.00, 0.25, 3.125),
+            ("gpt-5.6-luna", 1.00, 6.00, 0.10, 1.25),
+        ],
+    )
+    def test_gpt_5_6_family_base_pricing(
+        self,
+        model: str,
+        input_rate: float,
+        output_rate: float,
+        cache_read_rate: float,
+        cache_write_rate: float,
+    ) -> None:
+        # gpt-5.6 bills cache writes (1.25x input) on top of the read discount.
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=100, cache_creation_tokens=200)
+        cost = calculate_openai_cost(model, usage)
+        assert cost is not None
+        billable = 1000 - 100 - 200
+        assert cost.input_cost == pytest.approx(billable * input_rate / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * output_rate / 1_000_000)
+        assert cost.cache_read_cost == pytest.approx(100 * cache_read_rate / 1_000_000)
+        assert cost.cache_creation_cost == pytest.approx(200 * cache_write_rate / 1_000_000)
+
+    def test_gpt_5_6_long_context_tier(self) -> None:
+        # Above 272k input tokens gpt-5.6-sol switches to the long-context tier (10.00 / 45.00).
+        usage = Usage(input_tokens=300_000, output_tokens=1000)
+        cost = calculate_openai_cost("gpt-5.6-sol", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(300_000 * 10.00 / 1_000_000)
+        assert cost.output_cost == pytest.approx(1000 * 45.00 / 1_000_000)
+
 
 class TestRegionalUpliftApplies:
     @pytest.mark.parametrize(
@@ -80,6 +114,10 @@ class TestRegionalUpliftApplies:
         ["gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.4-pro", "gpt-5.4-2025-11-01"],
     )
     def test_applies_to_gpt_5_4_family(self, model: str) -> None:
+        assert regional_uplift_applies(model) is True
+
+    @pytest.mark.parametrize("model", ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"])
+    def test_applies_to_gpt_5_6_family(self, model: str) -> None:
         assert regional_uplift_applies(model) is True
 
     @pytest.mark.parametrize(
