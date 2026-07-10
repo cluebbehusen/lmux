@@ -122,6 +122,50 @@ anchors (e.g., `id="partner-models"`, `id="embedding-models"`) first.
 
 ---
 
+## JavaScript-rendered pages (Playwright CLI)
+
+Some pricing pages (notably **Azure**, and the `openai.com/api/pricing` shell)
+render prices client-side, so `WebFetch` and `curl` return an empty shell with
+**no numbers** — the point where a subagent otherwise falls back to unreliable
+third-party aggregators. Such pages also often **hide rows behind UI toggles**
+(e.g. OpenAI's Short/Long-context switch, or Standard/Batch/Priority service-tier
+tabs). When curl/WebFetch yield no prices — or an obviously incomplete subset —
+escalate to a real browser via the **Playwright CLI**, if available.
+
+Check availability first: `playwright-cli --version` (or `npx --no-install
+playwright cli --version`). If neither works, note it in Caveats and treat any
+aggregator figures as low-confidence.
+
+Prefer **structured data over scraping pixels**, in this order:
+
+1. **A first-party pricing API**, if the provider has one — the most reliable
+   source, no browser needed. Azure exposes the unauthenticated **Azure Retail
+   Prices API** (see the `azure-foundry` provider notes).
+2. **The page's own JSON.** Many docs sites embed pricing in a `<script>` blob or
+   fetch it via XHR. With the page open, `playwright-cli requests` lists network
+   calls — capture the pricing JSON directly rather than reading the DOM.
+3. **The rendered DOM, extracted as data.** Open the page, reveal any hidden rows
+   (click context-length / service-tier toggles), then pull whole tables as JSON:
+
+   ```bash
+   playwright-cli open '<pricing_url>'
+   # click any toggle that reveals more columns/rows first, e.g.:
+   #   playwright-cli find "Long context"; playwright-cli click <ref>
+   playwright-cli --raw eval "JSON.stringify([...document.querySelectorAll('table')].map(t=>({head:[...t.querySelectorAll('tr:first-child th')].map(c=>c.textContent.trim()),rows:[...t.querySelectorAll('tbody tr')].map(r=>[...r.querySelectorAll('th,td')].map(c=>c.textContent.trim()))})))" > tables.json
+   playwright-cli close
+   ```
+
+   Watch for **multi-level headers** — e.g. OpenAI's `Short context` / `Long
+   context` bands each span their own Input/Cached/Cache-write/Output columns, so
+   one row carries both the base tier and the `>272k` tier. And there are usually
+   **separate Standard / Batch / Priority tables**; only the **Standard on-demand**
+   table maps to `cost.py`.
+
+Note: `playwright-cli --raw eval` may **double-encode** JSON (returns a quoted
+string). If `json.loads(...)` yields a `str`, decode it a second time.
+
+---
+
 ## Provider-specific instructions
 
 ### aws-bedrock
@@ -143,6 +187,35 @@ AWS Pricing API — do NOT scrape pricing pages. Instead:
 
 If updates are approved (Step 5), add any missing `FM_SERVICENAME_MAP`
 entries, then regenerate with `--write` rather than hand-editing `cost.py`.
+
+### azure-foundry
+
+Azure's pricing pages are heavily JavaScript-rendered — `WebFetch`/`curl` return
+an empty shell. Do **NOT** rely on third-party aggregators (they frequently
+transpose input/output or conflate SKU versions). Use Azure's first-party sources:
+
+1. **Azure Retail Prices API** (no auth, authoritative) — the best source for
+   exact per-token meters. Filter by OData; page through with `$top`:
+
+   ```bash
+   curl -s "https://prices.azure.com/api/retail/prices?\$filter=contains(meterName,'embedding')&\$top=1000"
+   ```
+
+   `cost.py` stores the **Global Standard** base rate — the `-glbl` meters (e.g.
+   `text-embedding-3-large-glbl`). The `-regnl` and `-Dzone` meters are the +10%
+   regional / data-zone variants already applied separately via the
+   `REGIONAL_MULTIPLIER` / `DATA_ZONE_MULTIPLIER` constants, so do NOT bake that
+   premium into the base — a base priced at 1.1× the `-glbl` rate is a
+   double-counting bug. (Some models live under a `Managed Model Hosting Service`
+   product rather than `Azure Llama Models`; match by the model name in
+   `meterName`, not the product.)
+2. **Playwright CLI** to render the DeepSeek / Llama / Grok / Mistral Foundry
+   pricing tables when you need the on-page layout — see "JavaScript-rendered
+   pages (Playwright CLI)".
+3. **Microsoft Learn** for lifecycle — check the **Retired Foundry Models** and
+   model-retirement-schedule pages to catch models that should be *removed* from
+   `cost.py`. Absence from the pricing catalog alone is NOT proof of retirement;
+   the retired-models page is.
 
 ### anthropic
 
@@ -179,9 +252,12 @@ You are a pricing validation subagent for the **{provider}** provider.
    - If the page fails to load or returns an error, note this in the Caveats
      section and set the report status to `FETCH_FAILED`. List all models from
      cost.py as "unverifiable".
-   - If the page loads but pricing data is incomplete or hard to parse (e.g.,
-     requires JavaScript rendering), note this in Caveats and set status to
-     `PARTIAL_VERIFICATION`.
+   - If the page is JavaScript-rendered and curl/WebFetch return no prices (or an
+     incomplete subset), do NOT jump to third-party aggregators. First escalate
+     to a first-party pricing API and/or the **Playwright CLI** — see
+     "JavaScript-rendered pages (Playwright CLI)". Only if all first-party routes
+     fail, fall back to aggregators, mark those figures low-confidence in Caveats,
+     and set status to `PARTIAL_VERIFICATION`.
 3. For each model in `_PRICING`:
    - Find the corresponding model on the pricing page
    - Compare: input cost, output cost, cache read cost, cache creation cost

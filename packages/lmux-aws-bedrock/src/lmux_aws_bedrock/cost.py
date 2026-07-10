@@ -393,6 +393,17 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "anthropic.claude-mythos-5-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(11.0),
+                output_cost_per_token=per_million_tokens(55.0),
+                cache_read_cost_per_token=per_million_tokens(1.1),
+                cache_creation_cost_per_token=per_million_tokens(13.75),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(22.0)},
+            ),
+        ],
+    ),
     "anthropic.claude-opus-4-1-20250805-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -548,17 +559,6 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
-    "au.anthropic.claude-fable-5": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(11.0),
-                output_cost_per_token=per_million_tokens(55.0),
-                cache_read_cost_per_token=per_million_tokens(1.1),
-                cache_creation_cost_per_token=per_million_tokens(13.75),
-                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(22.0)},
-            ),
-        ],
-    ),
     "au.anthropic.claude-haiku-4-5-20251001-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -638,17 +638,6 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(3.0),
                 output_cost_per_token=per_million_tokens(15.0),
-            ),
-        ],
-    ),
-    "eu.anthropic.claude-fable-5": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(11.0),
-                output_cost_per_token=per_million_tokens(55.0),
-                cache_read_cost_per_token=per_million_tokens(1.1),
-                cache_creation_cost_per_token=per_million_tokens(13.75),
-                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(22.0)},
             ),
         ],
     ),
@@ -736,6 +725,31 @@ _PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.33),
                 cache_creation_cost_per_token=per_million_tokens(4.125),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(6.6)},
+            ),
+        ],
+    ),
+    "eu.anthropic.claude-sonnet-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(11.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.4)},
+            ),
+        ],
+        schedules=[
+            PricingSchedule(
+                valid_from=date(2026, 9, 1),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(3.3),
+                        output_cost_per_token=per_million_tokens(16.5),
+                        cache_read_cost_per_token=per_million_tokens(0.33),
+                        cache_creation_cost_per_token=per_million_tokens(4.125),
+                        cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(6.6)},
+                    ),
+                ],
             ),
         ],
     ),
@@ -1448,6 +1462,14 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # -- Mistral (via Bedrock) -----------------------------------
+    "eu.mistral.pixtral-large-2502-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(6.0),
+            ),
+        ],
+    ),
     "mistral.devstral-2-123b": ModelPricing(
         tiers=[
             PricingTier(
@@ -1528,6 +1550,14 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "mistral.pixtral-large-2502-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(6.0),
+            ),
+        ],
+    ),
     "mistral.voxtral-mini-3b-2507": ModelPricing(
         tiers=[
             PricingTier(
@@ -1541,6 +1571,14 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.1),
                 output_cost_per_token=per_million_tokens(0.3),
+            ),
+        ],
+    ),
+    "us.mistral.pixtral-large-2502-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(6.0),
             ),
         ],
     ),

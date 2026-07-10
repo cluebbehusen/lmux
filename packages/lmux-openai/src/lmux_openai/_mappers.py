@@ -219,6 +219,11 @@ def _map_completion_usage(completion: "ChatCompletion") -> Usage | None:
     if oai_usage.prompt_tokens_details and oai_usage.prompt_tokens_details.cached_tokens:
         cache_read = oai_usage.prompt_tokens_details.cached_tokens
 
+    # gpt-5.6+ bills cache writes; older models report no cache_write_tokens (writes free).
+    cache_write = None
+    if oai_usage.prompt_tokens_details and oai_usage.prompt_tokens_details.cache_write_tokens:
+        cache_write = oai_usage.prompt_tokens_details.cache_write_tokens
+
     reasoning_tokens = None
     if oai_usage.completion_tokens_details and oai_usage.completion_tokens_details.reasoning_tokens:
         reasoning_tokens = oai_usage.completion_tokens_details.reasoning_tokens
@@ -227,6 +232,7 @@ def _map_completion_usage(completion: "ChatCompletion") -> Usage | None:
         input_tokens=oai_usage.prompt_tokens,
         output_tokens=oai_usage.completion_tokens,
         cache_read_tokens=cache_read,
+        cache_creation_tokens=cache_write,
         reasoning_tokens=reasoning_tokens,
     )
 
@@ -265,6 +271,9 @@ def map_chat_chunk(chunk: "ChatCompletionChunk", provider_name: str) -> ChatChun
         cache_read = None
         if chunk.usage.prompt_tokens_details and chunk.usage.prompt_tokens_details.cached_tokens:
             cache_read = chunk.usage.prompt_tokens_details.cached_tokens
+        cache_write = None
+        if chunk.usage.prompt_tokens_details and chunk.usage.prompt_tokens_details.cache_write_tokens:
+            cache_write = chunk.usage.prompt_tokens_details.cache_write_tokens
         reasoning_tokens = None
         if chunk.usage.completion_tokens_details and chunk.usage.completion_tokens_details.reasoning_tokens:
             reasoning_tokens = chunk.usage.completion_tokens_details.reasoning_tokens
@@ -272,6 +281,7 @@ def map_chat_chunk(chunk: "ChatCompletionChunk", provider_name: str) -> ChatChun
             input_tokens=chunk.usage.prompt_tokens,
             output_tokens=chunk.usage.completion_tokens,
             cache_read_tokens=cache_read,
+            cache_creation_tokens=cache_write,
             reasoning_tokens=reasoning_tokens,
         )
 
@@ -319,6 +329,9 @@ def map_responses_response(
         cache_read: int | None = None
         if usage_data.input_tokens_details and usage_data.input_tokens_details.cached_tokens:
             cache_read = usage_data.input_tokens_details.cached_tokens
+        cache_write: int | None = None
+        if usage_data.input_tokens_details and usage_data.input_tokens_details.cache_write_tokens:
+            cache_write = usage_data.input_tokens_details.cache_write_tokens
         reasoning_tokens: int | None = None
         if usage_data.output_tokens_details and usage_data.output_tokens_details.reasoning_tokens:
             reasoning_tokens = usage_data.output_tokens_details.reasoning_tokens
@@ -326,6 +339,7 @@ def map_responses_response(
             input_tokens=usage_data.input_tokens,
             output_tokens=usage_data.output_tokens,
             cache_read_tokens=cache_read,
+            cache_creation_tokens=cache_write,
             reasoning_tokens=reasoning_tokens,
         )
 

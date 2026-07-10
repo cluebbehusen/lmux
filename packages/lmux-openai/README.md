@@ -107,7 +107,7 @@ OpenAIProvider(
 
 ### Data Residency
 
-OpenAI charges a 10% uplift on the `gpt-5.4` family (`gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.4-pro`) when requests go through a [regional processing (data residency) endpoint](https://developers.openai.com/api/docs/guides/your-data).
+OpenAI charges a 10% uplift on the `gpt-5.4`, `gpt-5.5`, and `gpt-5.6` families when requests go through a [regional processing (data residency) endpoint](https://developers.openai.com/api/docs/guides/your-data).
 
 Data residency is selected at the _transport_ layer (regional hostname like `eu.api.openai.com`), not via a per-request parameter. Set `data_residency=True` on the provider so lmux applies the uplift to the reported cost.
 

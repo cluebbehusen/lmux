@@ -45,6 +45,7 @@ LCTX_THRESHOLD = 200_000
 FM_SERVICENAME_MAP: dict[str, str] = {
     # Anthropic Claude
     "Claude Fable 5": "anthropic.claude-fable-5-v1",
+    "Claude Mythos 5": "anthropic.claude-mythos-5-v1",
     "Claude Sonnet 5": "anthropic.claude-sonnet-5-v1",
     "Claude Opus 4.8": "anthropic.claude-opus-4-8-v1",
     "Claude Opus 4.7": "anthropic.claude-opus-4-7-v1",
@@ -121,6 +122,7 @@ NON_MANTLE_MODEL_MAP: dict[str, str] = {
     "Mistral Large": "mistral.mistral-large-2402-v1",
     "Mistral Small": "mistral.mistral-small-2402-v1",
     "Mistral Large 3": "mistral.mistral-large-3-675b-instruct",
+    "Pixtral Large 25.02": "mistral.pixtral-large-2502",
     # Nvidia
     "NVIDIA Nemotron Nano 2 VL": "nvidia.nemotron-nano-12b-v2-vl",
 }

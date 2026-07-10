@@ -324,6 +324,31 @@ class TestMapChatCompletion:
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
 
+    def test_with_cache_write_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        completion = ChatCompletion(
+            id="chatcmpl-123",
+            choices=[
+                Choice(
+                    finish_reason="stop",
+                    index=0,
+                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
+                )
+            ],
+            created=1234567890,
+            model="gpt-5.6-sol",
+            object="chat.completion",
+            usage=CompletionUsage(
+                prompt_tokens=10,
+                completion_tokens=5,
+                total_tokens=15,
+                prompt_tokens_details=PromptTokensDetails(cached_tokens=2, cache_write_tokens=6),
+            ),
+        )
+        result = map_chat_completion(completion, "openai", noop_cost_fn)
+        assert result.usage is not None
+        assert result.usage.cache_read_tokens == 2
+        assert result.usage.cache_creation_tokens == 6
+
     def test_with_reasoning_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         completion = ChatCompletion(
             id="chatcmpl-123",
@@ -479,6 +504,25 @@ class TestMapChatChunk:
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 3
 
+    def test_usage_chunk_with_cache_write(self) -> None:
+        chunk = ChatCompletionChunk(
+            id="chatcmpl-123",
+            choices=[],
+            created=1234567890,
+            model="gpt-5.6-sol",
+            object="chat.completion.chunk",
+            usage=CompletionUsage(
+                prompt_tokens=10,
+                completion_tokens=5,
+                total_tokens=15,
+                prompt_tokens_details=PromptTokensDetails(cached_tokens=1, cache_write_tokens=4),
+            ),
+        )
+        result = map_chat_chunk(chunk, "openai")
+        assert result.usage is not None
+        assert result.usage.cache_read_tokens == 1
+        assert result.usage.cache_creation_tokens == 4
+
     def test_usage_chunk_with_reasoning_tokens(self) -> None:
         chunk = ChatCompletionChunk(
             id="chatcmpl-123",
@@ -569,6 +613,21 @@ class TestMapResponsesResponse:
         result = map_responses_response(mock, "openai", noop_cost_fn)
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
+
+    def test_with_cache_write_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        mock = MagicMock()
+        mock.id = "resp_123"
+        mock.output_text = "Hello!"
+        mock.model = "gpt-5.6-sol"
+        mock.usage.input_tokens = 10
+        mock.usage.output_tokens = 5
+        mock.usage.input_tokens_details.cached_tokens = 2
+        mock.usage.input_tokens_details.cache_write_tokens = 6
+        mock.usage.output_tokens_details = None
+        result = map_responses_response(mock, "openai", noop_cost_fn)
+        assert result.usage is not None
+        assert result.usage.cache_read_tokens == 2
+        assert result.usage.cache_creation_tokens == 6
 
     def test_with_reasoning_tokens(self, responses_mock: MagicMock, noop_cost_fn: Any) -> None:  # noqa: ANN401
         responses_mock.usage.output_tokens_details = MagicMock(reasoning_tokens=4)

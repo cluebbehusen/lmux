@@ -145,6 +145,8 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # --- OpenAI: GPT-4.5 ---
+    # Deprecated: gpt-4.5-preview was retired on Azure 2025-07-14 (replaced by gpt-4.1).
+    # Kept for historical cost lookups.
     "gpt-4.5": ModelPricing(
         tiers=[
             PricingTier(
@@ -362,14 +364,16 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # --- OpenAI: Embedding models ---
+    # Global Standard rates (OpenAI parity); the +10% data-zone/regional premium is
+    # applied via DATA_ZONE_MULTIPLIER / REGIONAL_MULTIPLIER, not baked into the base.
     "text-embedding-3-small": ModelPricing(
-        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.022), output_cost_per_token=0.0)]
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.02), output_cost_per_token=0.0)]
     ),
     "text-embedding-3-large": ModelPricing(
-        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.143), output_cost_per_token=0.0)]
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.13), output_cost_per_token=0.0)]
     ),
     "text-embedding-ada-002": ModelPricing(
-        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.11), output_cost_per_token=0.0)]
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.10), output_cost_per_token=0.0)]
     ),
     # --- DeepSeek ---
     "deepseek-r1": ModelPricing(
