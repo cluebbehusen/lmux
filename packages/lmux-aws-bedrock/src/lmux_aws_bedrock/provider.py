@@ -225,7 +225,13 @@ class BedrockProvider(
                 chunk = map_stream_event(event)
                 if chunk is not None:
                     if chunk.usage is not None:
-                        chunk = chunk.model_copy(update={"cost": self._calculate_cost(model, chunk.usage, as_of)})
+                        chunk = chunk.model_copy(
+                            update={
+                                "cost": self._calculate_cost(model, chunk.usage, as_of),
+                                "model": model,
+                                "provider": PROVIDER_NAME,
+                            }
+                        )
                     yield chunk
         except Exception as e:
             raise map_bedrock_error(e) from e
@@ -268,7 +274,13 @@ class BedrockProvider(
                     chunk = map_stream_event(event)
                     if chunk is not None:
                         if chunk.usage is not None:
-                            chunk = chunk.model_copy(update={"cost": self._calculate_cost(model, chunk.usage, as_of)})
+                            chunk = chunk.model_copy(
+                                update={
+                                    "cost": self._calculate_cost(model, chunk.usage, as_of),
+                                    "model": model,
+                                    "provider": PROVIDER_NAME,
+                                }
+                            )
                         yield chunk
         except Exception as e:
             raise map_bedrock_error(e) from e

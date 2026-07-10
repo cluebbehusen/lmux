@@ -227,7 +227,7 @@ def _map_completion_usage(completion: "ChatCompletion") -> Usage | None:
     )
 
 
-def map_chat_chunk(chunk: "ChatCompletionChunk") -> ChatChunk:
+def map_chat_chunk(chunk: "ChatCompletionChunk", provider_name: str) -> ChatChunk:
     """Convert an OpenAI ChatCompletionChunk to an lmux ChatChunk."""
     delta_text: str | None = None
     reasoning_delta: str | None = None
@@ -278,6 +278,7 @@ def map_chat_chunk(chunk: "ChatCompletionChunk") -> ChatChunk:
         usage=usage,
         finish_reason=finish_reason,
         model=chunk.model,
+        provider=provider_name,
     )
 
 

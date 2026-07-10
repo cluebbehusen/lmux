@@ -237,7 +237,7 @@ class GoogleProvider(
 
         try:
             for chunk in stream:
-                mapped = map_generate_content_chunk(chunk, model)
+                mapped = map_generate_content_chunk(chunk, model, PROVIDER_NAME)
                 if mapped.usage is not None:
                     mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
                 yield mapped
@@ -281,7 +281,7 @@ class GoogleProvider(
                 config=config,  # pyright: ignore[reportArgumentType]
             )
             async for chunk in await stream:
-                mapped = map_generate_content_chunk(chunk, model)
+                mapped = map_generate_content_chunk(chunk, model, PROVIDER_NAME)
                 if mapped.usage is not None:
                     mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
                 yield mapped

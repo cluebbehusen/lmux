@@ -548,6 +548,20 @@ class TestChatStream:
         assert chunks[2].cost is not None
         assert chunks[2].cost.total_cost > 0
 
+    def test_stamps_provider_on_final_chunk(
+        self,
+        sync_provider: OpenAIProvider,
+        mock_sync_client: MagicMock,
+        stream_chunks: list[ChatCompletionChunk],
+    ) -> None:
+        mock_sync_client.chat.completions.create.return_value = iter(stream_chunks)
+
+        chunks = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
+
+        assert chunks[-1].usage is not None
+        assert chunks[-1].provider == "openai"
+        assert chunks[-1].model == "gpt-4o"
+
     def test_stream_exception_on_create(
         self, sync_provider: OpenAIProvider, mock_sync_client: MagicMock, server_error: openai.InternalServerError
     ) -> None:
@@ -612,6 +626,24 @@ class TestAchatStream:
         assert chunks[0].delta == "Hel"
         assert chunks[2].finish_reason == "stop"
         assert chunks[2].cost is not None
+
+    async def test_stamps_provider_on_final_chunk(
+        self,
+        async_provider: OpenAIProvider,
+        mock_async_client: MagicMock,
+        stream_chunks: list[ChatCompletionChunk],
+    ) -> None:
+        async def _async_iter() -> Any:  # noqa: ANN401
+            for chunk in stream_chunks:
+                yield chunk
+
+        mock_async_client.chat.completions.create.return_value = _async_iter()
+
+        chunks = [chunk async for chunk in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")])]
+
+        assert chunks[-1].usage is not None
+        assert chunks[-1].provider == "openai"
+        assert chunks[-1].model == "gpt-4o"
 
     async def test_exception_on_create(
         self, async_provider: OpenAIProvider, mock_async_client: MagicMock, server_error: openai.InternalServerError

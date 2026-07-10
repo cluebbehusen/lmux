@@ -268,10 +268,11 @@ class AnthropicProvider(
 
         as_of = self._resolve_pricing_as_of(provider_params)
         start_usage: Usage | None = None
+        start_model: str = model
         try:
             for event in stream:
                 if event.type == "message_start":
-                    start_usage = map_message_start(event)
+                    start_model, start_usage = map_message_start(event)
                     continue
                 if event.type == "content_block_start":
                     chunk = map_content_block_start(event)
@@ -285,9 +286,9 @@ class AnthropicProvider(
                     continue
                 if event.type == "message_delta" and start_usage is not None:
                     chunk = map_message_delta(event, start_usage)
-                    cost = self._calculate_cost(model, chunk.usage, as_of) if chunk.usage else None
-                    cost = self._apply_cost_multipliers(cost, model, provider_params)
-                    yield chunk.model_copy(update={"cost": cost})
+                    cost = self._calculate_cost(start_model, chunk.usage, as_of) if chunk.usage else None
+                    cost = self._apply_cost_multipliers(cost, start_model, provider_params)
+                    yield chunk.model_copy(update={"cost": cost, "model": start_model, "provider": self._provider_name})
                     continue
         except Exception as e:
             raise map_anthropic_error(e, self._provider_name) from e
@@ -329,10 +330,11 @@ class AnthropicProvider(
 
         as_of = self._resolve_pricing_as_of(provider_params)
         start_usage: Usage | None = None
+        start_model: str = model
         try:
             async for event in stream:
                 if event.type == "message_start":
-                    start_usage = map_message_start(event)
+                    start_model, start_usage = map_message_start(event)
                     continue
                 if event.type == "content_block_start":
                     chunk = map_content_block_start(event)
@@ -346,9 +348,9 @@ class AnthropicProvider(
                     continue
                 if event.type == "message_delta" and start_usage is not None:
                     chunk = map_message_delta(event, start_usage)
-                    cost = self._calculate_cost(model, chunk.usage, as_of) if chunk.usage else None
-                    cost = self._apply_cost_multipliers(cost, model, provider_params)
-                    yield chunk.model_copy(update={"cost": cost})
+                    cost = self._calculate_cost(start_model, chunk.usage, as_of) if chunk.usage else None
+                    cost = self._apply_cost_multipliers(cost, start_model, provider_params)
+                    yield chunk.model_copy(update={"cost": cost, "model": start_model, "provider": self._provider_name})
                     continue
         except Exception as e:
             raise map_anthropic_error(e, self._provider_name) from e

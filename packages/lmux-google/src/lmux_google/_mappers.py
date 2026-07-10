@@ -283,6 +283,7 @@ def map_generate_content_response(
 def map_generate_content_chunk(  # noqa: PLR0912
     chunk: "GenerateContentResponse",
     model: str,
+    provider_name: str,
 ) -> ChatChunk:
     """Convert a streaming chunk to lmux ChatChunk."""
     delta: str | None = None
@@ -359,6 +360,7 @@ def map_generate_content_chunk(  # noqa: PLR0912
         usage=usage,
         finish_reason=finish_reason,
         model=model,
+        provider=provider_name,
     )
 
 

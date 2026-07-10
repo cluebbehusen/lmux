@@ -63,6 +63,15 @@ class Registry:
         self._providers[prefix] = provider
         self._default_params[prefix] = default_params
 
+    @property
+    def registered_prefixes(self) -> frozenset[str]:
+        """The set of prefixes currently registered.
+
+        Useful for a composite provider that delegates to other registered
+        providers by model string and wants to validate its targets up front.
+        """
+        return frozenset(self._providers)
+
     def _resolve(self, model: str) -> tuple[Provider, str, str]:
         parts = model.split("/", maxsplit=1)
         if len(parts) != 2:  # noqa: PLR2004

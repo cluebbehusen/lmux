@@ -548,3 +548,14 @@ class TestProviderParamsResolution:
         reg.register("rec", prov)
         _ = reg.chat("rec/model", [UserMessage(content="Hi")])
         assert prov.last_params is None
+
+
+class TestRegisteredPrefixes:
+    def test_empty_registry(self) -> None:
+        assert Registry().registered_prefixes == frozenset()
+
+    def test_reflects_registered_providers(self) -> None:
+        reg = Registry()
+        reg.register("mock", MockProvider())
+        reg.register("other", MockProvider())
+        assert reg.registered_prefixes == frozenset({"mock", "other"})

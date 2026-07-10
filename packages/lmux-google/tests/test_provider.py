@@ -376,6 +376,10 @@ class TestChatStream:
         assert chunks[1].finish_reason == "stop"
         assert chunks[2].usage is not None
         assert chunks[2].usage.input_tokens == 10
+        # The terminal (usage-carrying) chunk reports the serving endpoint identity,
+        # matching what the non-streaming path sets on ChatResponse.
+        assert chunks[2].provider == "google"
+        assert chunks[2].model == "gemini-2.0-flash"
 
     def test_cost_on_usage_chunk(
         self,
@@ -451,6 +455,10 @@ class TestAchatStream:
         assert len(chunks) == 2
         assert chunks[0].delta == "Hello"
         assert chunks[1].cost is not None
+        # The terminal (usage-carrying) chunk reports the serving endpoint identity,
+        # matching what the non-streaming path sets on ChatResponse.
+        assert chunks[1].provider == "google"
+        assert chunks[1].model == "gemini-2.0-flash"
 
     async def test_exception_during_stream(
         self,

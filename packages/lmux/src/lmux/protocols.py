@@ -7,6 +7,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 from lmux.cost import ModelPricing
 from lmux.types import (
+    BaseProviderMetadata,
     ChatChunk,
     ChatResponse,
     EmbeddingResponse,
@@ -28,7 +29,7 @@ class AuthProvider[AuthT, AAuthT = AuthT](Protocol):
 
 
 @runtime_checkable
-class CompletionProvider[ParamsT](Protocol):
+class CompletionProvider[ParamsT, MetadataT: BaseProviderMetadata = BaseProviderMetadata](Protocol):
     """Protocol for providers that support chat completions."""
 
     def chat(
@@ -45,7 +46,7 @@ class CompletionProvider[ParamsT](Protocol):
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,
-    ) -> ChatResponse: ...
+    ) -> ChatResponse[MetadataT]: ...
 
     async def achat(
         self,
@@ -61,7 +62,7 @@ class CompletionProvider[ParamsT](Protocol):
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,
-    ) -> ChatResponse: ...
+    ) -> ChatResponse[MetadataT]: ...
 
     def chat_stream(
         self,
@@ -77,7 +78,7 @@ class CompletionProvider[ParamsT](Protocol):
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,
-    ) -> Iterator[ChatChunk]: ...
+    ) -> Iterator[ChatChunk[MetadataT]]: ...
 
     def achat_stream(
         self,
@@ -93,7 +94,7 @@ class CompletionProvider[ParamsT](Protocol):
         response_format: ResponseFormat | None = None,
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: ParamsT | None = None,
-    ) -> AsyncIterator[ChatChunk]: ...
+    ) -> AsyncIterator[ChatChunk[MetadataT]]: ...
 
 
 @runtime_checkable

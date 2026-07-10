@@ -2,13 +2,24 @@
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SerializeAsAny
 
 # MARK: Provider Params
 
 
 class BaseProviderParams(BaseModel):
     """Base class for provider-specific parameter types."""
+
+
+class BaseProviderMetadata(BaseModel):
+    """Base class for provider-specific response metadata types.
+
+    The response-side mirror of :class:`BaseProviderParams`. A provider attaches
+    a subclass to ``ChatResponse.provider_metadata`` / ``ChatChunk.provider_metadata``
+    to surface structured, provider-specific information about how a response was
+    produced (e.g. which endpoint a routing provider selected). Callers narrow with
+    ``isinstance``. Defaults to ``None``; most providers never set it.
+    """
 
 
 # MARK: Content Parts
@@ -245,7 +256,7 @@ class Cost(BaseModel):
 # MARK: Chat Response
 
 
-class ChatResponse(BaseModel):
+class ChatResponse[MetadataT: BaseProviderMetadata = BaseProviderMetadata](BaseModel):
     """Flattened chat completion response."""
 
     content: str | None
@@ -257,9 +268,10 @@ class ChatResponse(BaseModel):
     model: str
     provider: str
     finish_reason: str | None = None
+    provider_metadata: SerializeAsAny[MetadataT | None] = None
 
 
-class ChatChunk(BaseModel):
+class ChatChunk[MetadataT: BaseProviderMetadata = BaseProviderMetadata](BaseModel):
     """A single chunk in a streaming chat response."""
 
     delta: str | None = None
@@ -270,6 +282,8 @@ class ChatChunk(BaseModel):
     cost: Cost | None = None
     finish_reason: str | None = None
     model: str | None = None
+    provider: str | None = None
+    provider_metadata: SerializeAsAny[MetadataT | None] = None
 
 
 # MARK: Embedding Response

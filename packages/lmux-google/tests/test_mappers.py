@@ -588,8 +588,8 @@ class TestMapGenerateContentChunk:
     def test_text_chunk(self) -> None:
         chunk = _make_response(text="Hello", finish_reason=None)
         chunk.usage_metadata = None
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
-        assert result == ChatChunk(delta="Hello", model="gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        assert result == ChatChunk(delta="Hello", model="gemini-2.0-flash", provider="google")
 
     def test_function_call_chunk(self) -> None:
         chunk = _make_response(
@@ -597,7 +597,7 @@ class TestMapGenerateContentChunk:
             finish_reason=None,
         )
         chunk.usage_metadata = None
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
         assert result.tool_call_deltas is not None
         assert result.tool_call_deltas == [
             ToolCallDelta(
@@ -612,25 +612,25 @@ class TestMapGenerateContentChunk:
         chunk = _make_response(finish_reason="STOP")
         chunk.candidates[0].content = None
         chunk.usage_metadata = None
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
         assert result.finish_reason == "stop"
 
     def test_usage_chunk(self) -> None:
         chunk = _make_response(text=None, finish_reason=None)
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
         assert result.usage == Usage(input_tokens=10, output_tokens=5)
 
     def test_empty_chunk(self) -> None:
         chunk = MagicMock()
         chunk.candidates = None
         chunk.usage_metadata = None
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
-        assert result == ChatChunk(model="gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        assert result == ChatChunk(model="gemini-2.0-flash", provider="google")
 
     def test_thought_parts_extracted_in_chunk(self) -> None:
         chunk = _make_response(text=None, thoughts=["Thinking..."], finish_reason=None)
         chunk.usage_metadata = None
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
         assert result.delta is None
         assert result.reasoning_delta == "Thinking..."
 
@@ -647,7 +647,7 @@ class TestMapGenerateContentChunk:
         chunk.candidates = [candidate]
         chunk.usage_metadata = None
 
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
         assert result.delta is None
         assert result.reasoning_delta is None
 
@@ -657,7 +657,7 @@ class TestMapGenerateContentChunk:
             finish_reason=None,
         )
         chunk.usage_metadata = None
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
         assert result.tool_call_deltas is not None
         assert result.tool_call_deltas[0].function is not None
         assert result.tool_call_deltas[0].function.arguments == "{}"
@@ -668,7 +668,7 @@ class TestMapGenerateContentChunk:
             finish_reason="STOP",
         )
         chunk.usage_metadata = None
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
         assert result.finish_reason == "tool_calls"
 
     def test_nonterminal_tool_call_chunk_preserves_null_finish_reason(self) -> None:
@@ -677,7 +677,7 @@ class TestMapGenerateContentChunk:
             finish_reason=None,
         )
         chunk.usage_metadata = None
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
         assert result.finish_reason is None
 
     def test_code_execution_chunk(self) -> None:
@@ -686,7 +686,7 @@ class TestMapGenerateContentChunk:
             finish_reason=None,
         )
         chunk.usage_metadata = None
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
         assert result.server_tool_deltas == [
             ServerToolDelta(
                 index=0,
@@ -702,7 +702,7 @@ class TestMapGenerateContentChunk:
     def test_code_execution_chunk_no_server_tool_deltas_when_absent(self) -> None:
         chunk = _make_response(text="Hello", finish_reason=None)
         chunk.usage_metadata = None
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
         assert result.server_tool_deltas is None
 
     def test_multiple_code_executions_in_chunk(self) -> None:
@@ -714,7 +714,7 @@ class TestMapGenerateContentChunk:
             finish_reason=None,
         )
         chunk.usage_metadata = None
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash")
+        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
         assert result.server_tool_deltas is not None
         assert len(result.server_tool_deltas) == 4
         # First pair at index 0
