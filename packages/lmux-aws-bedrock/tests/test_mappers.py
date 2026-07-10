@@ -823,6 +823,8 @@ class TestModelUsesAdaptiveThinking:
             "global.anthropic.claude-opus-4-8",
             "global.anthropic.claude-sonnet-5",
             "us.anthropic.claude-opus-4-6-v1",
+            "claude-opus-4-6@20260201",
+            "claude-sonnet-5@20260101",
         ],
     )
     def test_adaptive_generations(self, model: str) -> None:
@@ -839,6 +841,7 @@ class TestModelUsesAdaptiveThinking:
             "claude-haiku-4-5",
             "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
             "anthropic.claude-sonnet-4-20250514-v1",
+            "claude-opus-4-5@20251101",
             "claude-3-7-sonnet",
             "claude-3-5-sonnet",
             "claude-3-opus",

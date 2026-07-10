@@ -391,7 +391,11 @@ class AnthropicProvider(
             output_config = map_response_format(response_format)
             if output_config is not None:
                 kwargs["output_config"] = output_config
-        if reasoning_effort is not None:
+        # provider_params.thinking takes precedence over reasoning_effort, so skip the
+        # reasoning_effort mapping entirely when it is set (otherwise a stray
+        # output_config.effort would linger after the provider_params update below).
+        provider_sets_thinking = provider_params is not None and provider_params.thinking is not None
+        if reasoning_effort is not None and not provider_sets_thinking:
             if model_uses_adaptive_thinking(model):
                 kwargs["thinking"] = {"type": "adaptive"}
                 kwargs["output_config"] = {**kwargs.get("output_config", {}), "effort": reasoning_effort}

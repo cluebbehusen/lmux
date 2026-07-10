@@ -235,7 +235,7 @@ def map_tool_choice(tc: ToolChoice) -> dict[str, object]:
 
 
 _ADAPTIVE_MIN = (4, 6)
-_MODEL_GEN_RE = re.compile(r"claude-(?:opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2})(?=$|[-:]))?")
+_MODEL_GEN_RE = re.compile(r"claude-(?:opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2})(?=$|[-:@]))?")
 
 
 def model_uses_adaptive_thinking(model: str) -> bool:

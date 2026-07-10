@@ -458,6 +458,23 @@ class TestChat:
             "effort": "medium",
         }
 
+    def test_chat_reasoning_effort_ignored_when_provider_thinking(
+        self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        # provider_params.thinking wins: reasoning_effort is fully ignored, leaving no stray effort.
+        _ = sync_provider.chat(
+            "claude-opus-4-8",
+            [UserMessage(content="Hi")],
+            reasoning_effort="high",
+            provider_params=AnthropicParams(thinking={"type": "enabled", "budget_tokens": 5000}),
+        )
+
+        call_kwargs = mock_sync_client.messages.create.call_args.kwargs
+        assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 5000}
+        assert "output_config" not in call_kwargs
+
     def test_chat_exception_mapping(
         self,
         sync_provider: AnthropicProvider,
