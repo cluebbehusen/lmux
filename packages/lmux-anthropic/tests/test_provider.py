@@ -597,6 +597,23 @@ class TestChatStream:
         assert chunks[2].cost is not None
         assert chunks[2].cost.total_cost > 0
 
+    def test_cost_bills_against_resolved_model(
+        self,
+        sync_provider: AnthropicProvider,
+        mock_sync_client: MagicMock,
+        stream_events: list[MagicMock],
+    ) -> None:
+        # The requested name is an opaque alias absent from the pricing table; message_start
+        # resolves to a priced model. Streaming must bill against the resolved model (as the
+        # non-streaming path does), so the terminal chunk still gets a cost.
+        mock_sync_client.messages.create.return_value = iter(stream_events)
+
+        chunks = list(sync_provider.chat_stream("opaque-alias", [UserMessage(content="Hi")]))
+
+        assert chunks[2].model == "claude-sonnet-4-6"
+        assert chunks[2].cost is not None
+        assert chunks[2].cost.total_cost > 0
+
     def test_stream_with_content_block_start(
         self,
         sync_provider: AnthropicProvider,
@@ -731,6 +748,24 @@ class TestAchatStream:
         # The terminal chunk stamps the endpoint identity, mirroring the non-streaming path.
         assert chunks[2].model == "claude-sonnet-4-6"
         assert chunks[2].provider == "anthropic"
+
+    async def test_cost_bills_against_resolved_model(
+        self,
+        async_provider: AnthropicProvider,
+        mock_async_client: MagicMock,
+        stream_events: list[MagicMock],
+    ) -> None:
+        # Async parity: bill against the message_start-resolved model, not the requested alias.
+        async def _async_iter() -> Any:  # noqa: ANN401
+            for event in stream_events:
+                yield event
+
+        mock_async_client.messages.create.return_value = _async_iter()
+
+        chunks = [chunk async for chunk in async_provider.achat_stream("opaque-alias", [UserMessage(content="Hi")])]
+
+        assert chunks[2].model == "claude-sonnet-4-6"
+        assert chunks[2].cost is not None
 
     async def test_stream_with_content_block_start(
         self,
