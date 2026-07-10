@@ -11,6 +11,7 @@ on:
       - "lmux-google-v*"
       - "lmux-gcp-vertex-v*"
       - "lmux-groq-v*"
+      - "lmux-load-balancer-v*"
 
   workflow_dispatch:
     inputs:
@@ -27,6 +28,7 @@ on:
           - lmux-google
           - lmux-gcp-vertex
           - lmux-groq
+          - lmux-load-balancer
       target:
         description: "Publish target"
         required: true

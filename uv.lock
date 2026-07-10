@@ -15,6 +15,7 @@ members = [
     "lmux-gcp-vertex",
     "lmux-google",
     "lmux-groq",
+    "lmux-load-balancer",
     "lmux-openai",
     "lmux-workspace",
 ]
@@ -925,6 +926,17 @@ requires-dist = [
     { name = "groq", specifier = "~=1.0" },
     { name = "lmux", editable = "packages/lmux" },
 ]
+
+[[package]]
+name = "lmux-load-balancer"
+version = "0.1.0"
+source = { editable = "packages/lmux-load-balancer" }
+dependencies = [
+    { name = "lmux" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "lmux", editable = "packages/lmux" }]
 
 [[package]]
 name = "lmux-openai"

@@ -139,6 +139,40 @@ provider.register_pricing("my-fine-tune", ModelPricing(tiers=[
 | [lmux-google](packages/lmux-google)                 | Completion, Embedding            | ADC, service account, `GOOGLE_API_KEY`               |
 | [lmux-groq](packages/lmux-groq)                     | Completion                       | `GROQ_API_KEY`                                       |
 
+## Load balancing
+
+[lmux-load-balancer](packages/lmux-load-balancer) adds a meta-provider that distributes requests across a group of registered providers, weighted and sticky per routing key, with failover. It keeps one conversation on one endpoint (preserving its prompt cache) while spreading different conversations across endpoints.
+
+```python
+from lmux import Registry, UserMessage
+from lmux_anthropic import AnthropicProvider
+from lmux_aws_bedrock import BedrockProvider
+from lmux_load_balancer import LoadBalancerProvider, LoadBalancerParams
+
+registry = Registry()
+registry.register("anthropic", AnthropicProvider())
+registry.register("bedrock", BedrockProvider())
+registry.register(
+    "balanced",
+    LoadBalancerProvider(
+        registry,
+        groups={
+            "sonnet": {
+                "bedrock/anthropic.claude-sonnet-4": 0.7,
+                "anthropic/claude-sonnet-4-20250514": 0.3,
+            },
+        },
+    ),
+)
+
+# Sticky per conversation; falls over to another endpoint on a retryable error.
+response = registry.chat(
+    "balanced/sonnet",
+    [UserMessage(content="Hello")],
+    provider_params=LoadBalancerParams(sticky_key="conversation-123"),
+)
+```
+
 ## Custom Providers
 
 Implement the protocols you need. Only `lmux` is required as a dependency.
