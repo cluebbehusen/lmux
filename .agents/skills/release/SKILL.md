@@ -53,7 +53,7 @@ Confirm the maintainer asked for this release and which package(s) and version(s
 
 ```bash
 git fetch origin && git switch main && git pull
-grep '^version' packages/<pkg>/pyproject.toml
+grep '^version' packages/lmux-<pkg>/pyproject.toml   # core: packages/lmux/pyproject.toml
 ```
 
 ### Step 2: Verify the package is green
@@ -91,10 +91,13 @@ This tags `main` and triggers `publish.yml` for that package. When releasing the
 
 ### Step 5: Confirm the publish
 
-Watch the publish workflow and report the result:
+A batch release fires one publish run per tag, so confirm **every** package's run, not just the latest:
 
 ```bash
-gh run watch "$(gh run list --workflow=publish.yml -L1 --json databaseId -q '.[0].databaseId')"
+# list the most recent publish runs — at least one per package you just released
+gh run list --workflow=publish.yml -L <number-of-packages-released>
+# watch each release's run to completion
+gh run watch <run-id>
 ```
 
-Report which packages published and at what versions. If a publish fails (commonly a tag/pyproject version mismatch), surface the error rather than retrying blindly.
+Report which packages published and at what versions, and confirm each run concluded successfully. If a publish fails (commonly a tag/pyproject version mismatch), surface the error rather than retrying blindly.
