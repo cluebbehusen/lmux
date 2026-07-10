@@ -288,9 +288,7 @@ class AnthropicProvider(
                     chunk = map_message_delta(event, start_usage)
                     cost = self._calculate_cost(model, chunk.usage, as_of) if chunk.usage else None
                     cost = self._apply_cost_multipliers(cost, model, provider_params)
-                    yield chunk.model_copy(
-                        update={"cost": cost, "model": start_model, "provider": self._provider_name}
-                    )
+                    yield chunk.model_copy(update={"cost": cost, "model": start_model, "provider": self._provider_name})
                     continue
         except Exception as e:
             raise map_anthropic_error(e, self._provider_name) from e
@@ -352,9 +350,7 @@ class AnthropicProvider(
                     chunk = map_message_delta(event, start_usage)
                     cost = self._calculate_cost(model, chunk.usage, as_of) if chunk.usage else None
                     cost = self._apply_cost_multipliers(cost, model, provider_params)
-                    yield chunk.model_copy(
-                        update={"cost": cost, "model": start_model, "provider": self._provider_name}
-                    )
+                    yield chunk.model_copy(update={"cost": cost, "model": start_model, "provider": self._provider_name})
                     continue
         except Exception as e:
             raise map_anthropic_error(e, self._provider_name) from e
