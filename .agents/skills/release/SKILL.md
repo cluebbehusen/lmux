@@ -31,9 +31,22 @@ Group entries by type; include only user-facing changes:
 - `### Bug Fixes` — from `fix:` commits
 - `### Deprecation` — when a package or name is being deprecated (rare)
 
-Each entry is `- **<scope>**: <what changed and its user-facing impact>.` — a short bolded scope (the area, e.g. `pricing`, `reasoning`, `vertex`, `responses`, `foundry`), then one or two complete sentences describing the change concretely: name the new params, prices, models, dates, or behavior. Omit non-user-facing commits (`style`, `chore`, `test`, `docs`, `ci`, and refactors with no behavior change). A trivial release (e.g. a rename shim) can use a one-line body instead of sections.
+Each entry is `- **<scope>**: <what changed and its user-facing impact>.` — a short bolded scope (the area, e.g. `pricing`, `reasoning`, `vertex`, `responses`, `foundry`), then one or two complete sentences describing the change concretely: name the new params, prices, models, dates, or behavior. Omit non-user-facing commits (`style`, `chore`, `test`, `docs`, `ci`, and refactors with no behavior change).
 
-Example (matches existing releases):
+Examples (all matching existing releases). A provider gaining a capability, with a non-pricing fix:
+
+```markdown
+### Features
+
+- **vertex**: Add `AnthropicVertexProvider` — Claude on Vertex AI via the new `[vertex]` extra, with ADC (default) and service-account auth. Responses report `provider="anthropic-vertex"`, and the Anthropic-API-only `service_tier`/`inference_geo` params are dropped from Vertex requests.
+- **reasoning**: Map `reasoning_effort` to adaptive thinking on Claude 4.6+ models, which reject the legacy `budget_tokens` config; 4.5 and older keep the `budget_tokens` mapping.
+
+### Bug Fixes
+
+- **responses**: Map `output_tokens_details.reasoning_tokens` into `Usage.reasoning_tokens` on Responses API results — it was previously always `None` on that path.
+```
+
+A pricing update, the most common kind:
 
 ```markdown
 ### Features
