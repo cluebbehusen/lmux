@@ -32,6 +32,7 @@ from lmux_anthropic._mappers import (
     map_response_format,
     map_tool_choice,
     map_tools,
+    model_uses_adaptive_thinking,
 )
 from lmux_anthropic.auth import (
     AnthropicEnvAuthProvider,
@@ -391,9 +392,13 @@ class AnthropicProvider(
             if output_config is not None:
                 kwargs["output_config"] = output_config
         if reasoning_effort is not None:
-            budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
-            budget = min(budget, kwargs["max_tokens"] - 1)
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
+            if model_uses_adaptive_thinking(model):
+                kwargs["thinking"] = {"type": "adaptive"}
+                kwargs["output_config"] = {**kwargs.get("output_config", {}), "effort": reasoning_effort}
+            else:
+                budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
+                budget = min(budget, kwargs["max_tokens"] - 1)
+                kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
         if provider_params is not None:
             kwargs.update(self._provider_params_kwargs(provider_params))
         return kwargs

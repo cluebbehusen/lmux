@@ -42,6 +42,7 @@ from lmux_anthropic._mappers import (
     map_response_format,
     map_tool_choice,
     map_tools,
+    model_uses_adaptive_thinking,
 )
 
 # MARK: Fixtures
@@ -914,3 +915,43 @@ class TestMapToolChoice:
 
     def test_specific_function(self) -> None:
         assert map_tool_choice(ToolChoiceFunction(name="get_weather")) == {"type": "tool", "name": "get_weather"}
+
+
+class TestModelUsesAdaptiveThinking:
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-4-6",
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+            "claude-sonnet-4-6",
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "global.anthropic.claude-opus-4-8",
+            "global.anthropic.claude-sonnet-5",
+            "us.anthropic.claude-opus-4-6-v1",
+        ],
+    )
+    def test_adaptive_generations(self, model: str) -> None:
+        assert model_uses_adaptive_thinking(model) is True
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "claude-opus-4-1",
+            "claude-opus-4-5",
+            "claude-opus-4",
+            "claude-sonnet-4-5",
+            "claude-sonnet-4",
+            "claude-haiku-4-5",
+            "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            "anthropic.claude-sonnet-4-20250514-v1",
+            "claude-3-7-sonnet",
+            "claude-3-5-sonnet",
+            "claude-3-opus",
+            "not-a-model",
+            "",
+        ],
+    )
+    def test_legacy_and_unparseable_generations(self, model: str) -> None:
+        assert model_uses_adaptive_thinking(model) is False

@@ -438,6 +438,18 @@ class TestChat:
         # The original dict must not have been mutated
         assert "thinking" not in fields
 
+    def test_chat_reasoning_effort_adaptive_model(
+        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    ) -> None:
+        mock_sync_client.converse.return_value = converse_response
+
+        # A 4.6+ model uses adaptive thinking + output_config.effort, not budget_tokens.
+        _ = sync_provider.chat("anthropic.claude-opus-4-8", [UserMessage(content="Hi")], reasoning_effort="high")
+
+        additional = mock_sync_client.converse.call_args.kwargs["additionalModelRequestFields"]
+        assert additional["thinking"] == {"type": "adaptive"}
+        assert additional["output_config"] == {"effort": "high"}
+
 
 # MARK: Achat
 
