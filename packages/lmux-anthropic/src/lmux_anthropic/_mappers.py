@@ -259,6 +259,25 @@ def map_tool_choice(tc: ToolChoice) -> dict[str, str]:
     return {"type": "auto"}
 
 
+_ADAPTIVE_MIN = (4, 6)
+_MODEL_GEN_RE = re.compile(r"claude-(?:opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2})(?=$|[-:@]))?")
+
+
+def model_uses_adaptive_thinking(model: str) -> bool:
+    """Return True for Claude generations >= 4.6 (adaptive thinking + effort).
+
+    Returns False for <= 4.5 (legacy manual ``budget_tokens`` thinking) and for
+    any unparseable string (the legacy path is the safe default: pre-4.6 models
+    accept ``budget_tokens``, newer ones require adaptive).
+    """
+    match = _MODEL_GEN_RE.search(model)
+    if match is None:
+        return False
+    major = int(match.group(1))
+    minor = int(match.group(2)) if match.group(2) is not None else 0
+    return (major, minor) >= _ADAPTIVE_MIN
+
+
 def map_response_format(rf: ResponseFormat) -> "OutputConfigParam | None":
     """Convert lmux ResponseFormat to Anthropic output_config dict, or None for text."""
     if isinstance(rf, TextResponseFormat):

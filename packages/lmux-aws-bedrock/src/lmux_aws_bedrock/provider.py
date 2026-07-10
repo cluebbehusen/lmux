@@ -35,6 +35,7 @@ from lmux_aws_bedrock._mappers import (
     map_stream_event,
     map_tool_choice,
     map_tools,
+    model_uses_adaptive_thinking,
 )
 from lmux_aws_bedrock.auth import BedrockEnvAuthProvider
 from lmux_aws_bedrock.cost import calculate_bedrock_cost
@@ -416,10 +417,14 @@ class BedrockProvider(
         # additionalModelRequestFields rather than being clobbered by them.
         # If provider_params also sets a "thinking" key, it wins (already in the dict).
         if reasoning_effort is not None:
-            budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
             existing = {**kwargs.get("additionalModelRequestFields", {})}
             if "thinking" not in existing:
-                existing["thinking"] = {"type": "enabled", "budget_tokens": budget}
+                if model_uses_adaptive_thinking(model):
+                    existing["thinking"] = {"type": "adaptive"}
+                    existing["output_config"] = {**existing.get("output_config", {}), "effort": reasoning_effort}
+                else:
+                    budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
+                    existing["thinking"] = {"type": "enabled", "budget_tokens": budget}
             kwargs["additionalModelRequestFields"] = existing
 
         return kwargs

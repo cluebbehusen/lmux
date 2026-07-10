@@ -410,7 +410,7 @@ class TestChat:
         mock_sync_client.messages.create.return_value = message_response
 
         # default max_tokens=4096, so medium (8192) gets capped to 4095
-        _ = sync_provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="medium")
+        _ = sync_provider.chat("claude-sonnet-4-5", [UserMessage(content="Hi")], reasoning_effort="medium")
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 4095}
@@ -421,12 +421,59 @@ class TestChat:
         mock_sync_client.messages.create.return_value = message_response
 
         _ = sync_provider.chat(
-            "claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="high", max_tokens=50000
+            "claude-sonnet-4-5", [UserMessage(content="Hi")], reasoning_effort="high", max_tokens=50000
         )
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 32768}
         assert call_kwargs["max_tokens"] == 50000
+
+    def test_chat_reasoning_effort_adaptive_model(
+        self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        # A 4.6+ model uses adaptive thinking + output_config.effort, not budget_tokens.
+        _ = sync_provider.chat("claude-opus-4-8", [UserMessage(content="Hi")], reasoning_effort="high")
+
+        call_kwargs = mock_sync_client.messages.create.call_args.kwargs
+        assert call_kwargs["thinking"] == {"type": "adaptive"}
+        assert call_kwargs["output_config"] == {"effort": "high"}
+
+    def test_chat_reasoning_effort_adaptive_merges_response_format(
+        self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        # effort must merge into the output_config produced by response_format, not clobber it.
+        rf = JsonSchemaResponseFormat(name="person", json_schema={"type": "object"})
+        _ = sync_provider.chat(
+            "claude-opus-4-8", [UserMessage(content="Hi")], reasoning_effort="medium", response_format=rf
+        )
+
+        call_kwargs = mock_sync_client.messages.create.call_args.kwargs
+        assert call_kwargs["thinking"] == {"type": "adaptive"}
+        assert call_kwargs["output_config"] == {
+            "format": {"type": "json_schema", "schema": {"type": "object", "additionalProperties": False}},
+            "effort": "medium",
+        }
+
+    def test_chat_reasoning_effort_ignored_when_provider_thinking(
+        self, sync_provider: AnthropicProvider, mock_sync_client: MagicMock, message_response: MagicMock
+    ) -> None:
+        mock_sync_client.messages.create.return_value = message_response
+
+        # provider_params.thinking wins: reasoning_effort is fully ignored, leaving no stray effort.
+        _ = sync_provider.chat(
+            "claude-opus-4-8",
+            [UserMessage(content="Hi")],
+            reasoning_effort="high",
+            provider_params=AnthropicParams(thinking={"type": "enabled", "budget_tokens": 5000}),
+        )
+
+        call_kwargs = mock_sync_client.messages.create.call_args.kwargs
+        assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 5000}
+        assert "output_config" not in call_kwargs
 
     def test_chat_exception_mapping(
         self,
@@ -615,7 +662,7 @@ class TestChatStream:
     ) -> None:
         mock_sync_client.messages.create.return_value = iter(stream_events)
 
-        _ = list(sync_provider.chat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="medium"))
+        _ = list(sync_provider.chat_stream("claude-sonnet-4-5", [UserMessage(content="Hi")], reasoning_effort="medium"))
 
         call_kwargs = mock_sync_client.messages.create.call_args.kwargs
         assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": 4095}
@@ -757,7 +804,7 @@ class TestAchatStream:
         chunks = [
             chunk
             async for chunk in async_provider.achat_stream(
-                "claude-sonnet-4-6", [UserMessage(content="Hi")], reasoning_effort="medium"
+                "claude-sonnet-4-5", [UserMessage(content="Hi")], reasoning_effort="medium"
             )
         ]
 
