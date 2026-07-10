@@ -381,8 +381,8 @@ class TestMapChatChunk:
             model="gpt-4o",
             object="chat.completion.chunk",
         )
-        result = map_chat_chunk(chunk)
-        assert result == ChatChunk(delta="Hello", model="gpt-4o")
+        result = map_chat_chunk(chunk, "openai")
+        assert result == ChatChunk(delta="Hello", model="gpt-4o", provider="openai")
 
     def test_tool_call_delta(self) -> None:
         chunk = ChatCompletionChunk(
@@ -407,7 +407,7 @@ class TestMapChatChunk:
             model="gpt-4o",
             object="chat.completion.chunk",
         )
-        result = map_chat_chunk(chunk)
+        result = map_chat_chunk(chunk, "openai")
         assert result.tool_call_deltas == [
             ToolCallDelta(
                 index=0,
@@ -433,7 +433,7 @@ class TestMapChatChunk:
             model="gpt-4o",
             object="chat.completion.chunk",
         )
-        result = map_chat_chunk(chunk)
+        result = map_chat_chunk(chunk, "openai")
         assert result.tool_call_deltas == [
             ToolCallDelta(index=0, id="tc1", type="function", function=None),
         ]
@@ -453,11 +453,12 @@ class TestMapChatChunk:
             object="chat.completion.chunk",
             usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
         )
-        result = map_chat_chunk(chunk)
+        result = map_chat_chunk(chunk, "openai")
         assert result == ChatChunk(
             finish_reason="stop",
             usage=Usage(input_tokens=10, output_tokens=5),
             model="gpt-4o",
+            provider="openai",
         )
 
     def test_usage_chunk_with_cache(self) -> None:
@@ -474,7 +475,7 @@ class TestMapChatChunk:
                 prompt_tokens_details=PromptTokensDetails(cached_tokens=3),
             ),
         )
-        result = map_chat_chunk(chunk)
+        result = map_chat_chunk(chunk, "openai")
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 3
 
@@ -492,7 +493,7 @@ class TestMapChatChunk:
                 completion_tokens_details=CompletionTokensDetails(reasoning_tokens=20),
             ),
         )
-        result = map_chat_chunk(chunk)
+        result = map_chat_chunk(chunk, "openai")
         assert result.usage is not None
         assert result.usage.reasoning_tokens == 20
 
@@ -504,8 +505,8 @@ class TestMapChatChunk:
             model="gpt-4o",
             object="chat.completion.chunk",
         )
-        result = map_chat_chunk(chunk)
-        assert result == ChatChunk(model="gpt-4o")
+        result = map_chat_chunk(chunk, "openai")
+        assert result == ChatChunk(model="gpt-4o", provider="openai")
 
 
 # MARK: map_embedding_response

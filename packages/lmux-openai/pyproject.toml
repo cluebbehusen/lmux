@@ -1,6 +1,6 @@
 [project]
 name = "lmux-openai"
-version = "0.5.6"
+version = "0.6.0"
 description = "OpenAI provider for lmux"
 requires-python = ">=3.13"
 license = "MIT"
@@ -14,7 +14,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "lmux~=0.7",
+  "lmux~=0.9",
   "openai~=2.20",
 ]
 

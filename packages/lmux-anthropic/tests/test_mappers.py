@@ -798,8 +798,9 @@ class TestMapMessageResponse:
 
 
 class TestMapMessageStart:
-    def test_extracts_usage(self) -> None:
+    def test_extracts_model_and_usage(self) -> None:
         event = MagicMock()
+        event.message.model = "claude-sonnet-4-6"
         event.message.usage = MagicMock(
             input_tokens=50,
             output_tokens=0,
@@ -807,8 +808,9 @@ class TestMapMessageStart:
             cache_creation_input_tokens=5,
             cache_creation=None,
         )
-        result = map_message_start(event)
-        assert result == Usage(input_tokens=65, output_tokens=0, cache_read_tokens=10, cache_creation_tokens=5)
+        model, usage = map_message_start(event)
+        assert model == "claude-sonnet-4-6"
+        assert usage == Usage(input_tokens=65, output_tokens=0, cache_read_tokens=10, cache_creation_tokens=5)
 
 
 class TestMapContentBlockStart:

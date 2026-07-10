@@ -366,9 +366,9 @@ def _map_cache_creation_breakdown(usage: "AnthropicUsage") -> dict[str, int] | N
 # MARK: Streaming Mappers
 
 
-def map_message_start(event: "RawMessageStartEvent") -> Usage:
-    """Extract input token usage from the message_start event."""
-    return _map_usage(event.message.usage)
+def map_message_start(event: "RawMessageStartEvent") -> tuple[str, Usage]:
+    """Extract the resolved model id and input token usage from the message_start event."""
+    return event.message.model, _map_usage(event.message.usage)
 
 
 def map_content_block_start(event: "RawContentBlockStartEvent") -> ChatChunk | None:

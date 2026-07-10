@@ -5,7 +5,9 @@ import pytest
 
 from lmux.types import (
     AssistantMessage,
+    BaseProviderMetadata,
     CachePointContent,
+    ChatChunk,
     ChatResponse,
     Cost,
     FunctionCallResult,
@@ -75,6 +77,42 @@ class TestSerialization:
         data = r.model_dump()
         restored = ChatResponse.model_validate(data)
         assert restored == r
+
+
+class _RouteMetadata(BaseProviderMetadata):
+    """Test-only provider metadata subclass."""
+
+    served: str
+
+
+class TestProviderMetadata:
+    def test_defaults_to_none(self) -> None:
+        r = ChatResponse(content="x", usage=None, cost=None, model="m", provider="p")
+        assert r.provider_metadata is None
+        assert ChatChunk(delta="x").provider_metadata is None
+
+    def test_subclass_metadata_serializes(self) -> None:
+        # SerializeAsAny: subclass fields must survive even though the field is declared at the base type.
+        r: ChatResponse[_RouteMetadata] = ChatResponse(
+            content="x",
+            usage=None,
+            cost=None,
+            model="m",
+            provider="p",
+            provider_metadata=_RouteMetadata(served="anthropic/opus"),
+        )
+        assert r.model_dump()["provider_metadata"] == {"served": "anthropic/opus"}
+        assert '"served":"anthropic/opus"' in r.model_dump_json()
+
+    def test_chunk_carries_provider_and_metadata(self) -> None:
+        chunk = ChatChunk(
+            delta="hi",
+            model="claude-x",
+            provider="anthropic",
+            provider_metadata=_RouteMetadata(served="anthropic/opus"),
+        )
+        assert chunk.provider == "anthropic"
+        assert chunk.model_dump()["provider_metadata"] == {"served": "anthropic/opus"}
 
 
 class TestContentPartValidation:

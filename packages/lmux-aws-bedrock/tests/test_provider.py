@@ -499,6 +499,22 @@ class TestChatStream:
         assert chunks[2].usage.input_tokens == 10
         assert chunks[2].usage.output_tokens == 5
 
+    def test_terminal_chunk_stamps_model_and_provider(
+        self,
+        sync_provider: BedrockProvider,
+        mock_sync_client: MagicMock,
+        stream_events: list[dict[str, Any]],
+    ) -> None:
+        mock_sync_client.converse_stream.return_value = {"stream": iter(stream_events)}
+
+        chunks = list(sync_provider.chat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]))
+
+        # Only the terminal (usage-bearing) chunk carries the endpoint identity.
+        assert chunks[0].model is None
+        assert chunks[0].provider is None
+        assert chunks[2].model == "anthropic.claude-sonnet-4"
+        assert chunks[2].provider == "aws-bedrock"
+
     def test_cost_on_metadata_chunk(
         self,
         sync_provider: BedrockProvider,
@@ -581,6 +597,28 @@ class TestAchatStream:
         assert chunks[0].delta == "Hello"
         assert chunks[1].finish_reason == "stop"
         assert chunks[2].cost is not None
+
+    async def test_terminal_chunk_stamps_model_and_provider(
+        self,
+        async_provider: BedrockProvider,
+        mock_async_client: AsyncMock,
+        stream_events: list[dict[str, Any]],
+    ) -> None:
+        async def _async_iter() -> Any:  # noqa: ANN401
+            for event in stream_events:
+                yield event
+
+        mock_async_client.converse_stream.return_value = {"stream": _async_iter()}
+
+        chunks = [
+            chunk
+            async for chunk in async_provider.achat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+        ]
+
+        assert chunks[0].model is None
+        assert chunks[0].provider is None
+        assert chunks[2].model == "anthropic.claude-sonnet-4"
+        assert chunks[2].provider == "aws-bedrock"
 
     async def test_exception_on_create(
         self, async_provider: BedrockProvider, mock_async_client: AsyncMock, server_error: Exception

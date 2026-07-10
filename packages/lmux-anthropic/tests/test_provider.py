@@ -83,6 +83,7 @@ def message_response() -> MagicMock:
 def _make_stream_events() -> list[MagicMock]:
     start_event = MagicMock()
     start_event.type = "message_start"
+    start_event.message.model = "claude-sonnet-4-6"
     start_event.message.usage = MagicMock(
         input_tokens=10, output_tokens=0, cache_read_input_tokens=0, cache_creation_input_tokens=0, cache_creation=None
     )
@@ -574,6 +575,12 @@ class TestChatStream:
         assert chunks[0].delta == "Hel"
         assert chunks[1].delta == "lo!"
         assert chunks[2].finish_reason == "stop"
+        # The terminal chunk stamps the endpoint identity, mirroring the non-streaming path.
+        assert chunks[2].model == "claude-sonnet-4-6"
+        assert chunks[2].provider == "anthropic"
+        # Interior chunks carry no endpoint identity.
+        assert chunks[0].model is None
+        assert chunks[0].provider is None
 
     def test_cost_on_final_chunk(
         self,
@@ -597,6 +604,7 @@ class TestChatStream:
     ) -> None:
         start_event = MagicMock()
         start_event.type = "message_start"
+        start_event.message.model = "claude-sonnet-4-6"
         start_event.message.usage = MagicMock(
             input_tokens=10,
             output_tokens=0,
@@ -720,6 +728,9 @@ class TestAchatStream:
         assert chunks[0].delta == "Hel"
         assert chunks[2].finish_reason == "stop"
         assert chunks[2].cost is not None
+        # The terminal chunk stamps the endpoint identity, mirroring the non-streaming path.
+        assert chunks[2].model == "claude-sonnet-4-6"
+        assert chunks[2].provider == "anthropic"
 
     async def test_stream_with_content_block_start(
         self,
@@ -728,6 +739,7 @@ class TestAchatStream:
     ) -> None:
         start_event = MagicMock()
         start_event.type = "message_start"
+        start_event.message.model = "claude-sonnet-4-6"
         start_event.message.usage = MagicMock(
             input_tokens=10,
             output_tokens=0,
@@ -1407,6 +1419,9 @@ class TestVertexChatStream:
         assert len(chunks) == 3
         assert chunks[2].finish_reason == "stop"
         assert chunks[2].cost is not None
+        # The terminal chunk reports the Vertex endpoint identity, not the base provider name.
+        assert chunks[2].model == "claude-sonnet-4-6"
+        assert chunks[2].provider == "anthropic-vertex"
 
 
 class TestVertexClientManagement:
@@ -1544,6 +1559,30 @@ class TestVertexClientManagement:
         _ = provider.chat("claude-sonnet-4-6", [UserMessage(content="Hi")])
 
         mock_sync_vertex_create.assert_called_once_with(
+            credentials=bare_auth.credentials,
+            project_id=None,
+            region="global",
+            base_url=None,
+            timeout=None,
+            max_retries=None,
+        )
+
+    async def test_bare_credentials_auth_supported_async(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_async_vertex_create: MagicMock,
+        mock_async_client: MagicMock,
+        message_response: MagicMock,
+    ) -> None:
+        """Async auth providers returning bare credentials (no project tuple) still work."""
+        monkeypatch.delenv("ANTHROPIC_VERTEX_PROJECT_ID", raising=False)
+        mock_async_client.messages.create.return_value = message_response
+        bare_auth = FakeBareVertexAuth()
+        provider = AnthropicVertexProvider(auth=bare_auth, region="global")
+
+        _ = await provider.achat("claude-sonnet-4-6", [UserMessage(content="Hi")])
+
+        mock_async_vertex_create.assert_called_once_with(
             credentials=bare_auth.credentials,
             project_id=None,
             region="global",
@@ -1709,6 +1748,45 @@ class TestFoundryAchat:
         assert result.content == "Hello!"
         assert result.provider == "anthropic-foundry"
         mock_async_client.messages.create.assert_awaited_once()
+
+
+class TestFoundryChatStream:
+    def test_stream_stamps_endpoint_identity(
+        self,
+        foundry_sync_provider: AnthropicFoundryProvider,
+        mock_sync_client: MagicMock,
+        stream_events: list[MagicMock],
+    ) -> None:
+        mock_sync_client.messages.create.return_value = iter(stream_events)
+
+        chunks = list(foundry_sync_provider.chat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")]))
+
+        assert chunks[-1].finish_reason == "stop"
+        # The terminal chunk reports the Foundry endpoint identity, not the base provider name.
+        assert chunks[-1].model == "claude-sonnet-4-6"
+        assert chunks[-1].provider == "anthropic-foundry"
+
+    async def test_async_stream_stamps_endpoint_identity(
+        self,
+        mock_async_foundry_create: MagicMock,
+        mock_async_client: MagicMock,
+        stream_events: list[MagicMock],
+    ) -> None:
+        assert mock_async_foundry_create  # fixture activates the patch
+        token_auth = FakeFoundryTokenAuth()
+        provider = AnthropicFoundryProvider(auth=token_auth, resource="my-resource")
+
+        async def _async_iter() -> Any:  # noqa: ANN401
+            for event in stream_events:
+                yield event
+
+        mock_async_client.messages.create.return_value = _async_iter()
+
+        chunks = [chunk async for chunk in provider.achat_stream("claude-sonnet-4-6", [UserMessage(content="Hi")])]
+
+        assert chunks[-1].finish_reason == "stop"
+        assert chunks[-1].model == "claude-sonnet-4-6"
+        assert chunks[-1].provider == "anthropic-foundry"
 
 
 class TestFoundryClientManagement:

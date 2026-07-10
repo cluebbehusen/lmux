@@ -248,7 +248,7 @@ class AzureFoundryProvider(
 
         try:
             for chunk in stream:
-                mapped = map_chat_chunk(chunk)
+                mapped = map_chat_chunk(chunk, PROVIDER_NAME)
                 if mapped.usage is not None:
                     cost = self._calculate_cost(chunk.model, mapped.usage)
                     cost = self._apply_cost_multipliers(cost, provider_params)
@@ -295,7 +295,7 @@ class AzureFoundryProvider(
 
         try:
             async for chunk in stream:
-                mapped = map_chat_chunk(chunk)
+                mapped = map_chat_chunk(chunk, PROVIDER_NAME)
                 if mapped.usage is not None:
                     cost = self._calculate_cost(chunk.model, mapped.usage)
                     cost = self._apply_cost_multipliers(cost, provider_params)

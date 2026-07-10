@@ -202,7 +202,7 @@ class GroqProvider(
 
         try:
             for chunk in stream:
-                mapped = map_chat_chunk(chunk)
+                mapped = map_chat_chunk(chunk, PROVIDER_NAME)
                 if mapped.usage is not None:
                     mapped = mapped.model_copy(update={"cost": self._calculate_cost(chunk.model, mapped.usage)})
                 yield mapped
@@ -246,7 +246,7 @@ class GroqProvider(
 
         try:
             async for chunk in stream:
-                mapped = map_chat_chunk(chunk)
+                mapped = map_chat_chunk(chunk, PROVIDER_NAME)
                 if mapped.usage is not None:
                     mapped = mapped.model_copy(update={"cost": self._calculate_cost(chunk.model, mapped.usage)})
                 yield mapped

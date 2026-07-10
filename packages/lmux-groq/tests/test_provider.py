@@ -356,6 +356,9 @@ class TestChatStream:
         assert chunks[0].delta == "Hel"
         assert chunks[1].delta == "lo!"
         assert chunks[2].finish_reason == "stop"
+        assert chunks[2].usage is not None
+        assert chunks[2].provider == "groq"
+        assert chunks[2].model == "llama-3.3-70b-versatile"
 
     def test_cost_on_final_chunk(
         self,
@@ -421,6 +424,9 @@ class TestAchatStream:
         assert chunks[0].delta == "Hel"
         assert chunks[2].finish_reason == "stop"
         assert chunks[2].cost is not None
+        assert chunks[2].usage is not None
+        assert chunks[2].provider == "groq"
+        assert chunks[2].model == "llama-3.3-70b-versatile"
 
     async def test_exception_on_create(
         self, async_provider: GroqProvider, mock_async_client: MagicMock, server_error: groq.InternalServerError

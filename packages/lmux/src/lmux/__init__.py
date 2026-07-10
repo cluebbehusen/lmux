@@ -23,6 +23,7 @@ from lmux.protocols import (
 from lmux.registry import Provider, Registry
 from lmux.types import (
     AssistantMessage,
+    BaseProviderMetadata,
     BaseProviderParams,
     CachePointContent,
     ChatChunk,
@@ -64,6 +65,7 @@ __all__ = [
     "AsyncCloseable",
     "AuthProvider",
     "AuthenticationError",
+    "BaseProviderMetadata",
     "BaseProviderParams",
     "CachePointContent",
     "ChatChunk",

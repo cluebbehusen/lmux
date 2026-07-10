@@ -549,6 +549,8 @@ class TestChatStream:
         assert chunks[0].delta == "Hel"
         assert chunks[1].delta == "lo!"
         assert chunks[2].finish_reason == "stop"
+        assert chunks[2].model == "gpt-4o"
+        assert chunks[2].provider == "azure-foundry"
 
     def test_cost_on_final_chunk(
         self,
@@ -649,6 +651,8 @@ class TestAchatStream:
         assert chunks[0].delta == "Hel"
         assert chunks[2].finish_reason == "stop"
         assert chunks[2].cost is not None
+        assert chunks[2].model == "gpt-4o"
+        assert chunks[2].provider == "azure-foundry"
 
     async def test_achat_stream_data_zone_multiplier(
         self,
