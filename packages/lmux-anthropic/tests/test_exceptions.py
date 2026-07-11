@@ -8,6 +8,7 @@ from lmux.exceptions import (
     InvalidRequestError,
     LmuxError,
     NotFoundError,
+    PermissionDeniedError,
     ProviderError,
     RateLimitError,
     TimeoutError,  # noqa: A004
@@ -35,9 +36,9 @@ class TestErrorFromResponse:
         assert result.provider == "anthropic"
         assert result.status_code == 401
 
-    def test_authentication_403(self) -> None:
+    def test_permission_denied_403(self) -> None:
         result = error_from_response(_response(403))
-        assert isinstance(result, AuthenticationError)
+        assert isinstance(result, PermissionDeniedError)
         assert result.status_code == 403
 
     def test_rate_limit_without_retry_after(self) -> None:
