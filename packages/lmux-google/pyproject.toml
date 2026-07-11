@@ -15,7 +15,8 @@ classifiers = [
 ]
 dependencies = [
   "lmux~=0.9",
-  "google-genai~=1.0",
+  "httpx~=0.28",
+  "google-auth~=2.0",
 ]
 
 [project.urls]

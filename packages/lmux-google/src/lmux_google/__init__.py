@@ -33,5 +33,6 @@ __all__ = [
 
 
 def preload() -> None:
-    """Eagerly import the google-genai SDK."""
-    import google.genai  # noqa: PLC0415, F401
+    """Eagerly import the HTTP client and google-auth."""
+    import google.auth  # noqa: PLC0415, F401
+    import httpx  # noqa: PLC0415, F401
