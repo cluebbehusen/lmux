@@ -29,7 +29,7 @@ from lmux_openai._exceptions import (
     error_from_response,
     error_from_stream,
     map_transport_error,
-    parse_json,
+    parse_body,
     raise_for_status,
 )
 from lmux_openai._lazy import create_async_client, create_sync_client
@@ -43,6 +43,12 @@ from lmux_openai._mappers import (
     map_responses_response,
     map_tool_choice,
     map_tools,
+)
+from lmux_openai._wire import (
+    WireChunk,
+    WireCompletion,
+    WireEmbeddingResponse,
+    WireResponsesResponse,
 )
 from lmux_openai.auth import OpenAIEnvAuthProvider
 from lmux_openai.cost import (
@@ -175,7 +181,7 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_chat_completion(parse_body(response, WireCompletion), PROVIDER_NAME, self._calculate_cost)
         return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
@@ -204,7 +210,7 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_chat_completion(parse_body(response, WireCompletion), PROVIDER_NAME, self._calculate_cost)
         return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
@@ -307,7 +313,9 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_embedding_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_embedding_response(
+            parse_body(response, WireEmbeddingResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
@@ -326,7 +334,9 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_embedding_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_embedding_response(
+            parse_body(response, WireEmbeddingResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_response_multipliers(mapped, mapped.model)
 
     # MARK: Responses API
@@ -346,7 +356,9 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_responses_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_responses_response(
+            parse_body(response, WireResponsesResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
@@ -364,15 +376,18 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_responses_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_responses_response(
+            parse_body(response, WireResponsesResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_response_multipliers(mapped, mapped.model)
 
     # MARK: Internal Helpers
 
     def _map_stream_chunk(self, chunk: dict[str, Any], model: str) -> ChatChunk:
-        mapped = map_chat_chunk(chunk, PROVIDER_NAME)
+        wire = WireChunk.model_validate(chunk)
+        mapped = map_chat_chunk(wire, PROVIDER_NAME)
         if mapped.usage is not None:
-            cost_model = chunk.get("model") or model
+            cost_model = wire.model or model
             cost = self._apply_cost_multipliers(self._calculate_cost(cost_model, mapped.usage), cost_model)
             mapped = mapped.model_copy(update={"cost": cost})
         return mapped

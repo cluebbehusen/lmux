@@ -16,9 +16,10 @@ from lmux_openai._exceptions import (
     error_from_response,
     error_from_stream,
     map_transport_error,
-    parse_json,
+    parse_body,
     raise_for_status,
 )
+from lmux_openai._wire import WireCompletion
 
 
 def _resp(status: int, *, json: object = None, text: str = "", headers: dict[str, str] | None = None) -> httpx.Response:
@@ -95,17 +96,25 @@ class TestMapTransportError:
         assert isinstance(map_transport_error(Exception("boom")), ProviderError)
 
 
-class TestParseJson:
+class TestParseBody:
     def test_valid_body(self) -> None:
-        assert parse_json(_resp(200, json={"ok": 1})) == {"ok": 1}
+        body = {
+            "model": "gpt-4o",
+            "choices": [{"message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}],
+        }
+        assert parse_body(_resp(200, json=body), WireCompletion) == WireCompletion.model_validate(body)
 
     def test_malformed_body_maps_to_provider_error(self) -> None:
         with pytest.raises(ProviderError):
-            parse_json(_resp(200, text="not json"))
+            parse_body(_resp(200, text="not json"), WireCompletion)
 
     def test_non_object_body_maps_to_provider_error(self) -> None:
         with pytest.raises(ProviderError):
-            parse_json(_resp(200, json=["not", "an", "object"]))
+            parse_body(_resp(200, json=["not", "an", "object"]), WireCompletion)
+
+    def test_missing_required_field_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_body(_resp(200, json={"model": "gpt-4o"}), WireCompletion)  # no choices
 
 
 class TestErrorFromStream:

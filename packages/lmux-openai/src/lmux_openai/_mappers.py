@@ -31,6 +31,15 @@ from lmux.types import (
     Usage,
     UserMessage,
 )
+from lmux_openai._wire import (
+    WireChunk,
+    WireCompletion,
+    WireCompletionUsage,
+    WireEmbeddingResponse,
+    WireResponsesResponse,
+    WireResponsesUsage,
+    WireToolCallDelta,
+)
 
 type CostCalculator = Callable[[str, Usage], Cost | None]
 type Json = dict[str, Any]
@@ -128,146 +137,144 @@ def map_response_input(input: str | Sequence[ResponseInputItem]) -> str | list[J
     return [item.model_dump(exclude_none=True) for item in input]
 
 
-# MARK: Output Mappers (OpenAI JSON -> lmux)
+# MARK: Output Mappers (OpenAI wire models -> lmux)
 
 
-def _map_function_tool_call(tc: Json) -> ToolCall:
-    fn = tc["function"]
-    return ToolCall(id=tc["id"], function=FunctionCallResult(name=fn["name"], arguments=fn["arguments"]))
-
-
-def map_chat_completion(completion: Json, provider_name: str, cost_fn: CostCalculator) -> ChatResponse:
-    """Convert an OpenAI chat completion JSON body to an lmux ChatResponse."""
-    choice = completion["choices"][0]
-    message = choice["message"]
+def map_chat_completion(completion: WireCompletion, provider_name: str, cost_fn: CostCalculator) -> ChatResponse:
+    """Convert a validated OpenAI chat completion to an lmux ChatResponse."""
+    choice = completion.choices[0]
+    message = choice.message
 
     tool_calls: list[ToolCall] | None = None
-    raw_tool_calls = message.get("tool_calls")
-    if raw_tool_calls:
-        tool_calls = [_map_function_tool_call(tc) for tc in raw_tool_calls if tc.get("type") == "function"]
+    if message.tool_calls:
+        # A ``function`` payload is present only for function tool calls; other types (e.g. custom) are dropped.
+        tool_calls = [
+            ToolCall(id=tc.id, function=FunctionCallResult(name=tc.function.name, arguments=tc.function.arguments))
+            for tc in message.tool_calls
+            if tc.function is not None
+        ]
 
-    usage = _map_completion_usage(completion.get("usage"))
-    model = completion["model"]
-    cost = cost_fn(model, usage) if usage else None
+    usage = _map_completion_usage(completion.usage)
+    cost = cost_fn(completion.model, usage) if usage else None
 
     return ChatResponse(
-        content=message.get("content"),
-        reasoning=message.get("reasoning_content"),
+        content=message.content,
+        reasoning=message.reasoning_content,
         tool_calls=tool_calls or None,
         usage=usage,
         cost=cost,
-        model=model,
+        model=completion.model,
         provider=provider_name,
-        finish_reason=choice.get("finish_reason"),
+        finish_reason=choice.finish_reason,
     )
 
 
-def _map_completion_usage(usage: Json | None) -> Usage | None:
-    """Extract Usage from a completion/chunk usage dict, or None if absent."""
+def _map_completion_usage(usage: WireCompletionUsage | None) -> Usage | None:
+    """Extract Usage from a completion/chunk usage model, or None if absent."""
     if usage is None:
         return None
-    prompt_details = usage.get("prompt_tokens_details") or {}
-    completion_details = usage.get("completion_tokens_details") or {}
+    prompt_details = usage.prompt_tokens_details
+    completion_details = usage.completion_tokens_details
     # gpt-5.6+ bills cache writes; older models report no cache_write_tokens (writes free).
     return Usage(
-        input_tokens=usage["prompt_tokens"],
-        output_tokens=usage["completion_tokens"],
-        cache_read_tokens=prompt_details.get("cached_tokens") or None,
-        cache_creation_tokens=prompt_details.get("cache_write_tokens") or None,
-        reasoning_tokens=completion_details.get("reasoning_tokens") or None,
+        input_tokens=usage.prompt_tokens,
+        output_tokens=usage.completion_tokens,
+        cache_read_tokens=(prompt_details.cached_tokens if prompt_details else None) or None,
+        cache_creation_tokens=(prompt_details.cache_write_tokens if prompt_details else None) or None,
+        reasoning_tokens=(completion_details.reasoning_tokens if completion_details else None) or None,
     )
 
 
-def map_chat_chunk(chunk: Json, provider_name: str) -> ChatChunk:
-    """Convert an OpenAI streaming chunk JSON to an lmux ChatChunk."""
+def map_chat_chunk(chunk: WireChunk, provider_name: str) -> ChatChunk:
+    """Convert a validated OpenAI streaming chunk to an lmux ChatChunk."""
     delta_text: str | None = None
     reasoning_delta: str | None = None
     tool_call_deltas: list[ToolCallDelta] | None = None
     finish_reason: str | None = None
 
-    choices = chunk.get("choices")
-    if choices:
-        choice = choices[0]
-        delta = choice.get("delta") or {}
-        delta_text = delta.get("content")
-        reasoning_delta = delta.get("reasoning_content")
-        finish_reason = choice.get("finish_reason")
-        raw_tool_calls = delta.get("tool_calls")
-        if raw_tool_calls:
-            tool_call_deltas = [_map_tool_call_delta(tc) for tc in raw_tool_calls]
+    if chunk.choices:
+        choice = chunk.choices[0]
+        delta = choice.delta
+        delta_text = delta.content
+        reasoning_delta = delta.reasoning_content
+        finish_reason = choice.finish_reason
+        if delta.tool_calls:
+            tool_call_deltas = [_map_tool_call_delta(tc) for tc in delta.tool_calls]
 
     return ChatChunk(
         delta=delta_text,
         reasoning_delta=reasoning_delta,
         tool_call_deltas=tool_call_deltas,
-        usage=_map_completion_usage(chunk.get("usage")),
+        usage=_map_completion_usage(chunk.usage),
         finish_reason=finish_reason,
-        model=chunk.get("model"),
+        model=chunk.model,
         provider=provider_name,
     )
 
 
-def _map_tool_call_delta(tc: Json) -> ToolCallDelta:
-    fn = tc.get("function")
+def _map_tool_call_delta(tc: WireToolCallDelta) -> ToolCallDelta:
+    fn = tc.function
     return ToolCallDelta(
-        index=tc["index"],
-        id=tc.get("id"),
-        type="function" if tc.get("type") == "function" else None,
-        function=FunctionCallDelta(name=fn.get("name"), arguments=fn.get("arguments")) if fn else None,
+        index=tc.index,
+        id=tc.id,
+        type="function" if tc.type == "function" else None,
+        function=FunctionCallDelta(name=fn.name, arguments=fn.arguments) if fn else None,
     )
 
 
-def map_embedding_response(response: Json, provider_name: str, cost_fn: CostCalculator) -> EmbeddingResponse:
-    """Convert an OpenAI embeddings JSON body to an lmux EmbeddingResponse."""
-    embeddings = [item["embedding"] for item in sorted(response["data"], key=lambda x: x["index"])]
-    usage = Usage(input_tokens=response["usage"]["prompt_tokens"], output_tokens=0)
-    model = response["model"]
-    cost = cost_fn(model, usage)
+def map_embedding_response(
+    response: WireEmbeddingResponse, provider_name: str, cost_fn: CostCalculator
+) -> EmbeddingResponse:
+    """Convert a validated OpenAI embeddings response to an lmux EmbeddingResponse."""
+    embeddings = [item.embedding for item in sorted(response.data, key=lambda item: item.index)]
+    usage = Usage(input_tokens=response.usage.prompt_tokens, output_tokens=0)
+    cost = cost_fn(response.model, usage)
     return EmbeddingResponse(
         embeddings=embeddings,
         usage=usage,
         cost=cost,
-        model=model,
+        model=response.model,
         provider=provider_name,
     )
 
 
-def map_responses_response(response: Json, provider_name: str, cost_fn: CostCalculator) -> ResponseResponse:
-    """Convert an OpenAI Responses API JSON body to an lmux ResponseResponse."""
-    usage = _map_responses_usage(response.get("usage"))
-    model = response["model"]
-    cost = cost_fn(model, usage) if usage else None
+def map_responses_response(
+    response: WireResponsesResponse, provider_name: str, cost_fn: CostCalculator
+) -> ResponseResponse:
+    """Convert a validated OpenAI Responses API response to an lmux ResponseResponse."""
+    usage = _map_responses_usage(response.usage)
+    cost = cost_fn(response.model, usage) if usage else None
     return ResponseResponse(
-        id=response["id"],
+        id=response.id,
         output_text=_extract_output_text(response),
         usage=usage,
         cost=cost,
-        model=model,
+        model=response.model,
         provider=provider_name,
     )
 
 
-def _extract_output_text(response: Json) -> str:
+def _extract_output_text(response: WireResponsesResponse) -> str:
     """Concatenate output_text content parts across all message output items."""
     return "".join(
-        content.get("text") or ""
-        for item in response.get("output") or []
-        if item.get("type") == "message"
-        for content in item.get("content") or []
-        if content.get("type") == "output_text"
+        content.text or ""
+        for item in response.output or []
+        if item.type == "message"
+        for content in item.content or []
+        if content.type == "output_text"
     )
 
 
-def _map_responses_usage(usage: Json | None) -> Usage | None:
-    """Extract Usage from a Responses API usage dict, or None if absent."""
+def _map_responses_usage(usage: WireResponsesUsage | None) -> Usage | None:
+    """Extract Usage from a Responses API usage model, or None if absent."""
     if usage is None:
         return None
-    input_details = usage.get("input_tokens_details") or {}
-    output_details = usage.get("output_tokens_details") or {}
+    input_details = usage.input_tokens_details
+    output_details = usage.output_tokens_details
     return Usage(
-        input_tokens=usage["input_tokens"],
-        output_tokens=usage["output_tokens"],
-        cache_read_tokens=input_details.get("cached_tokens") or None,
-        cache_creation_tokens=input_details.get("cache_write_tokens") or None,
-        reasoning_tokens=output_details.get("reasoning_tokens") or None,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=(input_details.cached_tokens if input_details else None) or None,
+        cache_creation_tokens=(input_details.cache_write_tokens if input_details else None) or None,
+        reasoning_tokens=(output_details.reasoning_tokens if output_details else None) or None,
     )
