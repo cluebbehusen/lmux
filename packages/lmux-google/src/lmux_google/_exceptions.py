@@ -52,7 +52,7 @@ def error_from_stream(payload: dict[str, Any]) -> LmuxError:
     return ProviderError(str(message), provider=PROVIDER)
 
 
-def error_from_response(response: "httpx.Response") -> LmuxError:
+def error_from_response(response: "httpx.Response") -> LmuxError:  # noqa: PLR0911 — one return per mapped status
     """Map an HTTP error response to an lmux exception (body must be readable)."""
     code = response.status_code
     msg = _message(response)
