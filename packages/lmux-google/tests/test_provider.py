@@ -1134,7 +1134,7 @@ class TestAclose:
 
         mock_create.assert_called_once()
         mock_client.aio.aclose.assert_awaited_once()
-        assert provider._client is None  # pyright: ignore[reportPrivateUsage]
+        assert provider._client is None
 
     async def test_aclose_noop_when_no_client(self, fake_auth: FakeAuth) -> None:
         provider = GoogleProvider(auth=fake_auth)

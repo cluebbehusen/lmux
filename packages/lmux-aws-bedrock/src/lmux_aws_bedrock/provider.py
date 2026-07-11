@@ -414,7 +414,7 @@ class BedrockProvider(
         if tools is not None:
             tool_config = map_tools(tools)
             if tool_choice is not None:
-                tool_config["toolChoice"] = map_tool_choice(tool_choice)  # pyright: ignore[reportGeneralTypeIssues]
+                tool_config["toolChoice"] = map_tool_choice(tool_choice)  # ty: ignore[invalid-assignment]
             kwargs["toolConfig"] = tool_config
 
         if response_format is not None:

@@ -89,7 +89,7 @@ README files (root and per-package) must be kept up to date when changes affect 
 
 - `TYPE_CHECKING` + string annotations for expensive SDK imports — **never** `from __future__ import annotations`
 - `Sequence[Message]` (not `list[Message]`) in protocol signatures for covariance
-- `# pyright: ignore[reportSpecificError]` — always include the specific error code
+- `# ty: ignore[specific-rule]` — always include the specific rule (e.g., `invalid-argument-type`)
 - `# noqa: CODE` — always include the specific rule code (e.g., `# noqa: A002`, `# noqa: PLR0913`)
 - `# pragma: no cover` only for genuinely untestable code (lazy import stubs, `assert_never` branches)
 
@@ -119,7 +119,7 @@ uv run ruff check
 uv run ruff format --check
 
 # Type check
-uv run basedpyright 
+uv run ty check
 
 # Tests with 100% branch coverage
 uv run pytest
@@ -142,7 +142,7 @@ If any dependencies are not present in the local .venv, use `uv sync --all-packa
 - `pytest-asyncio` with `asyncio_mode = "auto"` — async test methods just work
 - `--import-mode=importlib` to avoid namespace collisions between packages
 - **No `tests/__init__.py` files** (required for importlib mode)
-- **Prefer testing through public API** over accessing private attributes/methods directly. For example, test `_provider_params_kwargs` by calling `chat()` with `provider_params` and asserting what gets passed to the SDK mock — not by calling the private method. Use `# pyright: ignore[reportPrivateUsage]` only when there's no public path to exercise the behavior (e.g., accessing `_custom_pricing` to verify `register_pricing`).
+- **Prefer testing through public API** over accessing private attributes/methods directly. For example, test `_provider_params_kwargs` by calling `chat()` with `provider_params` and asserting what gets passed to the SDK mock — not by calling the private method. Access private attributes only when there's no public path to exercise the behavior (e.g., accessing `_custom_pricing` to verify `register_pricing`) — `SLF001` is ignored in tests, so no suppression is needed.
 - 100% branch coverage required
 
 ### Test Structure

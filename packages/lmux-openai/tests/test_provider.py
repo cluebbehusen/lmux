@@ -1197,7 +1197,7 @@ class TestAclose:
 
         mock_async_create.assert_called_once()
         mock_async_client.close.assert_awaited_once()
-        assert provider._async_client is None  # pyright: ignore[reportPrivateUsage]
+        assert provider._async_client is None
 
     async def test_aclose_noop_when_no_client(self, fake_auth: FakeAuth) -> None:
         provider = OpenAIProvider(auth=fake_auth)

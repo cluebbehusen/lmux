@@ -28,4 +28,4 @@ __all__ = [
 
 def preload() -> None:
     """Eagerly import the Anthropic SDK."""
-    import anthropic  # noqa: F401, PLC0415  # pyright: ignore[reportUnusedImport]
+    import anthropic  # noqa: F401, PLC0415

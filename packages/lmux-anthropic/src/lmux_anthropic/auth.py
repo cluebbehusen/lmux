@@ -42,7 +42,7 @@ class AnthropicVertexADCAuthProvider:
         except ImportError as e:
             raise ImportError("[vertex] extra group is required for Vertex AI support") from e  # noqa: TRY003
 
-        credentials, project_id = google.auth.default(scopes=self._scopes)  # pyright: ignore[reportUnknownVariableType]
+        credentials, project_id = google.auth.default(scopes=self._scopes)
         # google.auth has unresolvable string forward-ref annotations; cast is required
         return cast("Credentials", credentials), project_id
 

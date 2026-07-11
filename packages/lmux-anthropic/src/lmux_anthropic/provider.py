@@ -427,7 +427,7 @@ class AnthropicProvider(
             kwargs["cache_control"] = params.cache_control
         return kwargs
 
-    def _cost_multiplier(self, model: str, provider_params: AnthropicParams | None) -> float:  # pyright: ignore[reportUnusedParameter]
+    def _cost_multiplier(self, model: str, provider_params: AnthropicParams | None) -> float:  # noqa: ARG002
         """Compute the combined cost multiplier from provider params; ``model`` is a hook for subclasses."""
         multiplier = 1.0
         if provider_params is None:
@@ -489,7 +489,7 @@ class AnthropicVertexProvider(AnthropicProvider):
     @staticmethod
     def _split_auth_result(auth_result: "VertexAuthResult") -> "tuple[Credentials, str | None]":
         if isinstance(auth_result, tuple):
-            return auth_result
+            return auth_result  # ty: ignore[invalid-return-type]
         return auth_result, None
 
     def _resolve_project_id(self, auth_project_id: str | None) -> str | None:
@@ -533,7 +533,7 @@ class AnthropicVertexProvider(AnthropicProvider):
     @override
     def _provider_params_kwargs(params: AnthropicParams) -> dict[str, Any]:
         """Convert AnthropicParams to SDK kwargs, dropping Anthropic-API-only parameters."""
-        kwargs = AnthropicProvider._provider_params_kwargs(params)
+        kwargs = AnthropicProvider._provider_params_kwargs(params)  # noqa: SLF001
         kwargs.pop("service_tier", None)
         kwargs.pop("inference_geo", None)
         return kwargs
@@ -617,7 +617,7 @@ class AnthropicFoundryProvider(AnthropicProvider):
     @override
     def _provider_params_kwargs(params: AnthropicParams) -> dict[str, Any]:
         """Convert AnthropicParams to SDK kwargs, dropping Anthropic-API-only parameters."""
-        kwargs = AnthropicProvider._provider_params_kwargs(params)
+        kwargs = AnthropicProvider._provider_params_kwargs(params)  # noqa: SLF001
         kwargs.pop("service_tier", None)
         kwargs.pop("inference_geo", None)
         return kwargs

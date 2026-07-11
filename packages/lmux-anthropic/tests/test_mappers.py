@@ -160,7 +160,7 @@ class TestMapMessages:
         assert isinstance(content, list)
         assert len(content) == 2
         assert content[0] == {"type": "text", "text": "Let me check."}
-        assert content[1]["type"] == "tool_use"  # pyright: ignore[reportIndexIssue]
+        assert content[1]["type"] == "tool_use"  # ty: ignore[not-subscriptable]
 
     def test_tool_message(self) -> None:
         _, messages = map_messages([ToolMessage(content="72°F", tool_call_id="call_1")])
@@ -180,8 +180,8 @@ class TestMapMessages:
         content = messages[0]["content"]
         assert isinstance(content, list)
         assert len(content) == 2
-        assert content[0]["tool_use_id"] == "call_1"  # pyright: ignore[reportIndexIssue, reportGeneralTypeIssues]
-        assert content[1]["tool_use_id"] == "call_2"  # pyright: ignore[reportIndexIssue, reportGeneralTypeIssues]
+        assert content[0]["tool_use_id"] == "call_1"  # ty: ignore[not-subscriptable]
+        assert content[1]["tool_use_id"] == "call_2"  # ty: ignore[not-subscriptable]
 
     def test_tool_message_after_multimodal_user_not_merged(self) -> None:
         _, messages = map_messages(
@@ -195,7 +195,7 @@ class TestMapMessages:
         assert messages[1]["role"] == "user"
         content = messages[1]["content"]
         assert isinstance(content, list)
-        assert content[0]["type"] == "tool_result"  # pyright: ignore[reportIndexIssue]
+        assert content[0]["type"] == "tool_result"  # ty: ignore[not-subscriptable]
 
     def test_tool_message_after_user_not_merged(self) -> None:
         _, messages = map_messages(
@@ -473,7 +473,7 @@ class TestMapResponseFormat:
         )
         result = map_response_format(rf)
         assert result is not None
-        fmt = cast("dict[str, Any]", cast("object", result["format"]))  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        fmt = cast("dict[str, Any]", cast("object", result["format"]))
         schema = cast("dict[str, Any]", fmt["schema"])
         assert schema["additionalProperties"] is False
         assert schema["properties"]["inner"]["additionalProperties"] is False
@@ -492,7 +492,7 @@ class TestMapResponseFormat:
         )
         result = map_response_format(rf)
         assert result is not None
-        fmt = cast("dict[str, Any]", cast("object", result["format"]))  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        fmt = cast("dict[str, Any]", cast("object", result["format"]))
         schema = cast("dict[str, Any]", fmt["schema"])
         assert schema["additionalProperties"] is False
         assert schema["anyOf"][0]["additionalProperties"] is False
@@ -505,7 +505,7 @@ class TestMapResponseFormat:
         )
         result = map_response_format(rf)
         assert result is not None
-        fmt = cast("dict[str, Any]", cast("object", result["format"]))  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        fmt = cast("dict[str, Any]", cast("object", result["format"]))
         schema = cast("dict[str, Any]", fmt["schema"])
         assert schema["additionalProperties"] is True
 

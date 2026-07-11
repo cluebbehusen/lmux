@@ -1177,7 +1177,7 @@ class TestAclose:
 
         mock_async_create.assert_called_once()
         mock_async_client.close.assert_awaited_once()
-        assert provider._async_client is None  # pyright: ignore[reportPrivateUsage]
+        assert provider._async_client is None
 
     async def test_aclose_noop_when_no_client(self, fake_auth: FakeAuth) -> None:
         provider = AnthropicProvider(auth=fake_auth)
@@ -1628,7 +1628,7 @@ class TestVertexClientManagement:
 
     def test_default_auth_is_adc(self) -> None:
         provider = AnthropicVertexProvider()
-        assert isinstance(provider._vertex_auth, AnthropicVertexADCAuthProvider)  # pyright: ignore[reportPrivateUsage]
+        assert isinstance(provider._vertex_auth, AnthropicVertexADCAuthProvider)
 
 
 # MARK: Foundry
@@ -1914,4 +1914,4 @@ class TestFoundryClientManagement:
 
     def test_default_auth_is_env(self) -> None:
         provider = AnthropicFoundryProvider()
-        assert isinstance(provider._foundry_auth, AnthropicFoundryEnvAuthProvider)  # pyright: ignore[reportPrivateUsage]
+        assert isinstance(provider._foundry_auth, AnthropicFoundryEnvAuthProvider)

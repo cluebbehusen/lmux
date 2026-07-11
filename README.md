@@ -236,7 +236,7 @@ response = registry.chat("my-provider/my-model", messages)
 
 ## Development
 
-Checked with ruff, basedpyright (strict), and pytest with 100% branch coverage.
+Checked with ruff, ty, and pytest with 100% branch coverage.
 
 ### Skills
 

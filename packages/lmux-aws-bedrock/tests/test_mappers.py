@@ -168,8 +168,8 @@ class TestMapMessages:
         assert len(messages) == 1
         content = messages[0]["content"]
         assert len(content) == 2
-        assert content[0]["toolResult"]["toolUseId"] == "tc1"  # pyright: ignore[reportTypedDictNotRequiredAccess]
-        assert content[1]["toolResult"]["toolUseId"] == "tc2"  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert content[0]["toolResult"]["toolUseId"] == "tc1"
+        assert content[1]["toolResult"]["toolUseId"] == "tc2"
 
     def test_tool_message_after_user_not_merged(self) -> None:
         system, messages = map_messages(

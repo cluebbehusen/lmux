@@ -101,7 +101,7 @@ class Registry:
             params = None
         if params is None:
             params = self._default_params.get(prefix)
-        return params
+        return params  # ty: ignore[invalid-return-type]
 
     # MARK: Chat
 
@@ -325,7 +325,9 @@ class Registry:
             msg = f"Provider {prefix!r} ({provider_name}) does not support the Responses API (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
         return provider.create_response(
-            bare_model, input, provider_params=self._resolve_params(prefix, provider_params)
+            bare_model,
+            input,
+            provider_params=self._resolve_params(prefix, provider_params),  # ty: ignore[invalid-argument-type]
         )
 
     async def acreate_response(
@@ -342,7 +344,9 @@ class Registry:
             msg = f"Provider {prefix!r} ({provider_name}) does not support the Responses API (model: {bare_model!r})"
             raise UnsupportedFeatureError(msg)
         return await provider.acreate_response(
-            bare_model, input, provider_params=self._resolve_params(prefix, provider_params)
+            bare_model,
+            input,
+            provider_params=self._resolve_params(prefix, provider_params),  # ty: ignore[invalid-argument-type]
         )
 
     async def aclose(self) -> None:

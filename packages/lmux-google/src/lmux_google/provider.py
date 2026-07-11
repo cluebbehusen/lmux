@@ -150,7 +150,7 @@ class GoogleProvider(
             response = client.models.generate_content(
                 model=model,
                 contents=contents,
-                config=config,  # pyright: ignore[reportArgumentType]
+                config=config,  # ty: ignore[invalid-argument-type]
             )
         except Exception as e:
             raise map_google_error(e) from e
@@ -190,7 +190,7 @@ class GoogleProvider(
             response = await client.aio.models.generate_content(
                 model=model,
                 contents=contents,
-                config=config,  # pyright: ignore[reportArgumentType]
+                config=config,  # ty: ignore[invalid-argument-type]
             )
         except Exception as e:
             raise map_google_error(e) from e
@@ -230,7 +230,7 @@ class GoogleProvider(
             stream = client.models.generate_content_stream(
                 model=model,
                 contents=contents,
-                config=config,  # pyright: ignore[reportArgumentType]
+                config=config,  # ty: ignore[invalid-argument-type]
             )
         except Exception as e:
             raise map_google_error(e) from e
@@ -278,7 +278,7 @@ class GoogleProvider(
             stream = client.aio.models.generate_content_stream(
                 model=model,
                 contents=contents,
-                config=config,  # pyright: ignore[reportArgumentType]
+                config=config,  # ty: ignore[invalid-argument-type]
             )
             async for chunk in await stream:
                 mapped = map_generate_content_chunk(chunk, model, PROVIDER_NAME)
@@ -303,7 +303,7 @@ class GoogleProvider(
         config = self._build_embed_config(dimensions, provider_params)
         try:
             client = self._get_client()
-            response = client.models.embed_content(model=model, contents=contents, config=config)  # pyright: ignore[reportArgumentType]
+            response = client.models.embed_content(model=model, contents=contents, config=config)  # ty: ignore[invalid-argument-type]
         except Exception as e:
             raise map_google_error(e) from e
         return map_embed_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
@@ -321,7 +321,7 @@ class GoogleProvider(
         config = self._build_embed_config(dimensions, provider_params)
         try:
             client = await self._aget_client()
-            response = await client.aio.models.embed_content(model=model, contents=contents, config=config)  # pyright: ignore[reportArgumentType]
+            response = await client.aio.models.embed_content(model=model, contents=contents, config=config)  # ty: ignore[invalid-argument-type]
         except Exception as e:
             raise map_google_error(e) from e
         return map_embed_content_response(response, model, PROVIDER_NAME, self._calculate_cost)
