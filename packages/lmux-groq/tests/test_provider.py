@@ -1,36 +1,31 @@
-"""Tests for Groq provider."""
+"""Tests for the Groq provider (SDK-lite, respx)."""
 
 import asyncio
+import json
+from collections.abc import Callable
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
-import groq
+import httpx
 import pytest
-from groq.types.chat import ChatCompletion, ChatCompletionChunk, ChatCompletionMessage
-from groq.types.chat.chat_completion import Choice
-from groq.types.chat.chat_completion_chunk import Choice as ChunkChoice
-from groq.types.chat.chat_completion_chunk import ChoiceDelta
-from groq.types.completion_usage import CompletionUsage
+import respx
 from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError
-from lmux.types import (
-    FunctionDefinition,
-    JsonObjectResponseFormat,
-    Tool,
-    UserMessage,
-)
+from lmux.types import FunctionDefinition, JsonObjectResponseFormat, Tool, UserMessage
 from lmux_groq import preload
 from lmux_groq.params import GroqParams
 from lmux_groq.provider import GroqProvider
+
+_URL = "https://api.groq.com/openai/v1/chat/completions"
+MODEL = "llama-3.3-70b-versatile"
+
 
 # MARK: Shared Fixtures
 
 
 class FakeAuth:
-    """Fake auth provider for testing."""
-
     def get_credentials(self) -> str:
         return "gsk-fake-key"
 
@@ -44,272 +39,166 @@ def fake_auth() -> FakeAuth:
 
 
 @pytest.fixture
-def chat_completion() -> ChatCompletion:
-    return ChatCompletion(
-        id="chatcmpl-123",
-        choices=[
-            Choice(
-                finish_reason="stop",
-                index=0,
-                message=ChatCompletionMessage(content="Hello!", role="assistant"),
-            )
-        ],
-        created=1234567890,
-        model="llama-3.3-70b-versatile",
-        object="chat.completion",
-        usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-    )
+def sync_provider(fake_auth: FakeAuth) -> GroqProvider:
+    return GroqProvider(auth=fake_auth)
 
 
 @pytest.fixture
-def stream_chunks() -> list[ChatCompletionChunk]:
-    return [
-        ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[ChunkChoice(delta=ChoiceDelta(content="Hel"), index=0, finish_reason=None)],
-            created=1234567890,
-            model="llama-3.3-70b-versatile",
-            object="chat.completion.chunk",
-        ),
-        ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[ChunkChoice(delta=ChoiceDelta(content="lo!"), index=0, finish_reason=None)],
-            created=1234567890,
-            model="llama-3.3-70b-versatile",
-            object="chat.completion.chunk",
-        ),
-        ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[ChunkChoice(delta=ChoiceDelta(), index=0, finish_reason="stop")],
-            created=1234567890,
-            model="llama-3.3-70b-versatile",
-            object="chat.completion.chunk",
-            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-        ),
+def async_provider(fake_auth: FakeAuth) -> GroqProvider:
+    return GroqProvider(auth=fake_auth)
+
+
+@pytest.fixture
+def sync_create_raises(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_groq.provider.create_sync_client", side_effect=RuntimeError("client init failed"))
+
+
+@pytest.fixture
+def async_create_raises(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_groq.provider.create_async_client", side_effect=RuntimeError("client init failed"))
+
+
+@pytest.fixture
+def async_create_two_clients(mocker: MockerFixture) -> tuple[MagicMock, MagicMock, MagicMock]:
+    c1, c2 = MagicMock(), MagicMock()
+    create = mocker.patch("lmux_groq.provider.create_async_client", side_effect=[c1, c2])
+    return create, c1, c2
+
+
+@pytest.fixture
+def mock_get_running_loop(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_groq.provider.asyncio.get_running_loop")
+
+
+@pytest.fixture
+def completion() -> dict[str, Any]:
+    return {
+        "id": "chatcmpl-123",
+        "model": MODEL,
+        "object": "chat.completion",
+        "created": 1,
+        "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "Hello!"}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
+
+
+@pytest.fixture
+def stream_bytes() -> bytes:
+    chunks = [
+        {"model": MODEL, "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}]},
+        {"model": MODEL, "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "lo!"}}]},
+        {
+            "model": MODEL,
+            "choices": [{"index": 0, "finish_reason": "stop", "delta": {}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        },
     ]
+    lines = [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
+    return ("\n\n".join(lines) + "\n\n").encode()
 
 
 @pytest.fixture
-def mock_sync_client() -> MagicMock:
-    return MagicMock()
+def mount_completion(respx_mock: respx.MockRouter) -> Callable[[dict[str, Any]], respx.Route]:
+    """Mount a chat-completion response at the Groq endpoint; returns the respx route."""
 
+    def _mount(completion: dict[str, Any]) -> respx.Route:
+        return respx_mock.post(_URL).mock(return_value=httpx.Response(200, json=completion))
 
-@pytest.fixture
-def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_groq.provider.create_sync_client", return_value=mock_sync_client)
-
-
-@pytest.fixture
-def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> GroqProvider:
-    assert mock_sync_create is not None
-    return GroqProvider(auth=fake_auth)
-
-
-@pytest.fixture
-def mock_async_client() -> MagicMock:
-    mock = MagicMock()
-    mock.chat.completions.create = AsyncMock()
-    mock.close = AsyncMock()
-    return mock
-
-
-@pytest.fixture
-def mock_async_create(mock_async_client: MagicMock, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_groq.provider.create_async_client", return_value=mock_async_client)
-
-
-@pytest.fixture
-def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> GroqProvider:
-    assert mock_async_create is not None
-    return GroqProvider(auth=fake_auth)
-
-
-@pytest.fixture
-def bad_request_error() -> groq.BadRequestError:
-    response = MagicMock()
-    response.status_code = 400
-    response.headers = {}
-    return groq.BadRequestError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def auth_error() -> groq.AuthenticationError:
-    response = MagicMock()
-    response.status_code = 401
-    response.headers = {}
-    return groq.AuthenticationError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def server_error() -> groq.InternalServerError:
-    response = MagicMock()
-    response.status_code = 500
-    response.headers = {}
-    return groq.InternalServerError(message="test error", response=response, body=None)
+    return _mount
 
 
 # MARK: Chat
 
 
 class TestChat:
-    def test_basic_chat(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    def test_basic(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        result = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-
+        route = mount_completion(completion)
+        result = sync_provider.chat(MODEL, [UserMessage(content="Hi")])
         assert result.content == "Hello!"
-        assert result.model == "llama-3.3-70b-versatile"
+        assert result.model == MODEL
         assert result.provider == "groq"
         assert result.usage is not None
         assert result.usage.input_tokens == 10
-        assert result.usage.output_tokens == 5
-        mock_sync_client.chat.completions.create.assert_called_once()
+        assert route.called
 
-    def test_chat_with_params(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    def test_request_body(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
+        route = mount_completion(completion)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], temperature=0.5, max_tokens=100, top_p=0.9, stop=["END"])
+        body = json.loads(route.calls.last.request.content)
+        assert body == {
+            "model": MODEL,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "stream": False,
+            "temperature": 0.5,
+            "max_tokens": 100,
+            "top_p": 0.9,
+            "stop": ["END"],
+        }
 
-        _ = sync_provider.chat(
-            "llama-3.3-70b-versatile",
+    def test_tools_and_choice(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+    ) -> None:
+        route = mount_completion(completion)
+        sync_provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
-            temperature=0.5,
-            max_tokens=100,
-            top_p=0.9,
-            stop=["END"],
-        )
-
-        mock_sync_client.chat.completions.create.assert_called_once_with(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=False,
-            temperature=0.5,
-            max_tokens=100,
-            top_p=0.9,
-            stop=["END"],
-        )
-
-    def test_chat_with_tools(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        tools = [Tool(function=FunctionDefinition(name="get_weather"))]
-        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], tools=tools)
-
-        mock_sync_client.chat.completions.create.assert_called_once_with(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=False,
-            tools=[{"type": "function", "function": {"name": "get_weather"}}],
-        )
-
-    def test_chat_with_tool_choice(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], tool_choice="required")
-
-        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert call_kwargs["tool_choice"] == "required"
-
-    def test_chat_with_response_format(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat(
-            "llama-3.3-70b-versatile",
-            [UserMessage(content="Hi")],
+            tools=[Tool(function=FunctionDefinition(name="get_weather"))],
+            tool_choice="required",
             response_format=JsonObjectResponseFormat(),
         )
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"type": "function", "function": {"name": "get_weather"}}]
+        assert body["tool_choice"] == "required"
+        assert body["response_format"] == {"type": "json_object"}
 
-        mock_sync_client.chat.completions.create.assert_called_once_with(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=False,
-            response_format={"type": "json_object"},
-        )
-
-    def test_chat_with_provider_params(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    def test_reasoning_effort(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
+        route = mount_completion(completion)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], reasoning_effort="medium")
+        body = json.loads(route.calls.last.request.content)
+        assert body["reasoning_effort"] == "medium"
+        assert body["include_reasoning"] is True
 
-        _ = sync_provider.chat(
-            "llama-3.3-70b-versatile",
-            [UserMessage(content="Hi")],
-            provider_params=GroqParams(service_tier="flex", seed=42, user="u1"),
-        )
-
-        mock_sync_client.chat.completions.create.assert_called_once_with(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=False,
-            service_tier="flex",
-            seed=42,
-            user="u1",
-        )
-
-    def test_chat_with_reasoning_effort(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], reasoning_effort="medium")
-
-        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert call_kwargs["reasoning_effort"] == "medium"
-        assert call_kwargs["include_reasoning"] is True
-
-    def test_chat_with_provider_params_reasoning_effort(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat(
-            "llama-3.3-70b-versatile",
-            [UserMessage(content="Hi")],
-            provider_params=GroqParams(reasoning_effort="high"),
-        )
-
-        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert call_kwargs["reasoning_effort"] == "high"
-        assert call_kwargs["include_reasoning"] is True
-
-    def test_chat_with_provider_params_reasoning_effort_none(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat(
-            "qwen/qwen3-32b",
-            [UserMessage(content="Hi")],
-            provider_params=GroqParams(reasoning_effort="none"),
-        )
-
-        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert call_kwargs["reasoning_effort"] == "none"
-        assert "include_reasoning" not in call_kwargs
-
-    def test_chat_exception_mapping(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, bad_request_error: groq.BadRequestError
-    ) -> None:
-        mock_sync_client.chat.completions.create.side_effect = bad_request_error
-
+    def test_status_error_mapped(self, sync_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(400, json={"error": {"message": "bad"}}))
         with pytest.raises(InvalidRequestError):
-            _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+            sync_provider.chat(MODEL, [UserMessage(content="Hi")])
 
-    def test_chat_cost_calculated(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    def test_transport_error_mapped(self, sync_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            sync_provider.chat(MODEL, [UserMessage(content="Hi")])
+
+    def test_non_json_body_mapped(self, sync_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=b"not json"))
+        with pytest.raises(ProviderError):
+            sync_provider.chat(MODEL, [UserMessage(content="Hi")])
+
+    def test_cost_calculated(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        result = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-
+        mount_completion(completion)
+        result = sync_provider.chat(MODEL, [UserMessage(content="Hi")])
         assert result.cost is not None
         assert result.cost.total_cost > 0
 
@@ -318,141 +207,139 @@ class TestChat:
 
 
 class TestAchat:
-    async def test_basic_achat(
-        self, async_provider: GroqProvider, mock_async_client: MagicMock, chat_completion: ChatCompletion
+    async def test_basic(
+        self,
+        async_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
-
-        result = await async_provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-
+        mount_completion(completion)
+        result = await async_provider.achat(MODEL, [UserMessage(content="Hi")])
         assert result.content == "Hello!"
         assert result.provider == "groq"
-        mock_async_client.chat.completions.create.assert_awaited_once()
 
-    async def test_achat_exception_mapping(
-        self, async_provider: GroqProvider, mock_async_client: MagicMock, auth_error: groq.AuthenticationError
-    ) -> None:
-        mock_async_client.chat.completions.create.side_effect = auth_error
-
+    async def test_status_error_mapped(self, async_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(401, json={"error": {"message": "no"}}))
         with pytest.raises(AuthenticationError):
-            _ = await async_provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+            await async_provider.achat(MODEL, [UserMessage(content="Hi")])
+
+    async def test_transport_error_mapped(self, async_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            await async_provider.achat(MODEL, [UserMessage(content="Hi")])
+
+    async def test_non_json_body_mapped(self, async_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=b"not json"))
+        with pytest.raises(ProviderError):
+            await async_provider.achat(MODEL, [UserMessage(content="Hi")])
 
 
 # MARK: ChatStream
 
 
 class TestChatStream:
-    def test_yields_chunks(
-        self,
-        sync_provider: GroqProvider,
-        mock_sync_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
+    def test_yields_and_costs(
+        self, sync_provider: GroqProvider, respx_mock: respx.MockRouter, stream_bytes: bytes
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = iter(stream_chunks)
-
-        chunks = list(sync_provider.chat_stream("llama-3.3-70b-versatile", [UserMessage(content="Hi")]))
-
-        assert len(chunks) == 3
-        assert chunks[0].delta == "Hel"
-        assert chunks[1].delta == "lo!"
+        route = respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=stream_bytes))
+        chunks = list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+        assert [c.delta for c in chunks[:2]] == ["Hel", "lo!"]
         assert chunks[2].finish_reason == "stop"
         assert chunks[2].usage is not None
-        assert chunks[2].provider == "groq"
-        assert chunks[2].model == "llama-3.3-70b-versatile"
-
-    def test_cost_on_final_chunk(
-        self,
-        sync_provider: GroqProvider,
-        mock_sync_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = iter(stream_chunks)
-
-        chunks = list(sync_provider.chat_stream("llama-3.3-70b-versatile", [UserMessage(content="Hi")]))
-
         assert chunks[0].cost is None
-        assert chunks[1].cost is None
         assert chunks[2].cost is not None
         assert chunks[2].cost.total_cost > 0
+        body = json.loads(route.calls.last.request.content)
+        assert body["stream"] is True
+        assert body["stream_options"] == {"include_usage": True}
 
-    def test_stream_exception_on_create(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, server_error: groq.InternalServerError
-    ) -> None:
-        mock_sync_client.chat.completions.create.side_effect = server_error
-
+    def test_status_error_on_open(self, sync_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(500, json={"error": {"message": "boom"}}))
         with pytest.raises(ProviderError):
-            _ = list(sync_provider.chat_stream("llama-3.3-70b-versatile", [UserMessage(content="Hi")]))
+            list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
 
-    def test_stream_exception_during_iteration(
-        self,
-        sync_provider: GroqProvider,
-        mock_sync_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
-        server_error: groq.InternalServerError,
+    def test_malformed_chunk_mapped(self, sync_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=b"data: {not json}\n\n"))
+        with pytest.raises(ProviderError):
+            list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+    def test_mid_stream_error_raises_after_partial(
+        self, sync_provider: GroqProvider, respx_mock: respx.MockRouter
     ) -> None:
-        def _failing_iter() -> Any:  # noqa: ANN401
-            yield stream_chunks[0]
-            raise server_error
+        first = {"model": MODEL, "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}]}
+        error = {"error": {"message": "mid-stream boom"}}
+        sse = (f"data: {json.dumps(first)}\n\ndata: {json.dumps(error)}\n\n").encode()
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=sse))
+        stream = sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")])
+        assert next(stream).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            next(stream)
 
-        mock_sync_client.chat.completions.create.return_value = _failing_iter()
+    def test_client_init_failure(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
+        provider = GroqProvider(auth=fake_auth)
+        with pytest.raises(ProviderError, match="client init failed"):
+            list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+        sync_create_raises.assert_called_once()
 
-        with pytest.raises(ProviderError, match="test error"):
-            _ = list(sync_provider.chat_stream("llama-3.3-70b-versatile", [UserMessage(content="Hi")]))
+    def test_stream_without_done(self, sync_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        chunk = {"model": MODEL, "choices": [{"index": 0, "finish_reason": "stop", "delta": {"content": "x"}}]}
+        respx_mock.post(_URL).mock(
+            return_value=httpx.Response(200, content=(f"data: {json.dumps(chunk)}\n\n").encode())
+        )
+        chunks = list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+        assert [c.delta for c in chunks] == ["x"]
 
 
 # MARK: AchatStream
 
 
 class TestAchatStream:
-    async def test_yields_chunks(
-        self,
-        async_provider: GroqProvider,
-        mock_async_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
+    async def test_yields_and_costs(
+        self, async_provider: GroqProvider, respx_mock: respx.MockRouter, stream_bytes: bytes
     ) -> None:
-        async def _async_iter() -> Any:  # noqa: ANN401
-            for chunk in stream_chunks:
-                yield chunk
-
-        mock_async_client.chat.completions.create.return_value = _async_iter()
-
-        chunks = [
-            chunk async for chunk in async_provider.achat_stream("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        ]
-
-        assert len(chunks) == 3
-        assert chunks[0].delta == "Hel"
-        assert chunks[2].finish_reason == "stop"
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=stream_bytes))
+        chunks = [c async for c in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")])]
+        assert [c.delta for c in chunks[:2]] == ["Hel", "lo!"]
         assert chunks[2].cost is not None
-        assert chunks[2].usage is not None
-        assert chunks[2].provider == "groq"
-        assert chunks[2].model == "llama-3.3-70b-versatile"
 
-    async def test_exception_on_create(
-        self, async_provider: GroqProvider, mock_async_client: MagicMock, server_error: groq.InternalServerError
-    ) -> None:
-        mock_async_client.chat.completions.create.side_effect = server_error
-
+    async def test_status_error_on_open(self, async_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(500, json={"error": {"message": "boom"}}))
         with pytest.raises(ProviderError):
-            async for _ in async_provider.achat_stream("llama-3.3-70b-versatile", [UserMessage(content="Hi")]):
+            async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
 
-    async def test_exception_during_iteration(
-        self,
-        async_provider: GroqProvider,
-        mock_async_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
-        server_error: groq.InternalServerError,
+    async def test_malformed_chunk_mapped(self, async_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=b"data: {nope}\n\n"))
+        with pytest.raises(ProviderError):
+            async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
+                pass  # pragma: no cover
+
+    async def test_mid_stream_error_raises_after_partial(
+        self, async_provider: GroqProvider, respx_mock: respx.MockRouter
     ) -> None:
-        async def _failing_async_iter() -> Any:  # noqa: ANN401
-            yield stream_chunks[0]
-            raise server_error
+        first = {"model": MODEL, "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}]}
+        error = {"error": {"message": "mid-stream boom"}}
+        sse = (f"data: {json.dumps(first)}\n\ndata: {json.dumps(error)}\n\n").encode()
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=sse))
+        stream = async_provider.achat_stream(MODEL, [UserMessage(content="Hi")])
+        assert (await anext(stream)).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            await anext(stream)
 
-        mock_async_client.chat.completions.create.return_value = _failing_async_iter()
+    async def test_client_init_failure(self, fake_auth: FakeAuth, async_create_raises: MagicMock) -> None:
+        provider = GroqProvider(auth=fake_auth)
+        with pytest.raises(ProviderError, match="client init failed"):
+            async for _ in provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
+                pass  # pragma: no cover
+        async_create_raises.assert_called_once()
 
-        with pytest.raises(ProviderError, match="test error"):
-            async for _ in async_provider.achat_stream("llama-3.3-70b-versatile", [UserMessage(content="Hi")]):
-                pass
+    async def test_stream_without_done(self, async_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        chunk = {"model": MODEL, "choices": [{"index": 0, "finish_reason": "stop", "delta": {"content": "x"}}]}
+        respx_mock.post(_URL).mock(
+            return_value=httpx.Response(200, content=(f"data: {json.dumps(chunk)}\n\n").encode())
+        )
+        chunks = [c async for c in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")])]
+        assert [c.delta for c in chunks] == ["x"]
 
 
 # MARK: Client Management
@@ -460,290 +347,182 @@ class TestAchatStream:
 
 class TestClientManagement:
     def test_sync_client_reused(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
-
-        assert mock_sync_client.chat.completions.create.call_count == 2
+        mount_completion(completion)
+        sync_provider.chat(MODEL, [UserMessage(content="a")])
+        client = sync_provider._sync_client
+        sync_provider.chat(MODEL, [UserMessage(content="b")])
+        assert sync_provider._sync_client is client
 
     async def test_async_client_reused(
-        self, async_provider: GroqProvider, mock_async_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
-
-        _ = await async_provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        _ = await async_provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
-
-        assert mock_async_client.chat.completions.create.call_count == 2
-
-    def test_custom_base_url_passed(
         self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        chat_completion: ChatCompletion,
+        async_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-        provider = GroqProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        _ = provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        mount_completion(completion)
+        await async_provider.achat(MODEL, [UserMessage(content="a")])
+        client = async_provider._async_client
+        await async_provider.achat(MODEL, [UserMessage(content="b")])
+        assert async_provider._async_client is client
 
-        mock_sync_create.assert_called_once_with(
-            api_key="gsk-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
+    def test_custom_base_url(
+        self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post("https://custom.api/v1/chat/completions").mock(
+            return_value=httpx.Response(200, json=completion)
         )
-
-    def test_timeout_and_retries_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        chat_completion: ChatCompletion,
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-        provider = GroqProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        _ = provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-
-        mock_sync_create.assert_called_once_with(api_key="gsk-fake-key", base_url=None, timeout=30.0, max_retries=5)
-
-    def test_create_sync_client_called_once(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        chat_completion: ChatCompletion,
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-        provider = GroqProvider(auth=fake_auth)
-        _ = provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        _ = provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
-
-        mock_sync_create.assert_called_once()
-
-    async def test_create_async_client_called_once(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: MagicMock,
-        chat_completion: ChatCompletion,
-    ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
-        provider = GroqProvider(auth=fake_auth)
-        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
-
-        mock_async_create.assert_called_once()
-
-    async def test_async_custom_base_url_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: MagicMock,
-        chat_completion: ChatCompletion,
-    ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
         provider = GroqProvider(auth=fake_auth, base_url="https://custom.api/v1")
-        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.called
 
-        mock_async_create.assert_called_once_with(
-            api_key="gsk-fake-key", base_url="https://custom.api/v1", timeout=None, max_retries=None
-        )
-
-    async def test_async_timeout_and_retries_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: MagicMock,
-        chat_completion: ChatCompletion,
+    def test_timeout_and_retries(
+        self, fake_auth: FakeAuth, completion: dict[str, Any], mount_completion: Callable[[dict[str, Any]], respx.Route]
     ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
+        mount_completion(completion)
         provider = GroqProvider(auth=fake_auth, timeout=30.0, max_retries=5)
-        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert provider._sync_client is not None
+        assert provider._sync_client.timeout.read == 30.0
 
-        mock_async_create.assert_called_once_with(api_key="gsk-fake-key", base_url=None, timeout=30.0, max_retries=5)
-
-    def test_sync_client_init_failure_mapped(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-    ) -> None:
-        mock_sync_create.side_effect = Exception("connection refused")
+    def test_sync_init_failure_mapped(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
         provider = GroqProvider(auth=fake_auth)
+        with pytest.raises(ProviderError, match="client init failed"):
+            provider.chat(MODEL, [UserMessage(content="Hi")])
+        sync_create_raises.assert_called_once()
 
-        with pytest.raises(ProviderError, match="connection refused"):
-            _ = provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-
-    async def test_async_client_init_failure_mapped(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-    ) -> None:
-        mock_async_create.side_effect = Exception("connection refused")
+    async def test_async_init_failure_mapped(self, fake_auth: FakeAuth, async_create_raises: MagicMock) -> None:
         provider = GroqProvider(auth=fake_auth)
+        with pytest.raises(ProviderError, match="client init failed"):
+            await provider.achat(MODEL, [UserMessage(content="Hi")])
+        async_create_raises.assert_called_once()
 
-        with pytest.raises(ProviderError, match="connection refused"):
-            _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-
-    @pytest.fixture
-    def mock_get_running_loop(self, mocker: MockerFixture) -> MagicMock:
-        return mocker.patch("lmux_groq.provider.asyncio.get_running_loop")
-
-    async def test_achat_recreates_client_on_new_event_loop(
+    async def test_async_client_recreated_on_new_loop(
         self,
         fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: MagicMock,
-        chat_completion: ChatCompletion,
+        async_create_two_clients: tuple[MagicMock, MagicMock, MagicMock],
         mock_get_running_loop: MagicMock,
     ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
-        provider = GroqProvider(auth=fake_auth)
-
-        loop1 = asyncio.new_event_loop()
-        loop2 = asyncio.new_event_loop()
+        create, c1, c2 = async_create_two_clients
+        loop1, loop2 = asyncio.new_event_loop(), asyncio.new_event_loop()
         mock_get_running_loop.side_effect = [loop1, loop2]
-
-        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi again")])
-
-        assert mock_async_create.call_count == 2
-        assert mock_get_running_loop.call_count == 2
+        provider = GroqProvider(auth=fake_auth)
+        r1 = await provider._get_async_client()
+        r2 = await provider._get_async_client()
+        assert (r1, r2) == (c1, c2)
+        assert create.call_count == 2
         loop1.close()
         loop2.close()
-
-
-# MARK: Provider Params Kwargs
-
-
-class TestProviderParamsKwargs:
-    def test_empty_params(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], provider_params=GroqParams())
-
-        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert "service_tier" not in call_kwargs
-        assert "seed" not in call_kwargs
-        assert "user" not in call_kwargs
-
-    def test_all_params(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-        params = GroqParams(service_tier="auto", seed=42, user="u1")
-
-        _ = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")], provider_params=params)
-
-        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert call_kwargs["service_tier"] == "auto"
-        assert call_kwargs["seed"] == 42
-        assert call_kwargs["user"] == "u1"
 
 
 # MARK: Register Pricing
 
 
 class TestRegisterPricing:
-    def test_custom_pricing_for_unknown_model(self, sync_provider: GroqProvider, mock_sync_client: MagicMock) -> None:
-        custom_completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="stop",
-                    index=0,
-                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
-                )
-            ],
-            created=1234567890,
-            model="custom-model-v1",
-            object="chat.completion",
-            usage=CompletionUsage(prompt_tokens=1000, completion_tokens=500, total_tokens=1500),
-        )
-        mock_sync_client.chat.completions.create.return_value = custom_completion
-
+    def test_custom_for_unknown_model(self, sync_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        completion = {
+            "model": "custom-v1",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
+            "usage": {"prompt_tokens": 1000, "completion_tokens": 500},
+        }
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, json=completion))
         sync_provider.register_pricing(
-            "custom-model-v1",
-            ModelPricing(
-                tiers=[PricingTier(input_cost_per_token=5.0 / 1_000_000, output_cost_per_token=15.0 / 1_000_000)]
-            ),
+            "custom-v1", ModelPricing(tiers=[PricingTier(input_cost_per_token=5e-6, output_cost_per_token=15e-6)])
         )
-        result = sync_provider.chat("custom-model-v1", [UserMessage(content="Hi")])
-
+        result = sync_provider.chat("custom-v1", [UserMessage(content="Hi")])
         assert result.cost is not None
-        assert result.cost.input_cost == pytest.approx(1000 * 5.0 / 1_000_000)
-        assert result.cost.output_cost == pytest.approx(500 * 15.0 / 1_000_000)
+        assert result.cost.input_cost == pytest.approx(1000 * 5e-6)
 
-    def test_custom_pricing_overrides_builtin(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        custom_pricing = ModelPricing(
-            tiers=[PricingTier(input_cost_per_token=99.0 / 1_000_000, output_cost_per_token=199.0 / 1_000_000)]
-        )
-        sync_provider.register_pricing("llama-3.3-70b-versatile", custom_pricing)
-        result = sync_provider.chat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-
-        assert result.cost is not None
-        assert result.cost.input_cost == pytest.approx(10 * 99.0 / 1_000_000)
-        assert result.cost.output_cost == pytest.approx(5 * 199.0 / 1_000_000)
-
-    def test_unregistered_unknown_model_returns_none_cost(
-        self, sync_provider: GroqProvider, mock_sync_client: MagicMock
-    ) -> None:
-        unknown_completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="stop",
-                    index=0,
-                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
-                )
-            ],
-            created=1234567890,
-            model="totally-unknown-model",
-            object="chat.completion",
-            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-        )
-        mock_sync_client.chat.completions.create.return_value = unknown_completion
-
-        result = sync_provider.chat("totally-unknown-model", [UserMessage(content="Hi")])
-
+    def test_unknown_model_none_cost(self, sync_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        completion = {
+            "model": "totally-unknown",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, json=completion))
+        result = sync_provider.chat("totally-unknown", [UserMessage(content="Hi")])
         assert result.cost is None
 
 
-# MARK: Aclose
+# MARK: Aclose & Preload
 
 
 class TestAclose:
-    async def test_aclose_closes_client(
+    async def test_closes_client(
         self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: MagicMock,
-        chat_completion: ChatCompletion,
+        async_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
-        provider = GroqProvider(auth=fake_auth)
+        mount_completion(completion)
+        await async_provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert async_provider._async_client is not None
+        await async_provider.aclose()
+        assert async_provider._async_client is None
 
-        _ = await provider.achat("llama-3.3-70b-versatile", [UserMessage(content="Hi")])
-        await provider.aclose()
-
-        mock_async_create.assert_called_once()
-        mock_async_client.close.assert_awaited_once()
-        assert provider._async_client is None
-
-    async def test_aclose_noop_when_no_client(self, fake_auth: FakeAuth) -> None:
-        provider = GroqProvider(auth=fake_auth)
-        await provider.aclose()
-
-
-# MARK: Preload
+    async def test_noop_when_no_client(self, async_provider: GroqProvider) -> None:
+        await async_provider.aclose()
 
 
 class TestPreload:
-    def test_preload_imports_groq(self) -> None:
-        preload()  # should not raise
+    def test_preload(self) -> None:
+        preload()
+
+
+# MARK: Provider Params
+
+
+class TestProviderParams:
+    def test_all_params(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+    ) -> None:
+        route = mount_completion(completion)
+        sync_provider.chat(
+            MODEL, [UserMessage(content="Hi")], provider_params=GroqParams(service_tier="flex", seed=42, user="u1")
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["service_tier"] == "flex"
+        assert body["seed"] == 42
+        assert body["user"] == "u1"
+
+    def test_empty_params(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+    ) -> None:
+        route = mount_completion(completion)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=GroqParams())
+        body = json.loads(route.calls.last.request.content)
+        assert "service_tier" not in body
+
+    def test_params_reasoning_effort(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+    ) -> None:
+        route = mount_completion(completion)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=GroqParams(reasoning_effort="high"))
+        body = json.loads(route.calls.last.request.content)
+        assert body["reasoning_effort"] == "high"
+        assert body["include_reasoning"] is True
+
+    def test_params_reasoning_effort_none(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+    ) -> None:
+        route = mount_completion(completion)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=GroqParams(reasoning_effort="none"))
+        body = json.loads(route.calls.last.request.content)
+        assert body["reasoning_effort"] == "none"
+        assert "include_reasoning" not in body

@@ -20,6 +20,10 @@ class AuthenticationError(LmuxError):
     """Raised when authentication fails (HTTP 401)."""
 
 
+class PermissionDeniedError(LmuxError):
+    """Raised when valid credentials lack permission for the request (HTTP 403)."""
+
+
 class RateLimitError(LmuxError):
     """Raised when rate limit is exceeded (HTTP 429)."""
 

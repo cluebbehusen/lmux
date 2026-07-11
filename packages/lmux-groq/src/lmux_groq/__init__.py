@@ -15,5 +15,5 @@ __all__ = [
 
 
 def preload() -> None:
-    """Eagerly import the Groq SDK."""
-    import groq  # noqa: F401, PLC0415
+    """Eagerly import the HTTP client."""
+    import httpx  # noqa: F401, PLC0415

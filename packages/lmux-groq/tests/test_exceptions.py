@@ -1,210 +1,130 @@
-"""Tests for Groq exception mapping."""
+"""Tests for Groq HTTP error mapping."""
 
-from unittest.mock import MagicMock
-
-import groq
+import httpx
 import pytest
 
 from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
-    LmuxError,
     NotFoundError,
+    PermissionDeniedError,
     ProviderError,
     RateLimitError,
     TimeoutError,  # noqa: A004
 )
-from lmux_groq._exceptions import map_groq_error
-
-# MARK: Fixtures
-
-
-@pytest.fixture
-def auth_error() -> groq.AuthenticationError:
-    response = MagicMock()
-    response.status_code = 401
-    response.headers = {}
-    return groq.AuthenticationError(message="test error", response=response, body=None)
+from lmux_groq._exceptions import (
+    error_from_response,
+    error_from_stream,
+    map_transport_error,
+    parse_completion,
+    raise_for_status,
+)
+from lmux_groq._wire import WireCompletion
 
 
-@pytest.fixture
-def permission_denied_error() -> groq.PermissionDeniedError:
-    response = MagicMock()
-    response.status_code = 403
-    response.headers = {}
-    return groq.PermissionDeniedError(message="test error", response=response, body=None)
+def _resp(status: int, *, json: object = None, text: str = "", headers: dict[str, str] | None = None) -> httpx.Response:
+    if json is not None:
+        return httpx.Response(status, json=json, headers=headers or {})
+    return httpx.Response(status, text=text, headers=headers or {})
 
 
-@pytest.fixture
-def rate_limit_error() -> groq.RateLimitError:
-    response = MagicMock()
-    response.status_code = 429
-    response.headers = {}
-    return groq.RateLimitError(message="test error", response=response, body=None)
+class TestRaiseForStatus:
+    def test_ok_does_not_raise(self) -> None:
+        raise_for_status(_resp(200, json={}))
+
+    def test_error_raises(self) -> None:
+        with pytest.raises(InvalidRequestError):
+            raise_for_status(_resp(400, json={"error": {"message": "bad"}}))
 
 
-@pytest.fixture
-def rate_limit_error_with_retry() -> groq.RateLimitError:
-    response = MagicMock()
-    response.status_code = 429
-    response.headers = {"retry-after": "30.5"}
-    return groq.RateLimitError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def rate_limit_error_invalid_retry() -> groq.RateLimitError:
-    response = MagicMock()
-    response.status_code = 429
-    response.headers = {"retry-after": "not-a-number"}
-    return groq.RateLimitError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def bad_request_error() -> groq.BadRequestError:
-    response = MagicMock()
-    response.status_code = 400
-    response.headers = {}
-    return groq.BadRequestError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def not_found_error() -> groq.NotFoundError:
-    response = MagicMock()
-    response.status_code = 404
-    response.headers = {}
-    return groq.NotFoundError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def internal_server_error() -> groq.InternalServerError:
-    response = MagicMock()
-    response.status_code = 500
-    response.headers = {}
-    return groq.InternalServerError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def timeout_error() -> groq.APITimeoutError:
-    return groq.APITimeoutError(request=MagicMock())
-
-
-@pytest.fixture
-def unprocessable_error() -> groq.UnprocessableEntityError:
-    response = MagicMock()
-    response.status_code = 422
-    response.headers = {}
-    return groq.UnprocessableEntityError(message="test error", response=response, body=None)
-
-
-# MARK: Tests
-
-
-class TestMapGroqError:
-    def test_authentication_error(self, auth_error: groq.AuthenticationError) -> None:
-        result = map_groq_error(auth_error)
-        assert isinstance(result, AuthenticationError)
-        assert result.provider == "groq"
-        assert result.status_code == 401
-
-    def test_permission_denied_error(self, permission_denied_error: groq.PermissionDeniedError) -> None:
-        result = map_groq_error(permission_denied_error)
-        assert isinstance(result, AuthenticationError)
-        assert result.provider == "groq"
-        assert result.status_code == 403
-
-    def test_rate_limit_error(self, rate_limit_error: groq.RateLimitError) -> None:
-        result = map_groq_error(rate_limit_error)
-        assert isinstance(result, RateLimitError)
-        assert result.provider == "groq"
-        assert result.status_code == 429
-        assert result.retry_after is None
-
-    def test_rate_limit_with_retry_after(self, rate_limit_error_with_retry: groq.RateLimitError) -> None:
-        result = map_groq_error(rate_limit_error_with_retry)
-        assert isinstance(result, RateLimitError)
-        assert result.retry_after == 30.5
-
-    def test_rate_limit_invalid_retry_after(self, rate_limit_error_invalid_retry: groq.RateLimitError) -> None:
-        result = map_groq_error(rate_limit_error_invalid_retry)
-        assert isinstance(result, RateLimitError)
-        assert result.retry_after is None
-
-    def test_bad_request_error(self, bad_request_error: groq.BadRequestError) -> None:
-        result = map_groq_error(bad_request_error)
-        assert isinstance(result, InvalidRequestError)
-        assert result.status_code == 400
-
-    def test_not_found_error(self, not_found_error: groq.NotFoundError) -> None:
-        result = map_groq_error(not_found_error)
-        assert isinstance(result, NotFoundError)
-        assert result.status_code == 404
-
-    def test_internal_server_error(self, internal_server_error: groq.InternalServerError) -> None:
-        result = map_groq_error(internal_server_error)
-        assert isinstance(result, ProviderError)
-        assert result.status_code == 500
-
-    def test_timeout_error(self, timeout_error: groq.APITimeoutError) -> None:
-        result = map_groq_error(timeout_error)
-        assert isinstance(result, TimeoutError)
-        assert result.provider == "groq"
-
-    def test_generic_api_status_error(self, unprocessable_error: groq.UnprocessableEntityError) -> None:
-        result = map_groq_error(unprocessable_error)
-        assert isinstance(result, ProviderError)
-        assert result.provider == "groq"
-
-    def test_api_connection_error(self) -> None:
-        error = groq.APIConnectionError(request=MagicMock())
-        result = map_groq_error(error)
-        assert isinstance(result, ProviderError)
-        assert result.provider == "groq"
-        assert result.status_code is None
-
-    def test_non_groq_exception(self) -> None:
-        error = RuntimeError("something broke")
-        result = map_groq_error(error)
-        assert isinstance(result, ProviderError)
-        assert result.provider == "groq"
-
-    def test_rate_limit_no_response_attribute(self) -> None:
-        exc = groq.RateLimitError(message="rate limited", response=MagicMock(status_code=429, headers={}), body=None)
-        del exc.response
-        result = map_groq_error(exc)
-        assert isinstance(result, RateLimitError)
-        assert result.retry_after is None
-
+class TestErrorFromResponse:
     @pytest.mark.parametrize(
-        "error",
+        ("status", "exc"),
         [
-            pytest.param(
-                groq.AuthenticationError(message="e", response=MagicMock(status_code=401, headers={}), body=None),
-                id="auth",
-            ),
-            pytest.param(
-                groq.PermissionDeniedError(message="e", response=MagicMock(status_code=403, headers={}), body=None),
-                id="permission_denied",
-            ),
-            pytest.param(
-                groq.RateLimitError(message="e", response=MagicMock(status_code=429, headers={}), body=None),
-                id="rate_limit",
-            ),
-            pytest.param(
-                groq.BadRequestError(message="e", response=MagicMock(status_code=400, headers={}), body=None),
-                id="bad_request",
-            ),
-            pytest.param(
-                groq.NotFoundError(message="e", response=MagicMock(status_code=404, headers={}), body=None),
-                id="not_found",
-            ),
-            pytest.param(
-                groq.InternalServerError(message="e", response=MagicMock(status_code=500, headers={}), body=None),
-                id="internal_server",
-            ),
-            pytest.param(groq.APITimeoutError(request=MagicMock()), id="timeout"),
-            pytest.param(RuntimeError("fallback"), id="runtime"),
+            (401, AuthenticationError),
+            (403, PermissionDeniedError),
+            (429, RateLimitError),
+            (400, InvalidRequestError),
+            (404, NotFoundError),
+            (500, ProviderError),
+            (418, ProviderError),
         ],
     )
-    def test_all_mapped_errors_are_lmux_errors(self, error: Exception) -> None:
-        result = map_groq_error(error)
-        assert isinstance(result, LmuxError)
+    def test_status_mapping(self, status: int, exc: type[Exception]) -> None:
+        err = error_from_response(_resp(status, json={"error": {"message": "m"}}))
+        assert isinstance(err, exc)
+        assert getattr(err, "status_code", None) == status
+
+    def test_retry_after_valid(self) -> None:
+        err = error_from_response(_resp(429, json={"error": {"message": "m"}}, headers={"retry-after": "1.5"}))
+        assert isinstance(err, RateLimitError)
+        assert err.retry_after == 1.5
+
+    def test_retry_after_absent(self) -> None:
+        err = error_from_response(_resp(429, json={"error": {"message": "m"}}))
+        assert isinstance(err, RateLimitError)
+        assert err.retry_after is None
+
+    def test_retry_after_invalid(self) -> None:
+        err = error_from_response(_resp(429, json={"error": {"message": "m"}}, headers={"retry-after": "soon"}))
+        assert isinstance(err, RateLimitError)
+        assert err.retry_after is None
+
+
+class TestErrorMessage:
+    def test_error_dict_with_message(self) -> None:
+        assert "the message" in str(error_from_response(_resp(400, json={"error": {"message": "the message"}})))
+
+    def test_error_dict_without_message_falls_back(self) -> None:
+        assert isinstance(error_from_response(_resp(400, json={"error": {"code": "x"}})), InvalidRequestError)
+
+    def test_json_but_not_error_dict(self) -> None:
+        assert isinstance(error_from_response(_resp(400, json=["not", "a", "dict"])), InvalidRequestError)
+
+    def test_non_json_body(self) -> None:
+        assert "plain text error" in str(error_from_response(_resp(400, text="plain text error")))
+
+
+class TestParseCompletion:
+    def test_valid_body(self) -> None:
+        body = {
+            "model": "m",
+            "choices": [{"message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}],
+        }
+        result = parse_completion(_resp(200, json=body))
+        assert result == WireCompletion.model_validate(body)
+
+    def test_malformed_body_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_completion(_resp(200, text="not json"))
+
+    def test_non_object_body_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_completion(_resp(200, json=["not", "an", "object"]))
+
+    def test_missing_required_field_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_completion(_resp(200, json={"model": "m"}))  # no choices
+
+
+class TestErrorFromStream:
+    def test_error_object_with_message(self) -> None:
+        err = error_from_stream({"error": {"message": "stream boom"}})
+        assert isinstance(err, ProviderError)
+        assert "stream boom" in str(err)
+
+    def test_error_not_a_dict(self) -> None:
+        err = error_from_stream({"error": "raw string error"})
+        assert isinstance(err, ProviderError)
+        assert "raw string error" in str(err)
+
+
+class TestMapTransportError:
+    def test_timeout(self) -> None:
+        assert isinstance(map_transport_error(httpx.ReadTimeout("timed out")), TimeoutError)
+
+    def test_connect_error(self) -> None:
+        assert isinstance(map_transport_error(httpx.ConnectError("refused")), ProviderError)
+
+    def test_generic_exception(self) -> None:
+        assert isinstance(map_transport_error(Exception("boom")), ProviderError)
