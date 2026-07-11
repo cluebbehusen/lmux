@@ -40,6 +40,12 @@ from lmux_azure_foundry._mappers import (
     map_tool_choice,
     map_tools,
 )
+from lmux_azure_foundry._wire import (
+    WireChunk,
+    WireCompletion,
+    WireEmbeddingResponse,
+    WireResponsesResponse,
+)
 
 
 def _noop_cost(_model: str, _usage: Usage) -> Cost | None:
@@ -197,7 +203,9 @@ class TestMapChatCompletion:
             "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "Hello!"}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5},
         }
-        assert map_chat_completion(completion, "azure-foundry", _noop_cost) == ChatResponse(
+        assert map_chat_completion(
+            WireCompletion.model_validate(completion), "azure-foundry", _noop_cost
+        ) == ChatResponse(
             content="Hello!",
             tool_calls=None,
             usage=Usage(input_tokens=10, output_tokens=5),
@@ -226,7 +234,7 @@ class TestMapChatCompletion:
             ],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5},
         }
-        result = map_chat_completion(completion, "azure-foundry", _noop_cost)
+        result = map_chat_completion(WireCompletion.model_validate(completion), "azure-foundry", _noop_cost)
         assert result.content is None
         assert result.tool_calls == [ToolCall(id="tc1", function=FunctionCallResult(name="f", arguments='{"x": 1}'))]
 
@@ -242,7 +250,7 @@ class TestMapChatCompletion:
             ],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1},
         }
-        result = map_chat_completion(completion, "azure-foundry", _noop_cost)
+        result = map_chat_completion(WireCompletion.model_validate(completion), "azure-foundry", _noop_cost)
         assert result.reasoning == "because"
 
     def test_cache_and_reasoning_tokens(self) -> None:
@@ -256,7 +264,7 @@ class TestMapChatCompletion:
                 "completion_tokens_details": {"reasoning_tokens": 20},
             },
         }
-        result = map_chat_completion(completion, "azure-foundry", _noop_cost)
+        result = map_chat_completion(WireCompletion.model_validate(completion), "azure-foundry", _noop_cost)
         assert result.usage == Usage(input_tokens=10, output_tokens=25, cache_read_tokens=50, reasoning_tokens=20)
 
     def test_none_usage(self) -> None:
@@ -264,7 +272,7 @@ class TestMapChatCompletion:
             "model": "gpt-4o",
             "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "A"}}],
         }
-        result = map_chat_completion(completion, "azure-foundry", _noop_cost)
+        result = map_chat_completion(WireCompletion.model_validate(completion), "azure-foundry", _noop_cost)
         assert result.usage is None
         assert result.cost is None
 
@@ -274,7 +282,7 @@ class TestMapChatCompletion:
             "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "A"}}],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1},
         }
-        result = map_chat_completion(completion, "azure-foundry", _none_cost)
+        result = map_chat_completion(WireCompletion.model_validate(completion), "azure-foundry", _none_cost)
         assert result.cost is None
 
 
@@ -284,13 +292,13 @@ class TestMapChatCompletion:
 class TestMapChatChunk:
     def test_content_delta(self) -> None:
         chunk = {"model": "gpt-4o", "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hello"}}]}
-        assert map_chat_chunk(chunk, "azure-foundry") == ChatChunk(
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "azure-foundry") == ChatChunk(
             delta="Hello", model="gpt-4o", provider="azure-foundry"
         )
 
     def test_reasoning_delta(self) -> None:
         chunk = {"model": "o3", "choices": [{"index": 0, "delta": {"reasoning_content": "hmm"}}]}
-        assert map_chat_chunk(chunk, "azure-foundry").reasoning_delta == "hmm"
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "azure-foundry").reasoning_delta == "hmm"
 
     def test_tool_call_delta(self) -> None:
         chunk = {
@@ -306,7 +314,7 @@ class TestMapChatChunk:
                 }
             ],
         }
-        assert map_chat_chunk(chunk, "azure-foundry").tool_call_deltas == [
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "azure-foundry").tool_call_deltas == [
             ToolCallDelta(index=0, id="tc1", type="function", function=FunctionCallDelta(name="f", arguments='{"x'))
         ]
 
@@ -315,7 +323,7 @@ class TestMapChatChunk:
             "model": "gpt-4o",
             "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "id": "tc1", "type": "other"}]}}],
         }
-        assert map_chat_chunk(chunk, "azure-foundry").tool_call_deltas == [
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "azure-foundry").tool_call_deltas == [
             ToolCallDelta(index=0, id="tc1", type=None, function=None)
         ]
 
@@ -325,7 +333,7 @@ class TestMapChatChunk:
             "choices": [{"index": 0, "finish_reason": "stop", "delta": {}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5},
         }
-        assert map_chat_chunk(chunk, "azure-foundry") == ChatChunk(
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "azure-foundry") == ChatChunk(
             finish_reason="stop",
             usage=Usage(input_tokens=10, output_tokens=5),
             model="gpt-4o",
@@ -334,7 +342,9 @@ class TestMapChatChunk:
 
     def test_empty_choices(self) -> None:
         chunk = {"model": "gpt-4o", "choices": []}
-        assert map_chat_chunk(chunk, "azure-foundry") == ChatChunk(model="gpt-4o", provider="azure-foundry")
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "azure-foundry") == ChatChunk(
+            model="gpt-4o", provider="azure-foundry"
+        )
 
 
 # MARK: map_embedding_response
@@ -347,7 +357,9 @@ class TestMapEmbeddingResponse:
             "data": [{"index": 0, "embedding": [0.1, 0.2, 0.3]}],
             "usage": {"prompt_tokens": 5},
         }
-        assert map_embedding_response(response, "azure-foundry", _noop_cost) == EmbeddingResponse(
+        assert map_embedding_response(
+            WireEmbeddingResponse.model_validate(response), "azure-foundry", _noop_cost
+        ) == EmbeddingResponse(
             embeddings=[[0.1, 0.2, 0.3]],
             usage=Usage(input_tokens=5, output_tokens=0),
             cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
@@ -364,7 +376,9 @@ class TestMapEmbeddingResponse:
             ],
             "usage": {"prompt_tokens": 10},
         }
-        assert map_embedding_response(response, "azure-foundry", _noop_cost).embeddings == [[0.1, 0.2], [0.3, 0.4]]
+        assert map_embedding_response(
+            WireEmbeddingResponse.model_validate(response), "azure-foundry", _noop_cost
+        ).embeddings == [[0.1, 0.2], [0.3, 0.4]]
 
 
 # MARK: map_responses_response
@@ -380,7 +394,9 @@ class TestMapResponsesResponse:
             ],
             "usage": {"input_tokens": 10, "output_tokens": 5},
         }
-        assert map_responses_response(response, "azure-foundry", _noop_cost) == ResponseResponse(
+        assert map_responses_response(
+            WireResponsesResponse.model_validate(response), "azure-foundry", _noop_cost
+        ) == ResponseResponse(
             id="resp_1",
             output_text="Hi!",
             usage=Usage(input_tokens=10, output_tokens=5),
@@ -407,7 +423,12 @@ class TestMapResponsesResponse:
             ],
             "usage": {"input_tokens": 1, "output_tokens": 1},
         }
-        assert map_responses_response(response, "azure-foundry", _noop_cost).output_text == "Hello"
+        assert (
+            map_responses_response(
+                WireResponsesResponse.model_validate(response), "azure-foundry", _noop_cost
+            ).output_text
+            == "Hello"
+        )
 
     def test_cache_and_reasoning_tokens(self) -> None:
         response = {
@@ -421,12 +442,12 @@ class TestMapResponsesResponse:
                 "output_tokens_details": {"reasoning_tokens": 4},
             },
         }
-        result = map_responses_response(response, "azure-foundry", _noop_cost)
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "azure-foundry", _noop_cost)
         assert result.output_text == ""
         assert result.usage == Usage(input_tokens=10, output_tokens=5, cache_read_tokens=3, reasoning_tokens=4)
 
     def test_no_usage(self) -> None:
         response = {"id": "resp_1", "model": "gpt-5-pro", "output": []}
-        result = map_responses_response(response, "azure-foundry", _noop_cost)
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "azure-foundry", _noop_cost)
         assert result.usage is None
         assert result.cost is None
