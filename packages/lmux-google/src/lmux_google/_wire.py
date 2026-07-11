@@ -9,7 +9,7 @@ shape lmux reads as optional fields and the mapper dispatches on which are prese
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 
@@ -79,3 +79,23 @@ class WireEmbeddingsMetadata(_GeminiModel):
 class WireBatchEmbeddingsResponse(_GeminiModel):
     embeddings: list[WireEmbedding] | None = None
     metadata: WireEmbeddingsMetadata | None = None
+
+
+# MARK: Vertex AI embeddings (:predict — instances/predictions shape)
+
+
+class WireVertexEmbedStatistics(_GeminiModel):
+    token_count: int = 0
+
+
+class WireVertexEmbedding(_GeminiModel):
+    values: list[float] = Field(default_factory=list)
+    statistics: WireVertexEmbedStatistics = Field(default_factory=WireVertexEmbedStatistics)
+
+
+class WireVertexPrediction(_GeminiModel):
+    embeddings: WireVertexEmbedding = Field(default_factory=WireVertexEmbedding)
+
+
+class WireVertexPredictResponse(_GeminiModel):
+    predictions: list[WireVertexPrediction] = Field(default_factory=list)
