@@ -29,7 +29,7 @@ from lmux_azure_foundry._exceptions import (
     error_from_response,
     error_from_stream,
     map_transport_error,
-    parse_json,
+    parse_body,
     raise_for_status,
 )
 from lmux_azure_foundry._lazy import auth_headers, create_async_client, create_sync_client
@@ -43,6 +43,12 @@ from lmux_azure_foundry._mappers import (
     map_responses_response,
     map_tool_choice,
     map_tools,
+)
+from lmux_azure_foundry._wire import (
+    WireChunk,
+    WireCompletion,
+    WireEmbeddingResponse,
+    WireResponsesResponse,
 )
 from lmux_azure_foundry.auth import AzureFoundryCredential, AzureFoundryKeyAuthProvider
 from lmux_azure_foundry.cost import (
@@ -184,7 +190,7 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        result = map_chat_completion(parse_body(response, WireCompletion), PROVIDER_NAME, self._calculate_cost)
         return self._apply_multipliers(result, provider_params)
 
     @override
@@ -218,7 +224,7 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        result = map_chat_completion(parse_body(response, WireCompletion), PROVIDER_NAME, self._calculate_cost)
         return self._apply_multipliers(result, provider_params)
 
     @override
@@ -325,7 +331,9 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_embedding_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        result = map_embedding_response(
+            parse_body(response, WireEmbeddingResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_embedding_multipliers(result, provider_params)
 
     @override
@@ -346,7 +354,9 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_embedding_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        result = map_embedding_response(
+            parse_body(response, WireEmbeddingResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_embedding_multipliers(result, provider_params)
 
     # MARK: Responses
@@ -366,7 +376,9 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_responses_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        result = map_responses_response(
+            parse_body(response, WireResponsesResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_response_multipliers(result, provider_params)
 
     @override
@@ -386,7 +398,9 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_responses_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        result = map_responses_response(
+            parse_body(response, WireResponsesResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_response_multipliers(result, provider_params)
 
     # MARK: Cost Multipliers
@@ -442,9 +456,10 @@ class AzureFoundryProvider(
     def _map_stream_chunk(
         self, chunk: dict[str, Any], model: str, provider_params: AzureFoundryParams | None
     ) -> ChatChunk:
-        mapped = map_chat_chunk(chunk, PROVIDER_NAME)
+        wire = WireChunk.model_validate(chunk)
+        mapped = map_chat_chunk(wire, PROVIDER_NAME)
         if mapped.usage is not None:
-            cost = self._calculate_cost(chunk.get("model") or model, mapped.usage)
+            cost = self._calculate_cost(wire.model or model, mapped.usage)
             cost = self._apply_cost_multipliers(cost, provider_params)
             mapped = mapped.model_copy(update={"cost": cost})
         return mapped

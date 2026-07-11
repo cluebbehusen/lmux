@@ -40,6 +40,12 @@ from lmux.types import (
     Usage,
     UserMessage,
 )
+from lmux_google._wire import (
+    WireBatchEmbeddingsResponse,
+    WireCandidate,
+    WireGenerateContentResponse,
+    WireUsageMetadata,
+)
 
 type CostCalculator = Callable[[str, Usage], Cost | None]
 type Json = dict[str, Any]
@@ -194,15 +200,15 @@ def map_response_format(rf: ResponseFormat) -> tuple[str | None, Json | None]:
 
 
 def map_generate_content_response(
-    response: Json,
+    response: WireGenerateContentResponse,
     model: str,
     provider_name: str,
     cost_fn: CostCalculator,
 ) -> ChatResponse:
-    """Convert a Gemini ``generateContent`` JSON body to an lmux ChatResponse."""
+    """Convert a validated Gemini ``generateContent`` response to an lmux ChatResponse."""
     candidate = _get_candidate(response)
     if candidate is None:
-        usage = _map_usage(response.get("usageMetadata"))
+        usage = _map_usage(response.usage_metadata)
         cost = cost_fn(model, usage) if usage else None
         return ChatResponse(content=None, tool_calls=None, usage=usage, cost=cost, model=model, provider=provider_name)
 
@@ -211,43 +217,42 @@ def map_generate_content_response(
     tool_calls: list[ToolCall] = []
     server_tool_results: list[ServerToolResult] = []
 
-    parts = (candidate.get("content") or {}).get("parts") or []
+    parts = candidate.content.parts if candidate.content and candidate.content.parts else []
     pending_code_input: dict[str, str | None] | None = None
     for i, part in enumerate(parts):
-        if part.get("thought"):
-            if part.get("text") is not None:
-                thinking_parts.append(part["text"])
+        if part.thought:
+            if part.text is not None:
+                thinking_parts.append(part.text)
             continue
-        if part.get("text") is not None:
-            text_parts.append(part["text"])
-        fc = part.get("functionCall")
-        if fc is not None:
+        if part.text is not None:
+            text_parts.append(part.text)
+        if part.function_call is not None:
+            fc = part.function_call
             tool_calls.append(
                 ToolCall(
-                    id=fc.get("id") or f"call_{i}",
-                    function=FunctionCallResult(name=fc.get("name") or "", arguments=json.dumps(fc.get("args") or {})),
+                    id=fc.id or f"call_{i}",
+                    function=FunctionCallResult(name=fc.name or "", arguments=json.dumps(fc.args or {})),
                 )
             )
-        ec = part.get("executableCode")
-        if ec is not None:
-            pending_code_input = {"code": ec.get("code"), "language": ec.get("language")}
-        cer = part.get("codeExecutionResult")
-        if cer is not None:
-            outcome = cer.get("outcome")
+        if part.executable_code is not None:
+            ec = part.executable_code
+            pending_code_input = {"code": ec.code, "language": ec.language}
+        if part.code_execution_result is not None:
+            cer = part.code_execution_result
             server_tool_results.append(
                 ServerToolResult(
                     name="code_execution",
                     input=pending_code_input,
-                    output=cer.get("output"),
-                    provider_specific_fields={"outcome": outcome} if outcome else None,
+                    output=cer.output,
+                    provider_specific_fields={"outcome": cer.outcome} if cer.outcome else None,
                 )
             )
             pending_code_input = None
 
     content = "\n".join(text_parts) if text_parts else None
     reasoning = "\n".join(thinking_parts) if thinking_parts else None
-    finish_reason = _map_finish_reason(candidate.get("finishReason"), bool(tool_calls))
-    usage = _map_usage(response.get("usageMetadata"))
+    finish_reason = _map_finish_reason(candidate.finish_reason, bool(tool_calls))
+    usage = _map_usage(response.usage_metadata)
     cost = cost_fn(model, usage) if usage else None
 
     return ChatResponse(
@@ -264,11 +269,11 @@ def map_generate_content_response(
 
 
 def map_generate_content_chunk(
-    chunk: Json,
+    chunk: WireGenerateContentResponse,
     model: str,
     provider_name: str,
 ) -> ChatChunk:
-    """Convert a streaming ``generateContent`` chunk JSON to an lmux ChatChunk."""
+    """Convert a validated streaming ``generateContent`` chunk to an lmux ChatChunk."""
     delta: str | None = None
     reasoning_delta: str | None = None
     tool_call_deltas: list[ToolCallDelta] | None = None
@@ -277,41 +282,40 @@ def map_generate_content_chunk(
 
     candidate = _get_candidate(chunk)
     if candidate is not None:
-        parts = (candidate.get("content") or {}).get("parts") or []
+        parts = candidate.content.parts if candidate.content and candidate.content.parts else []
         text_pieces: list[str] = []
         thinking_pieces: list[str] = []
         tcd_list: list[ToolCallDelta] = []
         std_list: list[ServerToolDelta] = []
         std_index = 0
         for i, part in enumerate(parts):
-            if part.get("thought"):
-                if part.get("text") is not None:
-                    thinking_pieces.append(part["text"])
+            if part.thought:
+                if part.text is not None:
+                    thinking_pieces.append(part.text)
                 continue
-            if part.get("text") is not None:
-                text_pieces.append(part["text"])
-            fc = part.get("functionCall")
-            if fc is not None:
+            if part.text is not None:
+                text_pieces.append(part.text)
+            if part.function_call is not None:
+                fc = part.function_call
                 tcd_list.append(
                     ToolCallDelta(
                         index=i,
-                        id=fc.get("id") or f"call_{i}",
+                        id=fc.id or f"call_{i}",
                         type="function",
-                        function=FunctionCallDelta(name=fc.get("name"), arguments=json.dumps(fc.get("args") or {})),
+                        function=FunctionCallDelta(name=fc.name, arguments=json.dumps(fc.args or {})),
                     )
                 )
-            ec = part.get("executableCode")
-            if ec is not None:
+            if part.executable_code is not None:
+                ec = part.executable_code
                 std_list.append(
                     ServerToolDelta(
                         index=std_index,
                         name="code_execution",
-                        input_delta=json.dumps({"code": ec.get("code"), "language": ec.get("language")}),
+                        input_delta=json.dumps({"code": ec.code, "language": ec.language}),
                     )
                 )
-            cer = part.get("codeExecutionResult")
-            if cer is not None:
-                std_list.append(ServerToolDelta(index=std_index, output_delta=cer.get("output")))
+            if part.code_execution_result is not None:
+                std_list.append(ServerToolDelta(index=std_index, output_delta=part.code_execution_result.output))
                 std_index += 1
         if text_pieces:
             delta = "".join(text_pieces)
@@ -321,14 +325,14 @@ def map_generate_content_chunk(
             tool_call_deltas = tcd_list
         if std_list:
             server_tool_deltas = std_list
-        finish_reason = _map_finish_reason(candidate.get("finishReason"), tool_call_deltas is not None)
+        finish_reason = _map_finish_reason(candidate.finish_reason, tool_call_deltas is not None)
 
     return ChatChunk(
         delta=delta,
         reasoning_delta=reasoning_delta,
         tool_call_deltas=tool_call_deltas,
         server_tool_deltas=server_tool_deltas,
-        usage=_map_usage(chunk.get("usageMetadata")),
+        usage=_map_usage(chunk.usage_metadata),
         finish_reason=finish_reason,
         model=model,
         provider=provider_name,
@@ -336,20 +340,19 @@ def map_generate_content_chunk(
 
 
 def map_batch_embeddings_response(
-    response: Json,
+    response: WireBatchEmbeddingsResponse,
     model: str,
     provider_name: str,
     cost_fn: CostCalculator,
 ) -> EmbeddingResponse:
-    """Convert a Gemini ``batchEmbedContents`` JSON body to an lmux EmbeddingResponse."""
-    raw = response.get("embeddings") or []
-    embeddings: list[list[float]] = [list(emb.get("values") or []) for emb in raw]
+    """Convert a validated Gemini ``batchEmbedContents`` response to an lmux EmbeddingResponse."""
+    embeddings: list[list[float]] = [list(emb.values or []) for emb in response.embeddings or []]
 
     # The embedding API does not return token counts — only ``billableCharacterCount``
     # in metadata (Vertex AI only). We approximate tokens as chars / 4, consistent
     # with how litellm handles this. This is an approximation, not exact token usage.
     input_tokens = 0
-    billable = (response.get("metadata") or {}).get("billableCharacterCount")
+    billable = response.metadata.billable_character_count if response.metadata else None
     if billable is not None:
         input_tokens = billable // 4
     usage = Usage(input_tokens=input_tokens, output_tokens=0)
@@ -367,10 +370,9 @@ def map_batch_embeddings_response(
 # MARK: Internal Helpers
 
 
-def _get_candidate(response: Json) -> Json | None:
-    candidates = response.get("candidates")
-    if candidates:
-        return candidates[0]
+def _get_candidate(response: WireGenerateContentResponse) -> WireCandidate | None:
+    if response.candidates:
+        return response.candidates[0]
     return None
 
 
@@ -382,12 +384,12 @@ def _map_finish_reason(reason: str | None, has_tool_calls: bool) -> str | None:
     return _FINISH_REASON_MAP.get(reason, reason)
 
 
-def _map_usage(usage_metadata: Json | None) -> Usage | None:
+def _map_usage(usage_metadata: WireUsageMetadata | None) -> Usage | None:
     if usage_metadata is None:
         return None
     return Usage(
-        input_tokens=usage_metadata.get("promptTokenCount") or 0,
-        output_tokens=usage_metadata.get("candidatesTokenCount") or 0,
-        cache_read_tokens=usage_metadata.get("cachedContentTokenCount") or None,
-        reasoning_tokens=usage_metadata.get("thoughtsTokenCount") or None,
+        input_tokens=usage_metadata.prompt_token_count or 0,
+        output_tokens=usage_metadata.candidates_token_count or 0,
+        cache_read_tokens=usage_metadata.cached_content_token_count or None,
+        reasoning_tokens=usage_metadata.thoughts_token_count or None,
     )

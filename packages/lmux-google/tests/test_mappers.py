@@ -43,6 +43,7 @@ from lmux_google._mappers import (
     map_tool_choice,
     map_tools,
 )
+from lmux_google._wire import WireBatchEmbeddingsResponse, WireGenerateContentResponse
 
 # MARK: Fixtures
 
@@ -288,7 +289,9 @@ class TestMapToolChoice:
 class TestMapGenerateContentResponse:
     def test_text_response(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"text": "Hello!"}])
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result == ChatResponse(
             content="Hello!",
             tool_calls=None,
@@ -301,7 +304,9 @@ class TestMapGenerateContentResponse:
 
     def test_tool_call_response(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"functionCall": {"id": "call_0", "name": "get_weather", "args": {"city": "NYC"}}}])
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.tool_calls == [
             ToolCall(id="call_0", function=FunctionCallResult(name="get_weather", arguments='{"city": "NYC"}'))
         ]
@@ -309,87 +314,117 @@ class TestMapGenerateContentResponse:
 
     def test_function_call_without_id(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"functionCall": {"name": "search", "args": {}}}])
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.tool_calls is not None
         assert result.tool_calls[0].id.startswith("call_")
 
     def test_function_call_without_args(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"functionCall": {"id": "c1", "name": "ping"}}])
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.tool_calls is not None
         assert result.tool_calls[0].function.arguments == "{}"
 
     def test_function_call_without_name(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"functionCall": {"id": "c1", "args": {}}}])
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.tool_calls is not None
         assert result.tool_calls[0].function.name == ""
 
     def test_no_candidates(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = {"candidates": None, "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 0}}
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.content is None
         assert result.tool_calls is None
         assert result.usage is not None
 
     def test_empty_candidates(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        result = map_generate_content_response({"candidates": []}, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate({"candidates": []}), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.content is None
         assert result.usage is None
         assert result.cost is None
 
     def test_cache_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"text": "cached"}], cached_tokens=50)
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
 
     def test_no_usage(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"text": "Hi"}], usage=False)
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.usage is None
         assert result.cost is None
 
     def test_cost_none_for_unknown_model(self, none_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"text": "Hi"}])
-        result = map_generate_content_response(response, "unknown-model", "google", none_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "unknown-model", "google", none_cost_fn
+        )
         assert result.cost is None
 
     def test_safety_finish_reason(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[], finish_reason="SAFETY")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.finish_reason == "content_filter"
 
     def test_max_tokens_finish_reason(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"text": "truncated"}], finish_reason="MAX_TOKENS")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.finish_reason == "length"
 
     def test_none_finish_reason(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"text": "Hi"}], finish_reason=None)
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.finish_reason is None
 
     def test_unknown_finish_reason_passthrough(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"text": "Hi"}], finish_reason="SOME_NEW_REASON")
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.finish_reason == "SOME_NEW_REASON"
 
     def test_thought_parts_extracted(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"thought": True, "text": "Thinking..."}, {"text": "Answer"}])
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.content == "Answer"
         assert result.reasoning == "Thinking..."
 
     def test_thought_part_with_none_text(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"thought": True}, {"text": "Answer"}])
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.content == "Answer"
         assert result.reasoning is None
 
     def test_no_content_on_candidate(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(has_content=False)
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.content is None
         assert result.tool_calls is None
 
@@ -401,7 +436,9 @@ class TestMapGenerateContentResponse:
                 {"codeExecutionResult": {"outcome": "OUTCOME_OK", "output": "42\n"}},
             ]
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.content == "The answer is 42."
         assert result.server_tool_results == [
             ServerToolResult(
@@ -419,7 +456,9 @@ class TestMapGenerateContentResponse:
                 {"codeExecutionResult": {"outcome": "OUTCOME_OK", "output": "42\n"}},
             ]
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.content is None
         assert result.server_tool_results is not None
 
@@ -430,7 +469,9 @@ class TestMapGenerateContentResponse:
                 {"codeExecutionResult": {}},
             ]
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.server_tool_results is not None
         assert result.server_tool_results[0].input == {"code": "x = 1", "language": None}
         assert result.server_tool_results[0].output is None
@@ -445,13 +486,17 @@ class TestMapGenerateContentResponse:
                 {"codeExecutionResult": {"outcome": "OUTCOME_OK", "output": "2\n"}},
             ]
         )
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.server_tool_results is not None
         assert [r.output for r in result.server_tool_results] == ["1\n", "2\n"]
 
     def test_no_code_execution_returns_none(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"text": "Hello!"}])
-        result = map_generate_content_response(response, "gemini-2.0-flash", "google", noop_cost_fn)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
         assert result.server_tool_results is None
 
 
@@ -461,7 +506,9 @@ class TestMapGenerateContentResponse:
 class TestMapGenerateContentChunk:
     def test_text_chunk(self) -> None:
         chunk = _response(parts=[{"text": "Hello"}], finish_reason=None, usage=False)
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result == ChatChunk(delta="Hello", model="gemini-2.0-flash", provider="google")
 
     def test_function_call_chunk(self) -> None:
@@ -470,7 +517,9 @@ class TestMapGenerateContentChunk:
             finish_reason=None,
             usage=False,
         )
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.tool_call_deltas == [
             ToolCallDelta(
                 index=0,
@@ -482,39 +531,53 @@ class TestMapGenerateContentChunk:
 
     def test_function_call_chunk_without_id(self) -> None:
         chunk = _response(parts=[{"functionCall": {"name": "f", "args": {}}}], finish_reason=None, usage=False)
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.tool_call_deltas is not None
         assert result.tool_call_deltas[0].id == "call_0"
 
     def test_finish_reason_chunk(self) -> None:
         chunk = _response(has_content=False, finish_reason="STOP", usage=False)
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.finish_reason == "stop"
 
     def test_usage_chunk(self) -> None:
         chunk = _response(parts=[], finish_reason=None)
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.usage == Usage(input_tokens=10, output_tokens=5)
 
     def test_empty_chunk(self) -> None:
-        result = map_generate_content_chunk({"candidates": None}, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate({"candidates": None}), "gemini-2.0-flash", "google"
+        )
         assert result == ChatChunk(model="gemini-2.0-flash", provider="google")
 
     def test_thought_parts_extracted_in_chunk(self) -> None:
         chunk = _response(parts=[{"thought": True, "text": "Thinking..."}], finish_reason=None, usage=False)
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.delta is None
         assert result.reasoning_delta == "Thinking..."
 
     def test_thought_part_with_none_text_in_chunk(self) -> None:
         chunk = _response(parts=[{"thought": True}], finish_reason=None, usage=False)
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.delta is None
         assert result.reasoning_delta is None
 
     def test_function_call_without_args_in_chunk(self) -> None:
         chunk = _response(parts=[{"functionCall": {"id": "c1", "name": "ping"}}], finish_reason=None, usage=False)
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.tool_call_deltas is not None
         assert result.tool_call_deltas[0].function is not None
         assert result.tool_call_deltas[0].function.arguments == "{}"
@@ -523,14 +586,18 @@ class TestMapGenerateContentChunk:
         chunk = _response(
             parts=[{"functionCall": {"id": "c1", "name": "f", "args": {}}}], finish_reason="STOP", usage=False
         )
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.finish_reason == "tool_calls"
 
     def test_nonterminal_tool_call_chunk_preserves_null_finish_reason(self) -> None:
         chunk = _response(
             parts=[{"functionCall": {"id": "c1", "name": "f", "args": {}}}], finish_reason=None, usage=False
         )
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.finish_reason is None
 
     def test_code_execution_chunk(self) -> None:
@@ -542,7 +609,9 @@ class TestMapGenerateContentChunk:
             finish_reason=None,
             usage=False,
         )
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.server_tool_deltas == [
             ServerToolDelta(index=0, name="code_execution", input_delta='{"code": "print(42)", "language": "PYTHON"}'),
             ServerToolDelta(index=0, output_delta="42\n"),
@@ -550,7 +619,9 @@ class TestMapGenerateContentChunk:
 
     def test_code_execution_chunk_no_server_tool_deltas_when_absent(self) -> None:
         chunk = _response(parts=[{"text": "Hello"}], finish_reason=None, usage=False)
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.server_tool_deltas is None
 
     def test_multiple_code_executions_in_chunk(self) -> None:
@@ -564,7 +635,9 @@ class TestMapGenerateContentChunk:
             finish_reason=None,
             usage=False,
         )
-        result = map_generate_content_chunk(chunk, "gemini-2.0-flash", "google")
+        result = map_generate_content_chunk(
+            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+        )
         assert result.server_tool_deltas is not None
         assert len(result.server_tool_deltas) == 4
         assert result.server_tool_deltas[1].index == 0
@@ -578,7 +651,9 @@ class TestMapGenerateContentChunk:
 class TestMapBatchEmbeddingsResponse:
     def test_single_embedding(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = {"embeddings": [{"values": [0.1, 0.2, 0.3]}]}
-        result = map_batch_embeddings_response(response, "text-embedding-005", "google", noop_cost_fn)
+        result = map_batch_embeddings_response(
+            WireBatchEmbeddingsResponse.model_validate(response), "text-embedding-005", "google", noop_cost_fn
+        )
         assert result == EmbeddingResponse(
             embeddings=[[0.1, 0.2, 0.3]],
             usage=Usage(input_tokens=0, output_tokens=0),
@@ -589,29 +664,44 @@ class TestMapBatchEmbeddingsResponse:
 
     def test_multiple_embeddings(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = {"embeddings": [{"values": [0.1, 0.2]}, {"values": [0.3, 0.4]}]}
-        result = map_batch_embeddings_response(response, "text-embedding-005", "google", noop_cost_fn)
+        result = map_batch_embeddings_response(
+            WireBatchEmbeddingsResponse.model_validate(response), "text-embedding-005", "google", noop_cost_fn
+        )
         assert result.embeddings == [[0.1, 0.2], [0.3, 0.4]]
 
     def test_empty_embeddings(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        result = map_batch_embeddings_response({"embeddings": None}, "text-embedding-005", "google", noop_cost_fn)
+        result = map_batch_embeddings_response(
+            WireBatchEmbeddingsResponse.model_validate({"embeddings": None}),
+            "text-embedding-005",
+            "google",
+            noop_cost_fn,
+        )
         assert result.embeddings == []
 
     def test_embedding_with_none_values(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = {"embeddings": [{"values": None}]}
-        result = map_batch_embeddings_response(response, "text-embedding-005", "google", noop_cost_fn)
+        result = map_batch_embeddings_response(
+            WireBatchEmbeddingsResponse.model_validate(response), "text-embedding-005", "google", noop_cost_fn
+        )
         assert result.embeddings == [[]]
 
     def test_cost_none_for_unknown(self, none_cost_fn: Any) -> None:  # noqa: ANN401
         response = {"embeddings": [{"values": [0.1]}]}
-        result = map_batch_embeddings_response(response, "unknown-model", "google", none_cost_fn)
+        result = map_batch_embeddings_response(
+            WireBatchEmbeddingsResponse.model_validate(response), "unknown-model", "google", none_cost_fn
+        )
         assert result.cost is None
 
     def test_approximates_tokens_from_billable_characters(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = {"embeddings": [{"values": [0.1]}], "metadata": {"billableCharacterCount": 400}}
-        result = map_batch_embeddings_response(response, "text-embedding-005", "google", noop_cost_fn)
+        result = map_batch_embeddings_response(
+            WireBatchEmbeddingsResponse.model_validate(response), "text-embedding-005", "google", noop_cost_fn
+        )
         assert result.usage == Usage(input_tokens=100, output_tokens=0)
 
     def test_billable_character_count_none_falls_back_to_zero(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = {"embeddings": [{"values": [0.1]}], "metadata": {"billableCharacterCount": None}}
-        result = map_batch_embeddings_response(response, "text-embedding-005", "google", noop_cost_fn)
+        result = map_batch_embeddings_response(
+            WireBatchEmbeddingsResponse.model_validate(response), "text-embedding-005", "google", noop_cost_fn
+        )
         assert result.usage == Usage(input_tokens=0, output_tokens=0)

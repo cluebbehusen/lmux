@@ -3,7 +3,7 @@
 import asyncio
 import json
 import os
-from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from datetime import date
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, override
 
@@ -31,6 +31,8 @@ from lmux_anthropic._lazy import (
     create_sync_client,
     create_sync_foundry_client,
     create_sync_vertex_client,
+    foundry_auth_headers,
+    vertex_auth_headers,
 )
 from lmux_anthropic._mappers import (
     map_content_block_delta,
@@ -169,7 +171,7 @@ class AnthropicProvider(
             self._async_client = None
             self._async_loop = None
 
-    # MARK: Request shaping hooks (overridden by Vertex)
+    # MARK: Request shaping hooks (overridden by Vertex/Foundry)
 
     def _request_path(self, model: str, *, stream: bool) -> str:  # noqa: ARG002
         """Path for the Messages request; ``model``/``stream`` matter only on Vertex."""
@@ -178,6 +180,15 @@ class AnthropicProvider(
     def _transform_body(self, body: dict[str, Any], model: str) -> dict[str, Any]:  # noqa: ARG002
         """Adjust the request body per-transport; identity for the Anthropic API."""
         return body
+
+    def _request_headers(self) -> Mapping[str, str]:
+        """Auth headers applied per request.
+
+        Empty for the direct API — its static ``x-api-key`` lives on the cached client.
+        Vertex and Foundry override this to resolve/refresh a short-lived token on every
+        request, so a long-lived provider never sends an expired credential.
+        """
+        return {}
 
     # MARK: Chat
 
@@ -203,7 +214,11 @@ class AnthropicProvider(
         )  # fmt: skip
         try:
             client = self._get_sync_client()
-            response = client.post(self._request_path(model, stream=False), json=self._transform_body(body, model))
+            response = client.post(
+                self._request_path(model, stream=False),
+                json=self._transform_body(body, model),
+                headers=self._request_headers(),
+            )
         except Exception as e:
             raise map_transport_error(e, self._provider_name) from e
         raise_for_status(response, self._provider_name)
@@ -232,7 +247,9 @@ class AnthropicProvider(
         try:
             client = await self._get_async_client()
             response = await client.post(
-                self._request_path(model, stream=False), json=self._transform_body(body, model)
+                self._request_path(model, stream=False),
+                json=self._transform_body(body, model),
+                headers=self._request_headers(),
             )
         except Exception as e:
             raise map_transport_error(e, self._provider_name) from e
@@ -263,13 +280,14 @@ class AnthropicProvider(
             client = self._get_sync_client()
             path = self._request_path(model, stream=True)
             body = self._transform_body(body, model)
+            headers = self._request_headers()
         except Exception as e:
             raise map_transport_error(e, self._provider_name) from e
 
         as_of = self._resolve_pricing_as_of(provider_params)
         stream = _StreamState(model)
         try:
-            with client.stream("POST", path, json=body) as response:
+            with client.stream("POST", path, json=body, headers=headers) as response:
                 if response.status_code >= _HTTP_ERROR:
                     response.read()
                     raise error_from_response(response, self._provider_name)  # noqa: TRY301
@@ -309,13 +327,14 @@ class AnthropicProvider(
             client = await self._get_async_client()
             path = self._request_path(model, stream=True)
             body = self._transform_body(body, model)
+            headers = self._request_headers()
         except Exception as e:
             raise map_transport_error(e, self._provider_name) from e
 
         as_of = self._resolve_pricing_as_of(provider_params)
         stream = _StreamState(model)
         try:
-            async with client.stream("POST", path, json=body) as response:
+            async with client.stream("POST", path, json=body, headers=headers) as response:
                 if response.status_code >= _HTTP_ERROR:
                     await response.aread()
                     raise error_from_response(response, self._provider_name)  # noqa: TRY301
@@ -508,12 +527,28 @@ class AnthropicVertexProvider(AnthropicProvider):
         self._region: str | None = region
         self._resolved_project_id: str | None = None
         self._resolved_region: str | None = None
+        self._credentials: Credentials | None = None
+        self._auth_project_id: str | None = None
 
     @staticmethod
     def _split_auth_result(auth_result: "VertexAuthResult") -> "tuple[Credentials, str | None]":
         if isinstance(auth_result, tuple):
             return auth_result  # ty: ignore[invalid-return-type]
         return auth_result, None
+
+    def _sync_credentials(self) -> "Credentials":
+        """Resolve Google credentials once and cache them; they refresh their own token in place."""
+        credentials = self._credentials
+        if credentials is None:
+            credentials, self._auth_project_id = self._split_auth_result(self._vertex_auth.get_credentials())
+            self._credentials = credentials
+        return credentials
+
+    async def _acredentials(self) -> "Credentials":
+        # Resolved per async-client creation (once per loop); the sync path caches for per-request reuse.
+        credentials, self._auth_project_id = self._split_auth_result(await self._vertex_auth.aget_credentials())
+        self._credentials = credentials
+        return credentials
 
     def _resolve_project_id(self, auth_project_id: str | None) -> str:
         """Resolve the project ID: explicit argument, then env var, then auth-derived.
@@ -539,12 +574,15 @@ class AnthropicVertexProvider(AnthropicProvider):
         return region
 
     @override
+    def _request_headers(self) -> Mapping[str, str]:
+        return vertex_auth_headers(self._sync_credentials())
+
+    @override
     def _create_sync_client(self) -> "httpx.Client":
-        credentials, auth_project_id = self._split_auth_result(self._vertex_auth.get_credentials())
+        self._sync_credentials()
         self._resolved_region = self._resolve_region()
-        self._resolved_project_id = self._resolve_project_id(auth_project_id)
+        self._resolved_project_id = self._resolve_project_id(self._auth_project_id)
         return create_sync_vertex_client(
-            credentials=credentials,
             region=self._resolved_region,
             base_url=self._base_url,
             timeout=self._timeout,
@@ -553,11 +591,10 @@ class AnthropicVertexProvider(AnthropicProvider):
 
     @override
     async def _create_async_client(self) -> "httpx.AsyncClient":
-        credentials, auth_project_id = self._split_auth_result(await self._vertex_auth.aget_credentials())
+        await self._acredentials()
         self._resolved_region = self._resolve_region()
-        self._resolved_project_id = self._resolve_project_id(auth_project_id)
+        self._resolved_project_id = self._resolve_project_id(self._auth_project_id)
         return create_async_vertex_client(
-            credentials=credentials,
             region=self._resolved_region,
             base_url=self._base_url,
             timeout=self._timeout,
@@ -631,6 +668,9 @@ class AnthropicFoundryProvider(AnthropicProvider):
         )
         self._foundry_auth: AuthProvider[FoundryAuthResult] = auth or AnthropicFoundryEnvAuthProvider()
         self._resource: str | None = resource
+        self._foundry_api_key: str | None = None
+        self._foundry_token_provider: Callable[[], str] | None = None
+        self._foundry_auth_resolved: bool = False
 
     @staticmethod
     def _split_foundry_auth(auth_result: "FoundryAuthResult") -> "tuple[str | None, Callable[[], str] | None]":
@@ -638,12 +678,31 @@ class AnthropicFoundryProvider(AnthropicProvider):
             return auth_result, None
         return None, auth_result
 
+    def _sync_foundry_auth(self) -> "tuple[str | None, Callable[[], str] | None]":
+        """Resolve the Foundry credential once (an API key, or a token-provider callable to invoke per request)."""
+        if not self._foundry_auth_resolved:
+            self._foundry_api_key, self._foundry_token_provider = self._split_foundry_auth(
+                self._foundry_auth.get_credentials()
+            )
+            self._foundry_auth_resolved = True
+        return self._foundry_api_key, self._foundry_token_provider
+
+    async def _afoundry_auth(self) -> "tuple[str | None, Callable[[], str] | None]":
+        # Resolved per async-client creation (once per loop); the sync path caches for per-request reuse.
+        self._foundry_api_key, self._foundry_token_provider = self._split_foundry_auth(
+            await self._foundry_auth.aget_credentials()
+        )
+        self._foundry_auth_resolved = True
+        return self._foundry_api_key, self._foundry_token_provider
+
+    @override
+    def _request_headers(self) -> Mapping[str, str]:
+        return foundry_auth_headers(*self._sync_foundry_auth())
+
     @override
     def _create_sync_client(self) -> "httpx.Client":
-        api_key, azure_ad_token_provider = self._split_foundry_auth(self._foundry_auth.get_credentials())
+        self._sync_foundry_auth()
         return create_sync_foundry_client(
-            api_key=api_key,
-            azure_ad_token_provider=azure_ad_token_provider,
             resource=self._resource,
             base_url=self._base_url,
             timeout=self._timeout,
@@ -652,10 +711,8 @@ class AnthropicFoundryProvider(AnthropicProvider):
 
     @override
     async def _create_async_client(self) -> "httpx.AsyncClient":
-        api_key, azure_ad_token_provider = self._split_foundry_auth(await self._foundry_auth.aget_credentials())
+        await self._afoundry_auth()
         return create_async_foundry_client(
-            api_key=api_key,
-            azure_ad_token_provider=azure_ad_token_provider,
             resource=self._resource,
             base_url=self._base_url,
             timeout=self._timeout,

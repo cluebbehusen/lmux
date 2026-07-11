@@ -1,5 +1,6 @@
 """HTTP client factories for the Anthropic, Vertex, and Foundry transports."""
 
+import os
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING
 
@@ -102,9 +103,15 @@ class HttpxTransportRequest:
 
 
 def vertex_base_url(region: str) -> str:
-    """Return the Vertex AI base URL for a region (``global`` has no region prefix)."""
+    """Return the Vertex AI base URL for a region.
+
+    ``global`` has no region prefix; the ``us`` and ``eu`` multi-regions use their
+    dedicated ``rep`` endpoints; anything else is a standard regional host.
+    """
     if region == "global":
         return "https://aiplatform.googleapis.com/v1"
+    if region in ("us", "eu"):
+        return f"https://aiplatform.{region}.rep.googleapis.com/v1"
     return f"https://{region}-aiplatform.googleapis.com/v1"
 
 
@@ -117,22 +124,22 @@ def resolve_vertex_token(credentials: "Credentials") -> str:
     return credentials.token
 
 
-def _vertex_headers(token: str) -> Mapping[str, str]:
-    return {"Authorization": f"Bearer {token}", "content-type": _JSON}
+def vertex_auth_headers(credentials: "Credentials") -> dict[str, str]:
+    """Per-request Vertex auth header, refreshing the (short-lived) access token if needed."""
+    return {"Authorization": f"Bearer {resolve_vertex_token(credentials)}"}
 
 
 def create_sync_vertex_client(
     *,
-    credentials: "Credentials",
     region: str,
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
 ) -> "httpx.Client":
-    """Create an httpx client for the Vertex AI ``rawPredict`` endpoint."""
+    """Create an httpx client for the Vertex AI ``rawPredict`` endpoint (auth is applied per request)."""
     return _create_sync(
         base_url=base_url or vertex_base_url(region),
-        headers=_vertex_headers(resolve_vertex_token(credentials)),
+        headers={"content-type": _JSON},
         timeout=timeout,
         max_retries=max_retries,
     )
@@ -140,16 +147,15 @@ def create_sync_vertex_client(
 
 def create_async_vertex_client(
     *,
-    credentials: "Credentials",
     region: str,
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
 ) -> "httpx.AsyncClient":
-    """Create an async httpx client for the Vertex AI ``rawPredict`` endpoint."""
+    """Create an async httpx client for the Vertex AI ``rawPredict`` endpoint (auth is applied per request)."""
     return _create_async(
         base_url=base_url or vertex_base_url(region),
-        headers=_vertex_headers(resolve_vertex_token(credentials)),
+        headers={"content-type": _JSON},
         timeout=timeout,
         max_retries=max_retries,
     )
@@ -163,56 +169,61 @@ def foundry_base_url(resource: str) -> str:
     return f"https://{resource}.services.ai.azure.com/anthropic"
 
 
-def _foundry_headers(api_key: str | None, azure_ad_token_provider: "Callable[[], str] | None") -> Mapping[str, str]:
-    headers: dict[str, str] = {"anthropic-version": ANTHROPIC_VERSION, "content-type": _JSON}
+def foundry_auth_headers(api_key: str | None, azure_ad_token_provider: "Callable[[], str] | None") -> dict[str, str]:
+    """Per-request Foundry auth headers.
+
+    An Entra ID token provider is invoked on every call for a fresh bearer token. For
+    API-key auth the endpoint authenticates with ``x-api-key``; ``api-key`` is also sent
+    for backwards compatibility.
+    """
     if azure_ad_token_provider is not None:
-        headers["Authorization"] = f"Bearer {azure_ad_token_provider()}"
-    elif api_key is not None:
-        headers["api-key"] = api_key
-    else:
-        raise ValueError("Foundry requires either an api_key or an azure_ad_token_provider")  # noqa: TRY003
-    return headers
+        return {"Authorization": f"Bearer {azure_ad_token_provider()}"}
+    if api_key is not None:
+        return {"x-api-key": api_key, "api-key": api_key}
+    raise ValueError("Foundry requires either an api_key or an azure_ad_token_provider")  # noqa: TRY003
 
 
 def _resolve_foundry_base_url(base_url: str | None, resource: str | None) -> str:
+    base_url = base_url or os.environ.get("ANTHROPIC_FOUNDRY_BASE_URL")
     if base_url is not None:
         return base_url
+    resource = resource or os.environ.get("ANTHROPIC_FOUNDRY_RESOURCE")
     if resource is not None:
         return foundry_base_url(resource)
-    raise ValueError("Foundry requires either a base_url or a resource")  # noqa: TRY003
+    msg = (
+        "Foundry requires a base_url or resource "
+        "(or the ANTHROPIC_FOUNDRY_BASE_URL / ANTHROPIC_FOUNDRY_RESOURCE env var)"
+    )
+    raise ValueError(msg)
 
 
-def create_sync_foundry_client(  # noqa: PLR0913
+def create_sync_foundry_client(
     *,
-    api_key: str | None = None,
-    azure_ad_token_provider: "Callable[[], str] | None" = None,
     resource: str | None = None,
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
 ) -> "httpx.Client":
-    """Create an httpx client for the Microsoft Foundry Anthropic endpoint."""
+    """Create an httpx client for the Microsoft Foundry Anthropic endpoint (auth is applied per request)."""
     return _create_sync(
         base_url=_resolve_foundry_base_url(base_url, resource),
-        headers=_foundry_headers(api_key, azure_ad_token_provider),
+        headers={"anthropic-version": ANTHROPIC_VERSION, "content-type": _JSON},
         timeout=timeout,
         max_retries=max_retries,
     )
 
 
-def create_async_foundry_client(  # noqa: PLR0913
+def create_async_foundry_client(
     *,
-    api_key: str | None = None,
-    azure_ad_token_provider: "Callable[[], str] | None" = None,
     resource: str | None = None,
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
 ) -> "httpx.AsyncClient":
-    """Create an async httpx client for the Microsoft Foundry Anthropic endpoint."""
+    """Create an async httpx client for the Microsoft Foundry Anthropic endpoint (auth is applied per request)."""
     return _create_async(
         base_url=_resolve_foundry_base_url(base_url, resource),
-        headers=_foundry_headers(api_key, azure_ad_token_provider),
+        headers={"anthropic-version": ANTHROPIC_VERSION, "content-type": _JSON},
         timeout=timeout,
         max_retries=max_retries,
     )
