@@ -1,13 +1,16 @@
-"""Azure AI Foundry provider implementation."""
+"""Azure AI Foundry provider implementation (SDK-lite, httpx transport)."""
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
-    import openai
+    import httpx
 
+from lmux._http import aiter_sse, iter_sse
 from lmux.cost import ModelPricing, calculate_cost
+from lmux.exceptions import LmuxError
 from lmux.protocols import AuthProvider, CompletionProvider, EmbeddingProvider, PricingProvider, ResponsesProvider
 from lmux.types import (
     ChatChunk,
@@ -22,8 +25,14 @@ from lmux.types import (
     ToolChoice,
     Usage,
 )
-from lmux_azure_foundry._exceptions import map_azure_foundry_error
-from lmux_azure_foundry._lazy import create_async_client, create_sync_client
+from lmux_azure_foundry._exceptions import (
+    error_from_response,
+    error_from_stream,
+    map_transport_error,
+    parse_body,
+    raise_for_status,
+)
+from lmux_azure_foundry._lazy import auth_headers, create_async_client, create_sync_client
 from lmux_azure_foundry._mappers import (
     map_chat_chunk,
     map_chat_completion,
@@ -34,6 +43,12 @@ from lmux_azure_foundry._mappers import (
     map_responses_response,
     map_tool_choice,
     map_tools,
+)
+from lmux_azure_foundry._wire import (
+    WireChunk,
+    WireCompletion,
+    WireEmbeddingResponse,
+    WireResponsesResponse,
 )
 from lmux_azure_foundry.auth import AzureFoundryCredential, AzureFoundryKeyAuthProvider
 from lmux_azure_foundry.cost import (
@@ -48,6 +63,12 @@ PROVIDER_NAME = "azure-foundry"
 # Minimum version that supports the Responses API (versions are cumulative).
 DEFAULT_API_VERSION = "2025-04-01-preview"
 
+_RESPONSES_PATH = "/responses"
+_HTTP_ERROR = 400
+_SSE_DONE = "[DONE]"
+# Models that use max_completion_tokens instead of max_tokens.
+_MAX_COMPLETION_TOKEN_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
 
 class AzureFoundryProvider(
     CompletionProvider[AzureFoundryParams],
@@ -55,19 +76,18 @@ class AzureFoundryProvider(
     ResponsesProvider[AzureFoundryParams],
     PricingProvider,
 ):
-    """Azure AI Foundry API provider.
+    """Azure AI Foundry API provider over httpx (OpenAI-compatible endpoints).
 
-    Uses the ``openai`` SDK's ``AzureOpenAI`` / ``AsyncAzureOpenAI`` clients
-    to communicate with models deployed in Azure AI Foundry.
-
-    Authentication supports all three methods accepted by the underlying SDK:
+    Talks to models deployed in Azure AI Foundry / Azure OpenAI directly over
+    the REST API. Authentication supports all three Azure methods:
 
     - **API key** — pass ``auth=AzureFoundryKeyAuthProvider()`` or any
-      ``AuthProvider[str]``.
-    - **Static Azure AD token** — pass ``auth=`` an ``AuthProvider`` that returns
-      an ``AzureAdToken``.
+      ``AuthProvider[str]`` (sent as the ``api-key`` header).
+    - **Static Entra token** — pass ``auth=`` an ``AuthProvider`` that returns
+      an ``AzureAdToken`` (sent as ``Authorization: Bearer``).
     - **Token provider** — pass ``auth=`` an ``AuthProvider`` that returns a
-      ``Callable[[], str]`` (e.g. ``AzureFoundryTokenAuthProvider``).
+      ``Callable[[], str]`` (e.g. ``AzureFoundryTokenAuthProvider``); the
+      callable is invoked on every request for a fresh bearer token.
     """
 
     def __init__(
@@ -84,8 +104,8 @@ class AzureFoundryProvider(
         self._api_version: str = api_version
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
-        self._sync_client: openai.AzureOpenAI | None = None
-        self._async_client: openai.AsyncAzureOpenAI | None = None
+        self._sync_client: httpx.Client | None = None
+        self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
@@ -101,26 +121,22 @@ class AzureFoundryProvider(
             return calculate_cost(usage, pricing)
         return calculate_azure_foundry_cost(model, usage)
 
-    def _get_sync_client(self) -> "openai.AzureOpenAI":
+    # MARK: Clients
+
+    def _get_sync_client(self) -> "httpx.Client":
         if self._sync_client is None:
-            credential = self._auth.get_credentials()
             self._sync_client = create_sync_client(
-                credential=credential,
-                azure_endpoint=self._endpoint,
-                api_version=self._api_version,
+                endpoint=self._endpoint,
                 timeout=self._timeout,
                 max_retries=self._max_retries,
             )
         return self._sync_client
 
-    async def _get_async_client(self) -> "openai.AsyncAzureOpenAI":
+    async def _get_async_client(self) -> "httpx.AsyncClient":
         loop = asyncio.get_running_loop()
         if self._async_client is None or self._async_loop is not loop:
-            credential = await self._auth.aget_credentials()
             self._async_client = create_async_client(
-                credential=credential,
-                azure_endpoint=self._endpoint,
-                api_version=self._api_version,
+                endpoint=self._endpoint,
                 timeout=self._timeout,
                 max_retries=self._max_retries,
             )
@@ -130,9 +146,19 @@ class AzureFoundryProvider(
     async def aclose(self) -> None:
         """Close the underlying async HTTP client."""
         if self._async_client is not None:
-            await self._async_client.close()
+            await self._async_client.aclose()
             self._async_client = None
             self._async_loop = None
+
+    @property
+    def _query(self) -> dict[str, str]:
+        return {"api-version": self._api_version}
+
+    def _sync_headers(self) -> dict[str, str]:
+        return auth_headers(self._auth.get_credentials())
+
+    async def _async_headers(self) -> dict[str, str]:
+        return auth_headers(await self._auth.aget_credentials())
 
     # MARK: Chat
 
@@ -152,26 +178,20 @@ class AzureFoundryProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AzureFoundryParams | None = None,
     ) -> ChatResponse:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
+        body = self._build_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params,
+        )  # fmt: skip
         try:
             client = self._get_sync_client()
-            completion = client.chat.completions.create(**kwargs, stream=False)
+            response = client.post(
+                _chat_path(model), json={**body, "stream": False}, params=self._query, headers=self._sync_headers()
+            )
         except Exception as e:
-            raise map_azure_foundry_error(e) from e
-        response = map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
-        return self._apply_multipliers(response, provider_params)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        result = map_chat_completion(parse_body(response, WireCompletion), PROVIDER_NAME, self._calculate_cost)
+        return self._apply_multipliers(result, provider_params)
 
     @override
     async def achat(
@@ -189,26 +209,23 @@ class AzureFoundryProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AzureFoundryParams | None = None,
     ) -> ChatResponse:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
+        body = self._build_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params,
+        )  # fmt: skip
         try:
             client = await self._get_async_client()
-            completion = await client.chat.completions.create(**kwargs, stream=False)
+            response = await client.post(
+                _chat_path(model),
+                json={**body, "stream": False},
+                params=self._query,
+                headers=await self._async_headers(),
+            )
         except Exception as e:
-            raise map_azure_foundry_error(e) from e
-        response = map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
-        return self._apply_multipliers(response, provider_params)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        result = map_chat_completion(parse_body(response, WireCompletion), PROVIDER_NAME, self._calculate_cost)
+        return self._apply_multipliers(result, provider_params)
 
     @override
     def chat_stream(
@@ -226,36 +243,31 @@ class AzureFoundryProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AzureFoundryParams | None = None,
     ) -> Iterator[ChatChunk]:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
-        kwargs["stream_options"] = {"include_usage": True}
+        body = self._stream_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params,
+        )  # fmt: skip
         try:
             client = self._get_sync_client()
-            stream = client.chat.completions.create(**kwargs, stream=True)
+            headers = self._sync_headers()
         except Exception as e:
-            raise map_azure_foundry_error(e) from e
-
+            raise map_transport_error(e) from e
         try:
-            for chunk in stream:
-                mapped = map_chat_chunk(chunk, PROVIDER_NAME)
-                if mapped.usage is not None:
-                    cost = self._calculate_cost(chunk.model, mapped.usage)
-                    cost = self._apply_cost_multipliers(cost, provider_params)
-                    mapped = mapped.model_copy(update={"cost": cost})
-                yield mapped
+            with client.stream("POST", _chat_path(model), json=body, params=self._query, headers=headers) as response:
+                if response.status_code >= _HTTP_ERROR:
+                    response.read()
+                    raise error_from_response(response)  # noqa: TRY301
+                for _event, data in iter_sse(response):
+                    if data == _SSE_DONE:
+                        break
+                    chunk = json.loads(data)
+                    if "error" in chunk:
+                        raise error_from_stream(chunk)  # noqa: TRY301
+                    yield self._map_stream_chunk(chunk, model, provider_params)
+        except LmuxError:
+            raise
         except Exception as e:
-            raise map_azure_foundry_error(e) from e
+            raise map_transport_error(e) from e
 
     @override
     async def achat_stream(
@@ -273,36 +285,33 @@ class AzureFoundryProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AzureFoundryParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
-        kwargs["stream_options"] = {"include_usage": True}
+        body = self._stream_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params,
+        )  # fmt: skip
         try:
             client = await self._get_async_client()
-            stream = await client.chat.completions.create(**kwargs, stream=True)
+            headers = await self._async_headers()
         except Exception as e:
-            raise map_azure_foundry_error(e) from e
-
+            raise map_transport_error(e) from e
         try:
-            async for chunk in stream:
-                mapped = map_chat_chunk(chunk, PROVIDER_NAME)
-                if mapped.usage is not None:
-                    cost = self._calculate_cost(chunk.model, mapped.usage)
-                    cost = self._apply_cost_multipliers(cost, provider_params)
-                    mapped = mapped.model_copy(update={"cost": cost})
-                yield mapped
+            async with client.stream(
+                "POST", _chat_path(model), json=body, params=self._query, headers=headers
+            ) as response:
+                if response.status_code >= _HTTP_ERROR:
+                    await response.aread()
+                    raise error_from_response(response)  # noqa: TRY301
+                async for _event, data in aiter_sse(response):
+                    if data == _SSE_DONE:
+                        break
+                    chunk = json.loads(data)
+                    if "error" in chunk:
+                        raise error_from_stream(chunk)  # noqa: TRY301
+                    yield self._map_stream_chunk(chunk, model, provider_params)
+        except LmuxError:
+            raise
         except Exception as e:
-            raise map_azure_foundry_error(e) from e
+            raise map_transport_error(e) from e
 
     # MARK: Embeddings
 
@@ -315,15 +324,16 @@ class AzureFoundryProvider(
         dimensions: int | None = None,
         provider_params: AzureFoundryParams | None = None,
     ) -> EmbeddingResponse:
-        extra: dict[str, Any] = self._provider_params_kwargs(provider_params) if provider_params else {}
-        if dimensions is not None:
-            extra["dimensions"] = dimensions
+        body = self._embed_body(model, input, dimensions, provider_params)
         try:
             client = self._get_sync_client()
-            response = client.embeddings.create(model=model, input=input, **extra)
+            response = client.post(_embeddings_path(model), json=body, params=self._query, headers=self._sync_headers())
         except Exception as e:
-            raise map_azure_foundry_error(e) from e
-        result = map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        result = map_embedding_response(
+            parse_body(response, WireEmbeddingResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_embedding_multipliers(result, provider_params)
 
     @override
@@ -335,15 +345,18 @@ class AzureFoundryProvider(
         dimensions: int | None = None,
         provider_params: AzureFoundryParams | None = None,
     ) -> EmbeddingResponse:
-        extra: dict[str, Any] = self._provider_params_kwargs(provider_params) if provider_params else {}
-        if dimensions is not None:
-            extra["dimensions"] = dimensions
+        body = self._embed_body(model, input, dimensions, provider_params)
         try:
             client = await self._get_async_client()
-            response = await client.embeddings.create(model=model, input=input, **extra)
+            response = await client.post(
+                _embeddings_path(model), json=body, params=self._query, headers=await self._async_headers()
+            )
         except Exception as e:
-            raise map_azure_foundry_error(e) from e
-        result = map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        result = map_embedding_response(
+            parse_body(response, WireEmbeddingResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_embedding_multipliers(result, provider_params)
 
     # MARK: Responses
@@ -356,13 +369,16 @@ class AzureFoundryProvider(
         *,
         provider_params: AzureFoundryParams | None = None,
     ) -> ResponseResponse:
-        extra = self._responses_kwargs(provider_params)
+        body = self._responses_body(model, input, provider_params)
         try:
             client = self._get_sync_client()
-            response = client.responses.create(model=model, input=map_response_input(input), stream=False, **extra)
+            response = client.post(_RESPONSES_PATH, json=body, params=self._query, headers=self._sync_headers())
         except Exception as e:
-            raise map_azure_foundry_error(e) from e
-        result = map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        result = map_responses_response(
+            parse_body(response, WireResponsesResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_response_multipliers(result, provider_params)
 
     @override
@@ -373,15 +389,18 @@ class AzureFoundryProvider(
         *,
         provider_params: AzureFoundryParams | None = None,
     ) -> ResponseResponse:
-        extra = self._responses_kwargs(provider_params)
+        body = self._responses_body(model, input, provider_params)
         try:
             client = await self._get_async_client()
-            response = await client.responses.create(
-                model=model, input=map_response_input(input), stream=False, **extra
+            response = await client.post(
+                _RESPONSES_PATH, json=body, params=self._query, headers=await self._async_headers()
             )
         except Exception as e:
-            raise map_azure_foundry_error(e) from e
-        result = map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        result = map_responses_response(
+            parse_body(response, WireResponsesResponse), PROVIDER_NAME, self._calculate_cost
+        )
         return self._apply_response_multipliers(result, provider_params)
 
     # MARK: Cost Multipliers
@@ -434,8 +453,19 @@ class AzureFoundryProvider(
 
     # MARK: Internal Helpers
 
-    @staticmethod
-    def _build_chat_kwargs(  # noqa: PLR0913
+    def _map_stream_chunk(
+        self, chunk: dict[str, Any], model: str, provider_params: AzureFoundryParams | None
+    ) -> ChatChunk:
+        wire = WireChunk.model_validate(chunk)
+        mapped = map_chat_chunk(wire, PROVIDER_NAME)
+        if mapped.usage is not None:
+            cost = self._calculate_cost(wire.model or model, mapped.usage)
+            cost = self._apply_cost_multipliers(cost, provider_params)
+            mapped = mapped.model_copy(update={"cost": cost})
+        return mapped
+
+    def _stream_body(  # noqa: PLR0913
+        self,
         model: str,
         messages: Sequence[Message],
         temperature: float | None,
@@ -448,36 +478,77 @@ class AzureFoundryProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: AzureFoundryParams | None,
     ) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": map_messages(messages),
-        }
+        body = self._build_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params,
+        )  # fmt: skip
+        return {**body, "stream": True, "stream_options": {"include_usage": True}}
+
+    @staticmethod
+    def _build_body(  # noqa: PLR0913
+        model: str,
+        messages: Sequence[Message],
+        temperature: float | None,
+        max_tokens: int | None,
+        top_p: float | None,
+        stop: str | list[str] | None,
+        tools: list[Tool] | None,
+        tool_choice: ToolChoice | None,
+        response_format: ResponseFormat | None,
+        reasoning_effort: Literal["low", "medium", "high"] | None,
+        provider_params: AzureFoundryParams | None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"model": model, "messages": map_messages(messages)}
         if temperature is not None:
-            kwargs["temperature"] = temperature
+            body["temperature"] = temperature
         if max_tokens is not None:
-            if model.startswith(("gpt-5", "o1", "o3", "o4")):
-                kwargs["max_completion_tokens"] = max_tokens
+            if model.startswith(_MAX_COMPLETION_TOKEN_PREFIXES):
+                body["max_completion_tokens"] = max_tokens
             else:
-                kwargs["max_tokens"] = max_tokens
+                body["max_tokens"] = max_tokens
         if top_p is not None:
-            kwargs["top_p"] = top_p
+            body["top_p"] = top_p
         if stop is not None:
-            kwargs["stop"] = stop
+            body["stop"] = stop
         if tools is not None:
-            kwargs["tools"] = map_tools(tools)
+            body["tools"] = map_tools(tools)
         if tool_choice is not None:
-            kwargs["tool_choice"] = map_tool_choice(tool_choice)
+            body["tool_choice"] = map_tool_choice(tool_choice)
         if response_format is not None:
-            kwargs["response_format"] = map_response_format(response_format)
+            body["response_format"] = map_response_format(response_format)
         if reasoning_effort is not None:
-            kwargs["reasoning_effort"] = reasoning_effort
+            body["reasoning_effort"] = reasoning_effort
         if provider_params is not None:
-            kwargs.update(AzureFoundryProvider._provider_params_kwargs(provider_params))
-        return kwargs
+            body.update(AzureFoundryProvider._provider_params_kwargs(provider_params))
+        return body
+
+    @staticmethod
+    def _embed_body(
+        model: str,
+        input: str | list[str],  # noqa: A002
+        dimensions: int | None,
+        provider_params: AzureFoundryParams | None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"model": model, "input": input}
+        if provider_params is not None:
+            body.update(AzureFoundryProvider._provider_params_kwargs(provider_params))
+        if dimensions is not None:
+            body["dimensions"] = dimensions
+        return body
+
+    @staticmethod
+    def _responses_body(
+        model: str,
+        input: str | Sequence[ResponseInputItem],  # noqa: A002
+        provider_params: AzureFoundryParams | None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"model": model, "input": map_response_input(input), "stream": False}
+        body.update(AzureFoundryProvider._responses_kwargs(provider_params))
+        return body
 
     @staticmethod
     def _provider_params_kwargs(params: AzureFoundryParams) -> dict[str, Any]:
-        """Convert AzureFoundryParams to kwargs for the OpenAI SDK."""
+        """Convert AzureFoundryParams to request-body kwargs."""
         kwargs: dict[str, Any] = {}
         if params.reasoning_effort is not None:
             kwargs["reasoning_effort"] = params.reasoning_effort
@@ -489,11 +560,11 @@ class AzureFoundryProvider(
 
     @staticmethod
     def _responses_kwargs(provider_params: AzureFoundryParams | None) -> dict[str, Any]:
-        """Build extra kwargs for the Responses API."""
+        """Build extra body kwargs for the Responses API."""
         if provider_params is None:
             return {}
         extra: dict[str, Any] = {}
-        # Responses API uses reasoning={"effort": ...}, not flat reasoning_effort
+        # Responses API uses reasoning={"effort": ...}, not flat reasoning_effort.
         if provider_params.reasoning_effort is not None:
             extra["reasoning"] = {"effort": provider_params.reasoning_effort}
         if provider_params.seed is not None:
@@ -501,3 +572,11 @@ class AzureFoundryProvider(
         if provider_params.user is not None:
             extra["user"] = provider_params.user
         return extra
+
+
+def _chat_path(model: str) -> str:
+    return f"/deployments/{model}/chat/completions"
+
+
+def _embeddings_path(model: str) -> str:
+    return f"/deployments/{model}/embeddings"

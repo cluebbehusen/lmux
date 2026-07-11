@@ -1,69 +1,73 @@
-"""Lazy Azure OpenAI SDK loading internals.
+"""HTTP client factories and auth-header helpers for the Azure AI Foundry provider.
 
-Client creation is isolated here so tests can easily mock it
-without patching sys.modules or using TYPE_CHECKING tricks.
+Azure AI Foundry / Azure OpenAI is OpenAI-compatible on the wire, but the URL
+layout and auth differ from vanilla OpenAI:
+
+- Base URL is ``{endpoint}/openai`` and every request carries an ``api-version``
+  query parameter.
+- Deployment-routed endpoints (chat completions, embeddings) live under
+  ``/deployments/{model}/...``; the Responses API is served from ``/responses``
+  with the deployment named in the request body.
+- Auth is either an ``api-key`` header (API key) or an ``Authorization: Bearer``
+  header (static Entra token or a per-request token-provider callable).
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+from lmux._http import create_async_client as _create_async
+from lmux._http import create_sync_client as _create_sync
 from lmux_azure_foundry.auth import AzureAdToken, AzureFoundryCredential
 
 if TYPE_CHECKING:
-    import openai
+    import httpx
 
 
-def _build_auth_kwargs(credential: AzureFoundryCredential) -> dict[str, Any]:
-    """Convert a credential value to the appropriate AzureOpenAI constructor kwargs."""
+def build_base_url(endpoint: str) -> str:
+    """Build the OpenAI-on-Azure base URL from a resource endpoint."""
+    return f"{endpoint.rstrip('/')}/openai"
+
+
+def auth_headers(credential: AzureFoundryCredential) -> dict[str, str]:
+    """Build the request auth headers for a resolved credential.
+
+    - API key (``str``) -> ``api-key`` header (Azure convention).
+    - Static Entra token (``AzureAdToken``) -> ``Authorization: Bearer``.
+    - Token provider (``Callable[[], str]``) -> ``Authorization: Bearer`` with a
+      freshly minted token; the callable is invoked on every request.
+    """
+    if isinstance(credential, str):
+        return {"api-key": credential}
     if isinstance(credential, AzureAdToken):
-        return {"azure_ad_token": credential.token}
-    if callable(credential):
-        # Callable[[], str] — token provider function
-        return {"azure_ad_token_provider": credential}
-    # Plain str — API key
-    return {"api_key": credential}
+        return {"Authorization": f"Bearer {credential.token}"}
+    # Token provider callable — invoked on every request for a fresh bearer token.
+    return {"Authorization": f"Bearer {credential()}"}
 
 
 def create_sync_client(
     *,
-    credential: AzureFoundryCredential,
-    azure_endpoint: str,
-    api_version: str,
+    endpoint: str,
     timeout: float | None = None,
     max_retries: int | None = None,
-) -> "openai.AzureOpenAI":
-    """Create an openai.AzureOpenAI client, lazily importing the SDK."""
-    import openai  # noqa: PLC0415
-
-    kwargs: dict[str, Any] = {
-        "azure_endpoint": azure_endpoint,
-        "api_version": api_version,
-        **_build_auth_kwargs(credential),
-    }
-    if timeout is not None:
-        kwargs["timeout"] = timeout
-    if max_retries is not None:
-        kwargs["max_retries"] = max_retries
-    return openai.AzureOpenAI(**kwargs)
+) -> "httpx.Client":
+    """Create an httpx client for the Azure AI Foundry (OpenAI-compatible) API."""
+    return _create_sync(
+        base_url=build_base_url(endpoint),
+        headers={"Content-Type": "application/json"},
+        timeout=timeout,
+        max_retries=max_retries,
+    )
 
 
 def create_async_client(
     *,
-    credential: AzureFoundryCredential,
-    azure_endpoint: str,
-    api_version: str,
+    endpoint: str,
     timeout: float | None = None,
     max_retries: int | None = None,
-) -> "openai.AsyncAzureOpenAI":
-    """Create an openai.AsyncAzureOpenAI client, lazily importing the SDK."""
-    import openai  # noqa: PLC0415
-
-    kwargs: dict[str, Any] = {
-        "azure_endpoint": azure_endpoint,
-        "api_version": api_version,
-        **_build_auth_kwargs(credential),
-    }
-    if timeout is not None:
-        kwargs["timeout"] = timeout
-    if max_retries is not None:
-        kwargs["max_retries"] = max_retries
-    return openai.AsyncAzureOpenAI(**kwargs)
+) -> "httpx.AsyncClient":
+    """Create an async httpx client for the Azure AI Foundry (OpenAI-compatible) API."""
+    return _create_async(
+        base_url=build_base_url(endpoint),
+        headers={"Content-Type": "application/json"},
+        timeout=timeout,
+        max_retries=max_retries,
+    )
