@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import threading
 from collections.abc import Callable
 from datetime import date
 from typing import TYPE_CHECKING, Any, cast
@@ -53,10 +54,12 @@ class FakeCredentials:
         self.token = access
         self.expired = expired
         self.refreshed = False
+        self.refresh_thread: int | None = None
         self._refreshed_value = "refreshed-token"
 
     def refresh(self, request: object) -> None:  # noqa: ARG002
         self.refreshed = True
+        self.refresh_thread = threading.get_ident()
         self.token = self._refreshed_value
 
 
@@ -835,6 +838,17 @@ class TestVertexChat:
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert vertex_auth.credentials.refreshed is True
         assert route.calls[-1].request.headers["authorization"] == "Bearer refreshed-token"
+
+    async def test_async_refresh_runs_off_the_event_loop(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_vertex_url(MODEL)).mock(return_value=httpx.Response(200, json=_message()))
+        auth = FakeVertexAuth()
+        auth.credentials = FakeCredentials(access=None)  # empty token forces a blocking refresh
+        provider = AnthropicVertexProvider(auth=auth, project_id="my-proj", region="us-east5")
+        await provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert auth.credentials.refreshed is True
+        # The refresh must run on a worker thread (asyncio.to_thread), not stall the event loop.
+        assert auth.credentials.refresh_thread is not None
+        assert auth.credentials.refresh_thread != threading.get_ident()
 
     def test_model_prefix_pricing(
         self, vertex_sync_provider: AnthropicVertexProvider, respx_mock: respx.MockRouter
