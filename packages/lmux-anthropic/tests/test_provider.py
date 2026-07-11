@@ -396,6 +396,11 @@ class TestChat:
         with pytest.raises(ProviderError, match="refused"):
             sync_provider.chat(MODEL, [UserMessage(content="Hi")])
 
+    def test_non_json_body_mapped(self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=b"not json"))
+        with pytest.raises(ProviderError):
+            sync_provider.chat(MODEL, [UserMessage(content="Hi")])
+
     def test_us_inference_multiplier(self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
         _ok(respx_mock)
         standard = sync_provider.chat(MODEL, [UserMessage(content="Hi")])
@@ -437,6 +442,11 @@ class TestAchat:
         with pytest.raises(ProviderError, match="refused"):
             await async_provider.achat(MODEL, [UserMessage(content="Hi")])
 
+    async def test_non_json_body_mapped(self, async_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=b"not json"))
+        with pytest.raises(ProviderError):
+            await async_provider.achat(MODEL, [UserMessage(content="Hi")])
+
 
 # MARK: ChatStream
 
@@ -455,6 +465,24 @@ class TestChatStream:
         assert chunks[-1].cost is not None
         assert chunks[-1].cost.total_cost > 0
         assert json.loads(route.calls.last.request.content)["stream"] is True
+
+    def test_mid_stream_error_raises_after_partial(
+        self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        sse = _sse(
+            [
+                (
+                    "content_block_delta",
+                    {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hel"}},
+                ),
+                ("error", {"type": "error", "error": {"type": "overloaded_error", "message": "mid-stream boom"}}),
+            ]
+        )
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=sse))
+        stream = sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")])
+        assert next(stream).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            next(stream)
 
     def test_cost_bills_resolved_model(self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=_default_stream()))
@@ -564,6 +592,24 @@ class TestAchatStream:
         assert chunks[-1].model == MODEL
         assert chunks[-1].provider == "anthropic"
         assert chunks[-1].cost is not None
+
+    async def test_mid_stream_error_raises_after_partial(
+        self, async_provider: AnthropicProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        sse = _sse(
+            [
+                (
+                    "content_block_delta",
+                    {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hel"}},
+                ),
+                ("error", {"type": "error", "error": {"type": "overloaded_error", "message": "mid-stream boom"}}),
+            ]
+        )
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=sse))
+        stream = async_provider.achat_stream(MODEL, [UserMessage(content="Hi")])
+        assert (await anext(stream)).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            await anext(stream)
 
     async def test_status_error_on_open(self, async_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_URL).mock(return_value=httpx.Response(500, json={"error": {"message": "boom"}}))

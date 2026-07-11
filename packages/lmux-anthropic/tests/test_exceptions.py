@@ -12,7 +12,13 @@ from lmux.exceptions import (
     RateLimitError,
     TimeoutError,  # noqa: A004
 )
-from lmux_anthropic._exceptions import error_from_response, map_transport_error, raise_for_status
+from lmux_anthropic._exceptions import (
+    error_from_response,
+    error_from_stream,
+    map_transport_error,
+    parse_json,
+    raise_for_status,
+)
 
 
 def _response(status: int, *, message: str = "boom", headers: dict[str, str] | None = None) -> httpx.Response:
@@ -122,3 +128,28 @@ class TestMapTransportError:
 
     def test_all_mapped_are_lmux_errors(self) -> None:
         assert isinstance(map_transport_error(RuntimeError("x")), LmuxError)
+
+
+class TestParseJson:
+    def test_valid_body(self) -> None:
+        assert parse_json(httpx.Response(200, json={"ok": 1})) == {"ok": 1}
+
+    def test_malformed_body_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_json(httpx.Response(200, text="not json"))
+
+    def test_non_object_body_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_json(httpx.Response(200, json=["not", "an", "object"]))
+
+
+class TestErrorFromStream:
+    def test_error_object_with_message(self) -> None:
+        err = error_from_stream({"type": "error", "error": {"message": "stream boom"}})
+        assert isinstance(err, ProviderError)
+        assert "stream boom" in str(err)
+
+    def test_error_not_a_dict(self) -> None:
+        err = error_from_stream({"type": "error", "error": "raw string error"})
+        assert isinstance(err, ProviderError)
+        assert "raw string error" in str(err)

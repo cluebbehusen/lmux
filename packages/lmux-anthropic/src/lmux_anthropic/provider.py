@@ -16,7 +16,13 @@ from lmux.cost import ModelPricing, calculate_cost
 from lmux.exceptions import LmuxError, ProviderError
 from lmux.protocols import AuthProvider, CompletionProvider, PricingProvider
 from lmux.types import ChatChunk, ChatResponse, Cost, Message, ResponseFormat, Tool, ToolChoice, Usage
-from lmux_anthropic._exceptions import error_from_response, map_transport_error, raise_for_status
+from lmux_anthropic._exceptions import (
+    error_from_response,
+    error_from_stream,
+    map_transport_error,
+    parse_json,
+    raise_for_status,
+)
 from lmux_anthropic._lazy import (
     VERTEX_ANTHROPIC_VERSION,
     create_async_client,
@@ -194,7 +200,7 @@ class AnthropicProvider(
         except Exception as e:
             raise map_transport_error(e, self._provider_name) from e
         raise_for_status(response, self._provider_name)
-        return self._map_response(response.json(), provider_params)
+        return self._map_response(parse_json(response, self._provider_name), provider_params)
 
     @override
     async def achat(
@@ -224,7 +230,7 @@ class AnthropicProvider(
         except Exception as e:
             raise map_transport_error(e, self._provider_name) from e
         raise_for_status(response, self._provider_name)
-        return self._map_response(response.json(), provider_params)
+        return self._map_response(parse_json(response, self._provider_name), provider_params)
 
     @override
     def chat_stream(
@@ -261,7 +267,10 @@ class AnthropicProvider(
                     response.read()
                     raise error_from_response(response, self._provider_name)  # noqa: TRY301
                 for _event, data in iter_sse(response):
-                    chunk = stream.feed(json.loads(data))
+                    payload = json.loads(data)
+                    if payload.get("type") == "error":
+                        raise error_from_stream(payload, self._provider_name)  # noqa: TRY301
+                    chunk = stream.feed(payload)
                     if chunk is not None:
                         yield self._finalize_chunk(chunk, stream, provider_params, as_of)
         except LmuxError:
@@ -304,7 +313,10 @@ class AnthropicProvider(
                     await response.aread()
                     raise error_from_response(response, self._provider_name)  # noqa: TRY301
                 async for _event, data in aiter_sse(response):
-                    chunk = stream.feed(json.loads(data))
+                    payload = json.loads(data)
+                    if payload.get("type") == "error":
+                        raise error_from_stream(payload, self._provider_name)  # noqa: TRY301
+                    chunk = stream.feed(payload)
                     if chunk is not None:
                         yield self._finalize_chunk(chunk, stream, provider_params, as_of)
         except LmuxError:
