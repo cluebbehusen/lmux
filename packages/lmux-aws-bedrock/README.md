@@ -1,6 +1,6 @@
 # lmux-aws-bedrock
 
-AWS Bedrock provider for [lmux](https://github.com/cluebbehusen/lmux). Uses [boto3](https://pypi.org/project/boto3/), [aiobotocore](https://pypi.org/project/aiobotocore/), and the Converse API.
+AWS Bedrock provider for [lmux](https://github.com/cluebbehusen/lmux). Talks to the Bedrock Converse and InvokeModel REST endpoints directly over [httpx](https://pypi.org/project/httpx/), using [boto3](https://pypi.org/project/boto3/) only to resolve AWS credentials for request signing.
 
 Supports chat completions, streaming, and embeddings.
 
@@ -8,11 +8,14 @@ Part of the [lmux](https://github.com/cluebbehusen/lmux) ecosystem: standardized
 
 ## Optional Extras
 
-- `lmux-aws-bedrock[async]`: async support via `aiobotocore`
+- `lmux-aws-bedrock[async]`: `aiobotocore` for async AWS credential resolution in the auth providers. Not required for `achat`/`aembed`/`achat_stream` themselves.
 
 ## Auth
 
-Uses boto3's default credential chain (env vars, AWS config, instance metadata). No extra setup needed if your AWS credentials are already configured.
+Two authentication modes are supported, resolved on the first request:
+
+1. **Bedrock API key (simplest):** set `AWS_BEARER_TOKEN_BEDROCK` and each request is sent with an `Authorization: Bearer <token>` header — no signing required.
+2. **SigV4 (fallback):** otherwise AWS credentials are resolved through boto3's default credential chain (env vars, AWS config, instance metadata) and each request is SigV4-signed. No extra setup needed if your AWS credentials are already configured.
 
 ```python
 from lmux_aws_bedrock import BedrockProvider
@@ -60,7 +63,7 @@ print(response.embeddings)
 
 ### Async
 
-Requires the `[async]` extra. All methods have async variants: `achat`, `achat_stream`, `aembed`.
+All methods have async variants: `achat`, `achat_stream`, `aembed`. These run over `httpx`'s async client; credentials are resolved synchronously (via boto3) even on the async path.
 
 Bedrock also supports lmux `response_format`, mapped to Converse `outputConfig.textFormat`.
 

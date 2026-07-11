@@ -19,12 +19,14 @@ __all__ = [
 
 
 def preload() -> None:
-    """Eagerly import boto3 (and aiobotocore if installed).
+    """Eagerly import httpx and boto3 (and aiobotocore if installed).
 
-    Call this during application startup to pay the import cost upfront
-    rather than on the first request.
+    httpx is the request transport; boto3 resolves AWS credentials for SigV4 signing.
+    Call this during application startup to pay the import cost upfront rather than on
+    the first request.
     """
     import boto3  # noqa: F401, PLC0415
+    import httpx  # noqa: F401, PLC0415
 
     with contextlib.suppress(ImportError):
         import aiobotocore  # noqa: F401, PLC0415

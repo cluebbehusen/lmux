@@ -1,38 +1,47 @@
-"""Lazy AWS SDK loading internals.
+"""HTTP client factories for the AWS Bedrock provider (SDK-lite, httpx transport).
 
-Client creation is isolated here so tests can easily mock it
-without patching sys.modules or using TYPE_CHECKING tricks.
+Bedrock is reached over its REST endpoints (Converse / InvokeModel) with ``httpx``
+directly rather than through boto3's client. boto3 is still used to resolve classic
+AWS credentials for SigV4 signing (see ``provider``), but never sits in the request
+path. Client creation is isolated here so tests can mock it without patching
+``sys.modules``.
 """
 
-from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING
 
+from lmux._http import create_async_client as _create_async
+from lmux._http import create_sync_client as _create_sync
+
 if TYPE_CHECKING:
-    import boto3
-    from aiobotocore.session import AioSession
-    from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
-    from types_aiobotocore_bedrock_runtime import BedrockRuntimeClient as AsyncBedrockRuntimeClient
+    import httpx
+
+DEFAULT_REGION = "us-east-1"
+
+
+def bedrock_base_url(region: str) -> str:
+    """Return the bedrock-runtime endpoint for a region."""
+    return f"https://bedrock-runtime.{region}.amazonaws.com"
 
 
 def create_sync_client(
-    session: "boto3.Session",
     *,
-    region_name: str | None = None,
-    endpoint_url: str | None = None,
-) -> "BedrockRuntimeClient":
-    """Create a sync bedrock-runtime client from a boto3.Session."""
-    return session.client("bedrock-runtime", region_name=region_name, endpoint_url=endpoint_url)
+    base_url: str,
+    timeout: float | None = None,
+    max_retries: int | None = None,
+) -> "httpx.Client":
+    """Create an httpx client for the Bedrock runtime endpoint.
+
+    Auth headers are attached per request (SigV4 signs the exact body/host, or a
+    bearer token is set), so the client carries no default ``Authorization``.
+    """
+    return _create_sync(base_url=base_url, headers={}, timeout=timeout, max_retries=max_retries)
 
 
 def create_async_client(
-    session: "AioSession",
     *,
-    region_name: str | None = None,
-    endpoint_url: str | None = None,
-) -> AbstractAsyncContextManager["AsyncBedrockRuntimeClient"]:
-    """Create an async bedrock-runtime client context manager from an aiobotocore session."""
-    return session.create_client(
-        "bedrock-runtime",
-        region_name=region_name,
-        endpoint_url=endpoint_url,
-    )
+    base_url: str,
+    timeout: float | None = None,
+    max_retries: int | None = None,
+) -> "httpx.AsyncClient":
+    """Create an async httpx client for the Bedrock runtime endpoint."""
+    return _create_async(base_url=base_url, headers={}, timeout=timeout, max_retries=max_retries)

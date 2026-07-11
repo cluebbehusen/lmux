@@ -1,15 +1,30 @@
-"""Tests for AWS Bedrock provider."""
+"""Tests for the AWS Bedrock provider (SDK-lite, respx)."""
 
+import asyncio
 import json
+import struct
+import zlib
 from datetime import date
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import MagicMock
 
+import httpx
 import pytest
+import respx
 from pytest_mock import MockerFixture
 
+if TYPE_CHECKING:
+    import boto3
+    from aiobotocore.session import AioSession
+
 from lmux.cost import ModelPricing, PricingTier
-from lmux.exceptions import ProviderError, UnsupportedFeatureError
+from lmux.exceptions import (
+    AuthenticationError,
+    InvalidRequestError,
+    ProviderError,
+    TimeoutError,  # noqa: A004
+    UnsupportedFeatureError,
+)
 from lmux.types import (
     ChatChunk,
     ChatResponse,
@@ -27,29 +42,116 @@ from lmux_aws_bedrock import preload
 from lmux_aws_bedrock.params import BedrockParams, GuardrailConfig
 from lmux_aws_bedrock.provider import BedrockProvider
 
-# MARK: Shared Fixtures
+_BASE = "https://bedrock-runtime.us-east-1.amazonaws.com"
+MODEL = "anthropic.claude-sonnet-4"
+EMBED_MODEL = "amazon.titan-embed-text-v2"
+
+
+def _url(model: str, action: str, *, base: str = _BASE) -> str:
+    return f"{base}/model/{model}/{action}"
+
+
+# MARK: Fake Auth (SigV4 credential resolution)
+
+
+class _FrozenCreds:
+    access_key = "AKIAFAKEEXAMPLE"
+    secret_key = "fake-secret-key"  # noqa: S105
+    token = None
+
+
+class _Credentials:
+    def get_frozen_credentials(self) -> _FrozenCreds:
+        return _FrozenCreds()
+
+
+_DEFAULT_CREDENTIALS = _Credentials()
+
+
+class _Session:
+    def __init__(
+        self, *, region_name: str | None = None, credentials: _Credentials | None = _DEFAULT_CREDENTIALS
+    ) -> None:
+        self.region_name = region_name
+        self._credentials = credentials
+
+    def get_credentials(self) -> _Credentials | None:
+        return self._credentials
 
 
 class FakeAuth:
-    """Fake auth provider for testing."""
+    """Fake auth provider returning a boto3-Session-like object for SigV4 signing.
 
-    def __init__(self, async_session: MagicMock | None = None) -> None:
-        self.async_session: MagicMock = async_session or MagicMock()
-        self.get_credentials_calls: int = 0
-        self.aget_credentials_calls: int = 0
+    Credentials are resolved synchronously, so only ``get_credentials`` is exercised;
+    ``aget_credentials`` exists to satisfy the ``AuthProvider`` protocol.
+    """
 
-    def get_credentials(self) -> MagicMock:
-        self.get_credentials_calls += 1
-        return MagicMock()
+    def __init__(self, session: _Session | None = None) -> None:
+        self._session = session if session is not None else _Session()
+        self.get_calls = 0
 
-    async def aget_credentials(self) -> MagicMock:
-        self.aget_credentials_calls += 1
-        return self.async_session
+    def get_credentials(self) -> "boto3.Session":
+        self.get_calls += 1
+        return cast("boto3.Session", self._session)
+
+    async def aget_credentials(self) -> "AioSession":  # pragma: no cover - protocol conformance only
+        return cast("AioSession", self._session)
+
+
+# MARK: Event-stream framing (mirrors tests/test_eventstream.py)
+
+
+def _encode(headers: dict[str, str], payload: bytes) -> bytes:
+    hb = b""
+    for name, value in headers.items():
+        nb, vb = name.encode(), value.encode()
+        hb += bytes([len(nb)]) + nb + bytes([7]) + struct.pack(">H", len(vb)) + vb
+    total = 16 + len(hb) + len(payload)
+    prelude = struct.pack(">II", total, len(hb))
+    body = prelude + struct.pack(">I", zlib.crc32(prelude) & 0xFFFFFFFF) + hb + payload
+    return body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+
+def _frame(event_type: str, payload: dict[str, Any] | None, *, message_type: str = "event") -> bytes:
+    data = json.dumps(payload).encode() if payload is not None else b""
+    return _encode({":event-type": event_type, ":message-type": message_type}, data)
+
+
+def _stream_bytes(events: list[tuple[str, dict[str, Any] | None]]) -> bytes:
+    return b"".join(_frame(event_type, payload) for event_type, payload in events)
+
+
+_STREAM_EVENTS: list[tuple[str, dict[str, Any] | None]] = [
+    ("messageStart", {"role": "assistant"}),
+    ("contentBlockDelta", {"delta": {"text": "Hello"}, "contentBlockIndex": 0}),
+    ("contentBlockStop", None),  # empty payload -> skipped, exercises the empty-payload branch
+    ("messageStop", {"stopReason": "end_turn"}),
+    ("metadata", {"usage": {"inputTokens": 10, "outputTokens": 5}, "metrics": {"latencyMs": 100}}),
+]
+
+
+# MARK: Shared Fixtures
+
+
+@pytest.fixture(autouse=True)
+def _no_bearer_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default every test to the SigV4 path; bearer-token tests opt back in."""
+    monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
 
 
 @pytest.fixture
 def fake_auth() -> FakeAuth:
     return FakeAuth()
+
+
+@pytest.fixture
+def sync_provider(fake_auth: FakeAuth) -> BedrockProvider:
+    return BedrockProvider(auth=fake_auth)
+
+
+@pytest.fixture
+def async_provider(fake_auth: FakeAuth) -> BedrockProvider:
+    return BedrockProvider(auth=fake_auth)
 
 
 @pytest.fixture
@@ -62,89 +164,31 @@ def converse_response() -> dict[str, Any]:
 
 
 @pytest.fixture
-def stream_events() -> list[dict[str, Any]]:
-    return [
-        {"messageStart": {"role": "assistant"}},
-        {"contentBlockDelta": {"delta": {"text": "Hello"}, "contentBlockIndex": 0}},
-        {"messageStop": {"stopReason": "end_turn"}},
-        {"metadata": {"usage": {"inputTokens": 10, "outputTokens": 5}, "metrics": {"latencyMs": 100}}},
-    ]
+def embedding_response() -> dict[str, Any]:
+    return {"embedding": [0.1, 0.2, 0.3], "inputTextTokenCount": 5}
 
 
-def _make_embedding_body(embedding: list[float], token_count: int) -> MagicMock:
-    """Create a mock streaming body for invoke_model embedding responses."""
-    body = MagicMock()
-    body.read.return_value = json.dumps({"embedding": embedding, "inputTextTokenCount": token_count}).encode()
-    return body
+def _ok_converse(response: dict[str, Any], respx_mock: respx.MockRouter, *, model: str = MODEL) -> respx.Route:
+    return respx_mock.post(_url(model, "converse")).mock(return_value=httpx.Response(200, json=response))
 
 
-@pytest.fixture
-def embedding_invoke_response() -> dict[str, Any]:
-    return {"body": _make_embedding_body([0.1, 0.2, 0.3], 5)}
+def _ok_embed(response: dict[str, Any], respx_mock: respx.MockRouter) -> respx.Route:
+    return respx_mock.post(_url(EMBED_MODEL, "invoke")).mock(return_value=httpx.Response(200, json=response))
 
 
-@pytest.fixture
-def mock_sync_client() -> MagicMock:
-    return MagicMock()
-
-
-@pytest.fixture
-def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_aws_bedrock.provider.create_sync_client", return_value=mock_sync_client)
-
-
-@pytest.fixture
-def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> BedrockProvider:
-    provider = BedrockProvider(auth=fake_auth)
-    mock_sync_create.assert_not_called()  # client created lazily, not at init
-    return provider
-
-
-@pytest.fixture
-def mock_async_client() -> AsyncMock:
-    return AsyncMock()
-
-
-@pytest.fixture
-def mock_async_client_ctx(mock_async_client: AsyncMock) -> AsyncMock:
-    mock_ctx_manager = AsyncMock()
-    mock_ctx_manager.__aenter__ = AsyncMock(return_value=mock_async_client)
-    mock_ctx_manager.__aexit__ = AsyncMock(return_value=None)
-    return mock_ctx_manager
-
-
-@pytest.fixture
-def mock_async_create(mock_async_client_ctx: AsyncMock, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_aws_bedrock.provider.create_async_client", return_value=mock_async_client_ctx)
-
-
-@pytest.fixture
-def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> BedrockProvider:
-    provider = BedrockProvider(auth=fake_auth)
-    mock_async_create.assert_not_called()  # client created lazily, not at init
-    return provider
-
-
-@pytest.fixture
-def server_error() -> Exception:
-    """Create a generic exception for server-side errors."""
-    return Exception("test error")
-
-
-# MARK: Chat
+# MARK: Pricing As-Of
 
 
 class TestPricingAsOf:
     def test_live_cost_uses_current_date(
         self,
         sync_provider: BedrockProvider,
-        mock_sync_client: MagicMock,
         converse_response: dict[str, Any],
+        respx_mock: respx.MockRouter,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Live Sonnet 5 cost reflects the current date (introductory rate before 2026-09-01)."""
         monkeypatch.setattr("lmux_aws_bedrock.provider._today", lambda: date(2026, 7, 1))
-        mock_sync_client.converse.return_value = converse_response
+        _ok_converse(converse_response, respx_mock, model="anthropic.claude-sonnet-5")
         result = sync_provider.chat("anthropic.claude-sonnet-5", [UserMessage(content="Hi")])
         assert result.cost is not None
         assert result.cost.input_cost == pytest.approx(10 * 2.2 / 1_000_000)
@@ -152,140 +196,120 @@ class TestPricingAsOf:
     def test_pricing_as_of_override_wins_over_clock(
         self,
         sync_provider: BedrockProvider,
-        mock_sync_client: MagicMock,
         converse_response: dict[str, Any],
+        respx_mock: respx.MockRouter,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """An explicit pricing_as_of overrides the current date (e.g. for cost replay)."""
         monkeypatch.setattr("lmux_aws_bedrock.provider._today", lambda: date(2026, 9, 15))
-        mock_sync_client.converse.return_value = converse_response
+        _ok_converse(converse_response, respx_mock, model="anthropic.claude-sonnet-5")
         result = sync_provider.chat(
             "anthropic.claude-sonnet-5",
             [UserMessage(content="Hi")],
             provider_params=BedrockParams(pricing_as_of=date(2026, 7, 1)),
         )
         assert result.cost is not None
-        # The override date lands in the intro window, so the introductory rate wins.
         assert result.cost.input_cost == pytest.approx(10 * 2.2 / 1_000_000)
 
     def test_live_cost_uses_current_date_after_switch(
         self,
         sync_provider: BedrockProvider,
-        mock_sync_client: MagicMock,
         converse_response: dict[str, Any],
+        respx_mock: respx.MockRouter,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """After 2026-09-01, the clock-resolved date bills the standard (1.5x) rate."""
         monkeypatch.setattr("lmux_aws_bedrock.provider._today", lambda: date(2026, 9, 15))
-        mock_sync_client.converse.return_value = converse_response
+        _ok_converse(converse_response, respx_mock, model="anthropic.claude-sonnet-5")
         result = sync_provider.chat("anthropic.claude-sonnet-5", [UserMessage(content="Hi")])
         assert result.cost is not None
         assert result.cost.input_cost == pytest.approx(10 * 3.3 / 1_000_000)
 
 
+# MARK: Chat
+
+
 class TestChat:
     def test_basic_chat(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
+        route = _ok_converse(converse_response, respx_mock, model="amazon.nova-pro-v1")
         result = sync_provider.chat("amazon.nova-pro-v1", [UserMessage(content="Hi")])
 
         assert result == ChatResponse(
             content="Hello!",
             tool_calls=None,
             usage=Usage(input_tokens=10, output_tokens=5),
-            cost=result.cost,  # Cost is calculated, just verify it's present
+            cost=result.cost,
             model="amazon.nova-pro-v1",
             provider="aws-bedrock",
             finish_reason="stop",
         )
         assert result.cost is not None
         assert result.cost.total_cost > 0
-        mock_sync_client.converse.assert_called_once()
-        mock_sync_client.invoke_model.assert_not_called()
+        assert route.called
+        # Request is signed with SigV4 and carries no bearer token.
+        assert route.calls.last.request.headers["authorization"].startswith("AWS4-HMAC-SHA256")
+        assert "x-amz-date" in route.calls.last.request.headers
 
-    def test_chat_with_params(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    def test_request_body_omits_model_id(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], temperature=0.5, max_tokens=100, top_p=0.9, stop=["END"])
+        body = json.loads(route.calls.last.request.content)
+        assert body == {
+            "messages": [{"role": "user", "content": [{"text": "Hi"}]}],
+            "inferenceConfig": {"temperature": 0.5, "maxTokens": 100, "topP": 0.9, "stopSequences": ["END"]},
+        }
 
-        _ = sync_provider.chat(
-            "anthropic.claude-sonnet-4",
+    def test_chat_with_tools_and_choice(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
-            temperature=0.5,
-            max_tokens=100,
-            top_p=0.9,
-            stop=["END"],
+            tools=[Tool(function=FunctionDefinition(name="get_weather"))],
+            tool_choice="required",
         )
+        body = json.loads(route.calls.last.request.content)
+        assert body["toolConfig"] == {
+            "tools": [{"toolSpec": {"name": "get_weather", "inputSchema": {"json": {"type": "object"}}}}],
+            "toolChoice": {"any": {}},
+        }
 
-        mock_sync_client.converse.assert_called_once_with(
-            modelId="anthropic.claude-sonnet-4",
-            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
-            inferenceConfig={"temperature": 0.5, "maxTokens": 100, "topP": 0.9, "stopSequences": ["END"]},
-        )
-
-    def test_chat_with_tools(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    def test_chat_with_tools_no_choice(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        tools = [Tool(function=FunctionDefinition(name="get_weather"))]
-        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], tools=tools)
-
-        mock_sync_client.converse.assert_called_once_with(
-            modelId="anthropic.claude-sonnet-4",
-            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
-            toolConfig={"tools": [{"toolSpec": {"name": "get_weather", "inputSchema": {"json": {"type": "object"}}}}]},
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            tools=[Tool(function=FunctionDefinition(name="get_weather"))],
         )
-
-    def test_chat_with_tool_choice(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
-    ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        tools = [Tool(function=FunctionDefinition(name="get_weather"))]
-        _ = sync_provider.chat(
-            "anthropic.claude-sonnet-4", [UserMessage(content="Hi")], tools=tools, tool_choice="required"
-        )
-
-        mock_sync_client.converse.assert_called_once_with(
-            modelId="anthropic.claude-sonnet-4",
-            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
-            toolConfig={
-                "tools": [{"toolSpec": {"name": "get_weather", "inputSchema": {"json": {"type": "object"}}}}],
-                "toolChoice": {"any": {}},
-            },
-        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["toolConfig"] == {
+            "tools": [{"toolSpec": {"name": "get_weather", "inputSchema": {"json": {"type": "object"}}}}],
+        }
 
     def test_chat_with_text_response_format(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        result = sync_provider.chat(
-            "anthropic.claude-sonnet-4", [UserMessage(content="Hi")], response_format=TextResponseFormat()
-        )
-
+        route = _ok_converse(converse_response, respx_mock)
+        result = sync_provider.chat(MODEL, [UserMessage(content="Hi")], response_format=TextResponseFormat())
         assert result.content == "Hello!"
-        mock_sync_client.converse.assert_called_once_with(
-            modelId="anthropic.claude-sonnet-4",
-            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
-        )
+        body = json.loads(route.calls.last.request.content)
+        assert "outputConfig" not in body
 
     def test_chat_json_object_raises(self, sync_provider: BedrockProvider) -> None:
         with pytest.raises(UnsupportedFeatureError, match="JsonObjectResponseFormat is not supported"):
-            _ = sync_provider.chat(
-                "anthropic.claude-sonnet-4", [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat()
-            )
+            sync_provider.chat(MODEL, [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat())
 
     def test_chat_with_json_schema_response_format(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        _ = sync_provider.chat(
-            "anthropic.claude-sonnet-4",
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
             response_format=JsonSchemaResponseFormat(
                 name="weather_response",
@@ -293,162 +317,116 @@ class TestChat:
                 json_schema={"type": "object", "properties": {"city": {"type": "string"}}},
             ),
         )
-
-        mock_sync_client.converse.assert_called_once_with(
-            modelId="anthropic.claude-sonnet-4",
-            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
-            outputConfig={
-                "textFormat": {
-                    "type": "json_schema",
-                    "structure": {
-                        "jsonSchema": {
-                            "schema": json.dumps(
-                                {
-                                    "additionalProperties": False,
-                                    "properties": {"city": {"type": "string"}},
-                                    "type": "object",
-                                },
-                                sort_keys=True,
-                            ),
-                            "name": "weather_response",
-                            "description": "Structured weather payload",
-                        }
-                    },
-                }
-            },
-        )
-
-    def test_chat_with_provider_params(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
-    ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        _ = sync_provider.chat(
-            "anthropic.claude-sonnet-4",
-            [UserMessage(content="Hi")],
-            provider_params=BedrockParams(
-                guardrail_config=GuardrailConfig(guardrail_identifier="g1", guardrail_version="1"),
-            ),
-        )
-
-        mock_sync_client.converse.assert_called_once_with(
-            modelId="anthropic.claude-sonnet-4",
-            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
-            guardrailConfig={"guardrailIdentifier": "g1", "guardrailVersion": "1"},
-        )
-
-    def test_chat_exception_mapping(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, server_error: Exception
-    ) -> None:
-        mock_sync_client.converse.side_effect = server_error
-
-        with pytest.raises(ProviderError):
-            _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-
-    def test_chat_with_system_message(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
-    ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        _ = sync_provider.chat(
-            "anthropic.claude-sonnet-4",
-            [SystemMessage(content="Be helpful."), UserMessage(content="Hi")],
-        )
-
-        mock_sync_client.converse.assert_called_once_with(
-            modelId="anthropic.claude-sonnet-4",
-            messages=[{"role": "user", "content": [{"text": "Hi"}]}],
-            system=[{"text": "Be helpful."}],
-        )
-
-    def test_chat_with_stop_string(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
-    ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], stop="STOP")
-
-        call_kwargs = mock_sync_client.converse.call_args.kwargs
-        assert call_kwargs["inferenceConfig"]["stopSequences"] == ["STOP"]
-
-    def test_chat_with_reasoning_effort(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
-    ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], reasoning_effort="medium")
-
-        call_kwargs = mock_sync_client.converse.call_args.kwargs
-        assert call_kwargs["additionalModelRequestFields"]["thinking"] == {
-            "type": "enabled",
-            "budget_tokens": 8192,
+        body = json.loads(route.calls.last.request.content)
+        assert body["outputConfig"] == {
+            "textFormat": {
+                "type": "json_schema",
+                "structure": {
+                    "jsonSchema": {
+                        "schema": json.dumps(
+                            {
+                                "additionalProperties": False,
+                                "properties": {"city": {"type": "string"}},
+                                "type": "object",
+                            },
+                            sort_keys=True,
+                        ),
+                        "name": "weather_response",
+                        "description": "Structured weather payload",
+                    }
+                },
+            }
         }
 
-    def test_chat_reasoning_effort_deep_merges_with_provider_params(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    def test_chat_with_system_message(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(MODEL, [SystemMessage(content="Be helpful."), UserMessage(content="Hi")])
+        body = json.loads(route.calls.last.request.content)
+        assert body["system"] == [{"text": "Be helpful."}]
 
-        _ = sync_provider.chat(
-            "anthropic.claude-sonnet-4",
+    def test_chat_with_stop_string(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], stop="STOP")
+        body = json.loads(route.calls.last.request.content)
+        assert body["inferenceConfig"]["stopSequences"] == ["STOP"]
+
+    def test_chat_with_reasoning_effort(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], reasoning_effort="medium")
+        body = json.loads(route.calls.last.request.content)
+        assert body["additionalModelRequestFields"]["thinking"] == {"type": "enabled", "budget_tokens": 8192}
+
+    def test_reasoning_effort_deep_merges_with_provider_params(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
             reasoning_effort="high",
             provider_params=BedrockParams(additional_model_request_fields={"some_field": "value"}),
         )
-
-        call_kwargs = mock_sync_client.converse.call_args.kwargs
-        additional = call_kwargs["additionalModelRequestFields"]
+        additional = json.loads(route.calls.last.request.content)["additionalModelRequestFields"]
         assert additional["thinking"] == {"type": "enabled", "budget_tokens": 32768}
         assert additional["some_field"] == "value"
 
-    def test_chat_provider_params_thinking_overrides_reasoning_effort(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    def test_provider_params_thinking_overrides_reasoning_effort(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        _ = sync_provider.chat(
-            "anthropic.claude-sonnet-4",
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
             reasoning_effort="high",
             provider_params=BedrockParams(
                 additional_model_request_fields={"thinking": {"type": "enabled", "budget_tokens": 99999}}
             ),
         )
+        additional = json.loads(route.calls.last.request.content)["additionalModelRequestFields"]
+        assert additional["thinking"] == {"type": "enabled", "budget_tokens": 99999}
 
-        call_kwargs = mock_sync_client.converse.call_args.kwargs
-        assert call_kwargs["additionalModelRequestFields"]["thinking"] == {
-            "type": "enabled",
-            "budget_tokens": 99999,
-        }
-
-    def test_chat_reasoning_effort_does_not_mutate_provider_params(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    def test_reasoning_effort_does_not_mutate_provider_params(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
+        _ok_converse(converse_response, respx_mock)
         fields: dict[str, Any] = {"some_field": "value"}
-        params = BedrockParams(additional_model_request_fields=fields)
-
-        _ = sync_provider.chat(
-            "anthropic.claude-sonnet-4",
+        sync_provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
             reasoning_effort="high",
-            provider_params=params,
+            provider_params=BedrockParams(additional_model_request_fields=fields),
         )
-
-        # The original dict must not have been mutated
         assert "thinking" not in fields
 
-    def test_chat_reasoning_effort_adaptive_model(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+    def test_reasoning_effort_adaptive_model(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        # A 4.6+ model uses adaptive thinking + output_config.effort, not budget_tokens.
-        _ = sync_provider.chat("anthropic.claude-opus-4-8", [UserMessage(content="Hi")], reasoning_effort="high")
-
-        additional = mock_sync_client.converse.call_args.kwargs["additionalModelRequestFields"]
+        route = _ok_converse(converse_response, respx_mock, model="anthropic.claude-opus-4-8")
+        sync_provider.chat("anthropic.claude-opus-4-8", [UserMessage(content="Hi")], reasoning_effort="high")
+        additional = json.loads(route.calls.last.request.content)["additionalModelRequestFields"]
         assert additional["thinking"] == {"type": "adaptive"}
         assert additional["output_config"] == {"effort": "high"}
+
+    def test_status_error_mapped(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(MODEL, "converse")).mock(return_value=httpx.Response(400, json={"message": "bad"}))
+        with pytest.raises(InvalidRequestError):
+            sync_provider.chat(MODEL, [UserMessage(content="Hi")])
+
+    def test_transport_error_mapped(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(MODEL, "converse")).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            sync_provider.chat(MODEL, [UserMessage(content="Hi")])
+
+    def test_timeout_error_mapped(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(MODEL, "converse")).mock(side_effect=httpx.ConnectTimeout("slow"))
+        with pytest.raises(TimeoutError):
+            sync_provider.chat(MODEL, [UserMessage(content="Hi")])
 
 
 # MARK: Achat
@@ -456,195 +434,156 @@ class TestChat:
 
 class TestAchat:
     async def test_basic_achat(
-        self, async_provider: BedrockProvider, mock_async_client: AsyncMock, converse_response: dict[str, Any]
+        self, async_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_async_client.converse.return_value = converse_response
-
-        result = await async_provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-
+        _ok_converse(converse_response, respx_mock)
+        result = await async_provider.achat(MODEL, [UserMessage(content="Hi")])
         assert result.content == "Hello!"
         assert result.provider == "aws-bedrock"
-        mock_async_client.converse.assert_awaited_once()
-        mock_async_client.invoke_model.assert_not_called()
 
-    async def test_achat_exception_mapping(
-        self, async_provider: BedrockProvider, mock_async_client: AsyncMock, server_error: Exception
-    ) -> None:
-        mock_async_client.converse.side_effect = server_error
+    async def test_status_error_mapped(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(MODEL, "converse")).mock(return_value=httpx.Response(401, json={"message": "no"}))
+        with pytest.raises(AuthenticationError):
+            await async_provider.achat(MODEL, [UserMessage(content="Hi")])
 
-        with pytest.raises(ProviderError):
-            _ = await async_provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+    async def test_transport_error_mapped(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(MODEL, "converse")).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            await async_provider.achat(MODEL, [UserMessage(content="Hi")])
 
 
 # MARK: ChatStream
 
 
 class TestChatStream:
-    def test_yields_chunks(
-        self,
-        sync_provider: BedrockProvider,
-        mock_sync_client: MagicMock,
-        stream_events: list[dict[str, Any]],
-    ) -> None:
-        mock_sync_client.converse_stream.return_value = {"stream": iter(stream_events)}
-
-        chunks = list(sync_provider.chat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]))
-
-        # messageStart is skipped (returns None), contentBlockDelta yields text,
-        # messageStop yields finish_reason, metadata yields usage
+    def test_yields_chunks(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        route = respx_mock.post(_url(MODEL, "converse-stream")).mock(
+            return_value=httpx.Response(200, content=_stream_bytes(_STREAM_EVENTS))
+        )
+        chunks = list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
         assert len(chunks) == 3
         assert chunks[0].delta == "Hello"
         assert chunks[1].finish_reason == "stop"
         assert chunks[2].usage is not None
         assert chunks[2].usage.input_tokens == 10
         assert chunks[2].usage.output_tokens == 5
+        body = json.loads(route.calls.last.request.content)
+        assert "modelId" not in body
 
     def test_terminal_chunk_stamps_model_and_provider(
-        self,
-        sync_provider: BedrockProvider,
-        mock_sync_client: MagicMock,
-        stream_events: list[dict[str, Any]],
+        self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse_stream.return_value = {"stream": iter(stream_events)}
-
-        chunks = list(sync_provider.chat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]))
-
-        # Only the terminal (usage-bearing) chunk carries the endpoint identity.
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(
+            return_value=httpx.Response(200, content=_stream_bytes(_STREAM_EVENTS))
+        )
+        chunks = list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
         assert chunks[0].model is None
         assert chunks[0].provider is None
-        assert chunks[2].model == "anthropic.claude-sonnet-4"
+        assert chunks[2].model == MODEL
         assert chunks[2].provider == "aws-bedrock"
 
-    def test_cost_on_metadata_chunk(
-        self,
-        sync_provider: BedrockProvider,
-        mock_sync_client: MagicMock,
-        stream_events: list[dict[str, Any]],
-    ) -> None:
-        mock_sync_client.converse_stream.return_value = {"stream": iter(stream_events)}
-
+    def test_cost_on_metadata_chunk(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url("amazon.nova-pro-v1", "converse-stream")).mock(
+            return_value=httpx.Response(200, content=_stream_bytes(_STREAM_EVENTS))
+        )
         chunks = list(sync_provider.chat_stream("amazon.nova-pro-v1", [UserMessage(content="Hi")]))
-
         assert chunks[0].cost is None
         assert chunks[1].cost is None
         assert chunks[2].cost is not None
         assert chunks[2].cost.total_cost > 0
 
-    def test_stream_exception_on_create(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, server_error: Exception
+    def test_chunk_without_usage_has_no_cost(
+        self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse_stream.side_effect = server_error
-
-        with pytest.raises(ProviderError):
-            _ = list(sync_provider.chat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]))
-
-    def test_stream_exception_during_iteration(
-        self,
-        sync_provider: BedrockProvider,
-        mock_sync_client: MagicMock,
-        stream_events: list[dict[str, Any]],
-        server_error: Exception,
-    ) -> None:
-        def _failing_iter() -> Any:  # noqa: ANN401
-            yield stream_events[1]  # contentBlockDelta
-            raise server_error
-
-        mock_sync_client.converse_stream.return_value = {"stream": _failing_iter()}
-
-        with pytest.raises(ProviderError, match="test error"):
-            _ = list(sync_provider.chat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]))
-
-    def test_stream_chunk_without_usage_has_no_cost(
-        self,
-        sync_provider: BedrockProvider,
-        mock_sync_client: MagicMock,
-    ) -> None:
-        """Chunks that have no usage (non-metadata chunks) should have cost=None."""
-        events = [
-            {"contentBlockDelta": {"delta": {"text": "Hi"}, "contentBlockIndex": 0}},
-            {"messageStop": {"stopReason": "end_turn"}},
+        events: list[tuple[str, dict[str, Any] | None]] = [
+            ("contentBlockDelta", {"delta": {"text": "Hi"}, "contentBlockIndex": 0}),
+            ("messageStop", {"stopReason": "end_turn"}),
         ]
-        mock_sync_client.converse_stream.return_value = {"stream": iter(events)}
-
-        chunks = list(sync_provider.chat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]))
-
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(
+            return_value=httpx.Response(200, content=_stream_bytes(events))
+        )
+        chunks = list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
         assert chunks[0] == ChatChunk(delta="Hi")
         assert chunks[0].cost is None
         assert chunks[1].cost is None
+
+    def test_status_error_on_open(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(500, json={"message": "boom"}))
+        with pytest.raises(ProviderError):
+            list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+    def test_transport_error_on_open(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+    def test_malformed_frame_mapped(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        bad = _encode({":event-type": "contentBlockDelta", ":message-type": "event"}, b"{not json}")
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(200, content=bad))
+        with pytest.raises(ProviderError):
+            list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+    def test_stream_exception_frame(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        content = _frame("contentBlockDelta", {"delta": {"text": "Hi"}, "contentBlockIndex": 0}) + _frame(
+            "throttlingException", {"message": "slow down"}, message_type="exception"
+        )
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(200, content=content))
+        with pytest.raises(ProviderError, match="slow down"):
+            list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+    def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        mocker.patch("lmux_aws_bedrock.provider.create_sync_client", side_effect=RuntimeError("boom"))
+        provider = BedrockProvider(auth=fake_auth)
+        with pytest.raises(ProviderError, match="boom"):
+            list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
 
 
 # MARK: AchatStream
 
 
 class TestAchatStream:
-    async def test_yields_chunks(
-        self,
-        async_provider: BedrockProvider,
-        mock_async_client: AsyncMock,
-        stream_events: list[dict[str, Any]],
-    ) -> None:
-        async def _async_iter() -> Any:  # noqa: ANN401
-            for event in stream_events:
-                yield event
-
-        mock_async_client.converse_stream.return_value = {"stream": _async_iter()}
-
-        chunks = [
-            chunk async for chunk in async_provider.achat_stream("amazon.nova-pro-v1", [UserMessage(content="Hi")])
-        ]
-
+    async def test_yields_chunks(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url("amazon.nova-pro-v1", "converse-stream")).mock(
+            return_value=httpx.Response(200, content=_stream_bytes(_STREAM_EVENTS))
+        )
+        chunks = [c async for c in async_provider.achat_stream("amazon.nova-pro-v1", [UserMessage(content="Hi")])]
         assert len(chunks) == 3
         assert chunks[0].delta == "Hello"
         assert chunks[1].finish_reason == "stop"
         assert chunks[2].cost is not None
 
     async def test_terminal_chunk_stamps_model_and_provider(
-        self,
-        async_provider: BedrockProvider,
-        mock_async_client: AsyncMock,
-        stream_events: list[dict[str, Any]],
+        self, async_provider: BedrockProvider, respx_mock: respx.MockRouter
     ) -> None:
-        async def _async_iter() -> Any:  # noqa: ANN401
-            for event in stream_events:
-                yield event
-
-        mock_async_client.converse_stream.return_value = {"stream": _async_iter()}
-
-        chunks = [
-            chunk
-            async for chunk in async_provider.achat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-        ]
-
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(
+            return_value=httpx.Response(200, content=_stream_bytes(_STREAM_EVENTS))
+        )
+        chunks = [c async for c in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")])]
         assert chunks[0].model is None
-        assert chunks[0].provider is None
-        assert chunks[2].model == "anthropic.claude-sonnet-4"
+        assert chunks[2].model == MODEL
         assert chunks[2].provider == "aws-bedrock"
 
-    async def test_exception_on_create(
-        self, async_provider: BedrockProvider, mock_async_client: AsyncMock, server_error: Exception
-    ) -> None:
-        mock_async_client.converse_stream.side_effect = server_error
-
-        with pytest.raises(ProviderError):
-            async for _ in async_provider.achat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]):
+    async def test_transport_error_on_open(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
 
-    async def test_exception_during_iteration(
-        self,
-        async_provider: BedrockProvider,
-        mock_async_client: AsyncMock,
-        stream_events: list[dict[str, Any]],
-        server_error: Exception,
-    ) -> None:
-        async def _failing_async_iter() -> Any:  # noqa: ANN401
-            yield stream_events[1]  # contentBlockDelta
-            raise server_error
-
-        mock_async_client.converse_stream.return_value = {"stream": _failing_async_iter()}
-
-        with pytest.raises(ProviderError, match="test error"):
-            async for _ in async_provider.achat_stream("anthropic.claude-sonnet-4", [UserMessage(content="Hi")]):
+    async def test_exception_frame(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        content = _frame("contentBlockDelta", {"delta": {"text": "Hi"}, "contentBlockIndex": 0}) + _frame(
+            "validationException", {"message": "invalid"}, message_type="exception"
+        )
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(200, content=content))
+        with pytest.raises(ProviderError, match="invalid"):
+            async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass
+
+    async def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        mocker.patch("lmux_aws_bedrock.provider.create_async_client", side_effect=RuntimeError("boom"))
+        provider = BedrockProvider(auth=fake_auth)
+        with pytest.raises(ProviderError, match="boom"):
+            async for _ in provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
+                pass  # pragma: no cover
 
 
 # MARK: Embed
@@ -652,84 +591,58 @@ class TestAchatStream:
 
 class TestEmbed:
     def test_basic_embed(
-        self,
-        sync_provider: BedrockProvider,
-        mock_sync_client: MagicMock,
-        embedding_invoke_response: dict[str, Any],
+        self, sync_provider: BedrockProvider, embedding_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.invoke_model.return_value = embedding_invoke_response
-
-        result = sync_provider.embed("amazon.titan-embed-text-v2", "hello")
+        route = _ok_embed(embedding_response, respx_mock)
+        result = sync_provider.embed(EMBED_MODEL, "hello")
 
         assert result == EmbeddingResponse(
             embeddings=[[0.1, 0.2, 0.3]],
             usage=Usage(input_tokens=5, output_tokens=0),
             cost=result.cost,
-            model="amazon.titan-embed-text-v2",
+            model=EMBED_MODEL,
             provider="aws-bedrock",
         )
-        mock_sync_client.invoke_model.assert_called_once_with(
-            modelId="amazon.titan-embed-text-v2",
-            contentType="application/json",
-            body=json.dumps({"inputText": "hello"}),
+        assert json.loads(route.calls.last.request.content) == {"inputText": "hello"}
+
+    def test_embed_list_input(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(EMBED_MODEL, "invoke")).mock(
+            side_effect=[
+                httpx.Response(200, json={"embedding": [0.1, 0.2, 0.3], "inputTextTokenCount": 3}),
+                httpx.Response(200, json={"embedding": [0.4, 0.5, 0.6], "inputTextTokenCount": 4}),
+            ]
         )
-        mock_sync_client.converse.assert_not_called()
-
-    def test_embed_list_input(
-        self,
-        sync_provider: BedrockProvider,
-        mock_sync_client: MagicMock,
-    ) -> None:
-        mock_sync_client.invoke_model.side_effect = [
-            {"body": _make_embedding_body([0.1, 0.2, 0.3], 3)},
-            {"body": _make_embedding_body([0.4, 0.5, 0.6], 4)},
-        ]
-
-        result = sync_provider.embed("amazon.titan-embed-text-v2", ["hello", "world"])
-
+        result = sync_provider.embed(EMBED_MODEL, ["hello", "world"])
         assert result == EmbeddingResponse(
             embeddings=[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
             usage=Usage(input_tokens=7, output_tokens=0),
             cost=result.cost,
-            model="amazon.titan-embed-text-v2",
+            model=EMBED_MODEL,
             provider="aws-bedrock",
         )
-        assert mock_sync_client.invoke_model.call_count == 2
 
     def test_embed_with_dimensions(
-        self,
-        sync_provider: BedrockProvider,
-        mock_sync_client: MagicMock,
-        embedding_invoke_response: dict[str, Any],
+        self, sync_provider: BedrockProvider, embedding_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.invoke_model.return_value = embedding_invoke_response
+        route = _ok_embed(embedding_response, respx_mock)
+        sync_provider.embed(EMBED_MODEL, "hello", dimensions=256)
+        assert json.loads(route.calls.last.request.content) == {"inputText": "hello", "dimensions": 256}
 
-        _ = sync_provider.embed("amazon.titan-embed-text-v2", "hello", dimensions=256)
+    def test_embed_status_error_mapped(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(EMBED_MODEL, "invoke")).mock(return_value=httpx.Response(400, json={"message": "bad"}))
+        with pytest.raises(InvalidRequestError):
+            sync_provider.embed(EMBED_MODEL, "hello")
 
-        mock_sync_client.invoke_model.assert_called_once_with(
-            modelId="amazon.titan-embed-text-v2",
-            contentType="application/json",
-            body=json.dumps({"inputText": "hello", "dimensions": 256}),
-        )
+    def test_embed_transport_error_mapped(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(EMBED_MODEL, "invoke")).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            sync_provider.embed(EMBED_MODEL, "hello")
 
-    def test_embed_exception_mapping(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, server_error: Exception
-    ) -> None:
-        mock_sync_client.invoke_model.side_effect = server_error
-
-        with pytest.raises(ProviderError):
-            _ = sync_provider.embed("amazon.titan-embed-text-v2", "hello")
-
-    def test_embed_client_init_failure_mapped(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-    ) -> None:
-        mock_sync_create.side_effect = Exception("connection refused")
+    def test_embed_client_init_failure_mapped(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        mocker.patch("lmux_aws_bedrock.provider.create_sync_client", side_effect=RuntimeError("connection refused"))
         provider = BedrockProvider(auth=fake_auth)
-
         with pytest.raises(ProviderError, match="connection refused"):
-            _ = provider.embed("amazon.titan-embed-text-v2", "hello")
+            provider.embed(EMBED_MODEL, "hello")
 
 
 # MARK: Aembed
@@ -737,198 +650,166 @@ class TestEmbed:
 
 class TestAembed:
     async def test_basic_aembed(
-        self,
-        async_provider: BedrockProvider,
-        mock_async_client: AsyncMock,
+        self, async_provider: BedrockProvider, embedding_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_body = AsyncMock()
-        mock_body.read.return_value = json.dumps({"embedding": [0.1, 0.2, 0.3], "inputTextTokenCount": 5}).encode()
-        mock_async_client.invoke_model.return_value = {"body": mock_body}
-
-        result = await async_provider.aembed("amazon.titan-embed-text-v2", "hello")
-
+        route = _ok_embed(embedding_response, respx_mock)
+        result = await async_provider.aembed(EMBED_MODEL, "hello")
         assert result.embeddings == [[0.1, 0.2, 0.3]]
         assert result.usage == Usage(input_tokens=5, output_tokens=0)
         assert result.provider == "aws-bedrock"
-        mock_async_client.invoke_model.assert_awaited_once_with(
-            modelId="amazon.titan-embed-text-v2",
-            contentType="application/json",
-            body=json.dumps({"inputText": "hello"}),
+        assert json.loads(route.calls.last.request.content) == {"inputText": "hello"}
+
+    async def test_aembed_list_input(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(EMBED_MODEL, "invoke")).mock(
+            side_effect=[
+                httpx.Response(200, json={"embedding": [0.1, 0.2], "inputTextTokenCount": 3}),
+                httpx.Response(200, json={"embedding": [0.3, 0.4], "inputTextTokenCount": 4}),
+            ]
         )
-        mock_async_client.converse.assert_not_called()
-
-    async def test_aembed_list_input(
-        self,
-        async_provider: BedrockProvider,
-        mock_async_client: AsyncMock,
-    ) -> None:
-        mock_body1 = AsyncMock()
-        mock_body1.read.return_value = json.dumps({"embedding": [0.1, 0.2], "inputTextTokenCount": 3}).encode()
-        mock_body2 = AsyncMock()
-        mock_body2.read.return_value = json.dumps({"embedding": [0.3, 0.4], "inputTextTokenCount": 4}).encode()
-        mock_async_client.invoke_model.side_effect = [{"body": mock_body1}, {"body": mock_body2}]
-
-        result = await async_provider.aembed("amazon.titan-embed-text-v2", ["hello", "world"])
-
+        result = await async_provider.aembed(EMBED_MODEL, ["hello", "world"])
         assert result.embeddings == [[0.1, 0.2], [0.3, 0.4]]
         assert result.usage == Usage(input_tokens=7, output_tokens=0)
-        assert mock_async_client.invoke_model.call_count == 2
 
     async def test_aembed_with_dimensions(
-        self,
-        async_provider: BedrockProvider,
-        mock_async_client: AsyncMock,
+        self, async_provider: BedrockProvider, embedding_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_body = AsyncMock()
-        mock_body.read.return_value = json.dumps({"embedding": [0.1, 0.2, 0.3], "inputTextTokenCount": 5}).encode()
-        mock_async_client.invoke_model.return_value = {"body": mock_body}
+        route = _ok_embed(embedding_response, respx_mock)
+        await async_provider.aembed(EMBED_MODEL, "hello", dimensions=256)
+        assert json.loads(route.calls.last.request.content) == {"inputText": "hello", "dimensions": 256}
 
-        _ = await async_provider.aembed("amazon.titan-embed-text-v2", "hello", dimensions=256)
-
-        mock_async_client.invoke_model.assert_awaited_once_with(
-            modelId="amazon.titan-embed-text-v2",
-            contentType="application/json",
-            body=json.dumps({"inputText": "hello", "dimensions": 256}),
-        )
-
-    async def test_aembed_exception_mapping(
-        self, async_provider: BedrockProvider, mock_async_client: AsyncMock, server_error: Exception
+    async def test_aembed_status_error_mapped(
+        self, async_provider: BedrockProvider, respx_mock: respx.MockRouter
     ) -> None:
-        mock_async_client.invoke_model.side_effect = server_error
+        respx_mock.post(_url(EMBED_MODEL, "invoke")).mock(return_value=httpx.Response(400, json={"message": "no"}))
+        with pytest.raises(InvalidRequestError):
+            await async_provider.aembed(EMBED_MODEL, "hello")
 
-        with pytest.raises(ProviderError):
-            _ = await async_provider.aembed("amazon.titan-embed-text-v2", "hello")
+    async def test_aembed_transport_error_mapped(
+        self, async_provider: BedrockProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.post(_url(EMBED_MODEL, "invoke")).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            await async_provider.aembed(EMBED_MODEL, "hello")
 
 
-# MARK: Client Management
+# MARK: Client & Auth Management
 
 
 class TestClientManagement:
     def test_sync_client_reused(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
+        _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(MODEL, [UserMessage(content="a")])
+        client = sync_provider._sync_client  # pyright: ignore[reportPrivateUsage]
+        sync_provider.chat(MODEL, [UserMessage(content="b")])
+        assert sync_provider._sync_client is client  # pyright: ignore[reportPrivateUsage]
 
-        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi again")])
-
-        assert mock_sync_client.converse.call_count == 2
-
-    def test_region_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        converse_response: dict[str, Any],
+    def test_auth_resolved_once(
+        self, fake_auth: FakeAuth, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-        provider = BedrockProvider(auth=fake_auth, region="us-west-2")
-        _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-
-        mock_sync_create.assert_called_once()
-        call_kwargs = mock_sync_create.call_args.kwargs
-        assert call_kwargs["region_name"] == "us-west-2"
-
-    def test_endpoint_url_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        converse_response: dict[str, Any],
-    ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-        provider = BedrockProvider(auth=fake_auth, endpoint_url="https://custom.bedrock.endpoint")
-        _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-
-        mock_sync_create.assert_called_once()
-        call_kwargs = mock_sync_create.call_args.kwargs
-        assert call_kwargs["endpoint_url"] == "https://custom.bedrock.endpoint"
-
-    def test_create_sync_client_called_once(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        converse_response: dict[str, Any],
-    ) -> None:
-        mock_sync_client.converse.return_value = converse_response
+        _ok_converse(converse_response, respx_mock)
         provider = BedrockProvider(auth=fake_auth)
-        _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-        _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi again")])
+        provider.chat(MODEL, [UserMessage(content="a")])
+        provider.chat(MODEL, [UserMessage(content="b")])
+        assert fake_auth.get_calls == 1
 
-        mock_sync_create.assert_called_once()
-
-    async def test_async_session_reused(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: AsyncMock,
-        converse_response: dict[str, Any],
+    def test_region_selects_endpoint_host(
+        self, fake_auth: FakeAuth, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_async_client.converse.return_value = converse_response
-        provider = BedrockProvider(auth=fake_auth)
-        _ = await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-        _ = await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi again")])
-
-        assert fake_auth.aget_credentials_calls == 1
-        assert mock_async_create.call_count == 2
-
-    async def test_async_region_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: AsyncMock,
-        converse_response: dict[str, Any],
-    ) -> None:
-        mock_async_client.converse.return_value = converse_response
-        provider = BedrockProvider(auth=fake_auth, region="eu-west-1")
-        _ = await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-
-        mock_async_create.assert_called_once_with(fake_auth.async_session, region_name="eu-west-1", endpoint_url=None)
-
-    async def test_async_endpoint_url_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: AsyncMock,
-        converse_response: dict[str, Any],
-    ) -> None:
-        mock_async_client.converse.return_value = converse_response
-        provider = BedrockProvider(auth=fake_auth, endpoint_url="https://custom.endpoint")
-        _ = await provider.achat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-
-        mock_async_create.assert_called_once_with(
-            fake_auth.async_session,
-            region_name=None,
-            endpoint_url="https://custom.endpoint",
+        base = "https://bedrock-runtime.us-west-2.amazonaws.com"
+        route = respx_mock.post(_url(MODEL, "converse", base=base)).mock(
+            return_value=httpx.Response(200, json=converse_response)
         )
+        provider = BedrockProvider(auth=fake_auth, region="us-west-2")
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.called
 
-    def test_sync_client_init_failure_mapped(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
+    def test_session_region_selects_endpoint_host(
+        self, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_create.side_effect = Exception("connection refused")
-        provider = BedrockProvider(auth=fake_auth)
+        base = "https://bedrock-runtime.ap-south-1.amazonaws.com"
+        route = respx_mock.post(_url(MODEL, "converse", base=base)).mock(
+            return_value=httpx.Response(200, json=converse_response)
+        )
+        provider = BedrockProvider(auth=FakeAuth(_Session(region_name="ap-south-1")))
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.called
 
+    def test_endpoint_url_override(
+        self, fake_auth: FakeAuth, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        base = "https://custom.bedrock.endpoint"
+        route = respx_mock.post(_url(MODEL, "converse", base=base)).mock(
+            return_value=httpx.Response(200, json=converse_response)
+        )
+        provider = BedrockProvider(auth=fake_auth, endpoint_url=base)
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.called
+
+    def test_no_credentials_raises_auth_error(
+        self, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        _ok_converse(converse_response, respx_mock)
+        provider = BedrockProvider(auth=FakeAuth(_Session(credentials=None)))
+        with pytest.raises(AuthenticationError):
+            provider.chat(MODEL, [UserMessage(content="Hi")])
+
+    async def test_async_client_reused(
+        self, async_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        _ok_converse(converse_response, respx_mock)
+        await async_provider.achat(MODEL, [UserMessage(content="a")])
+        client = async_provider._async_client  # pyright: ignore[reportPrivateUsage]
+        await async_provider.achat(MODEL, [UserMessage(content="b")])
+        assert async_provider._async_client is client  # pyright: ignore[reportPrivateUsage]
+
+    async def test_async_client_recreated_on_new_loop(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        c1, c2 = MagicMock(), MagicMock()
+        create = mocker.patch("lmux_aws_bedrock.provider.create_async_client", side_effect=[c1, c2])
+        get_loop = mocker.patch("lmux_aws_bedrock.provider.asyncio.get_running_loop")
+        loop1, loop2 = asyncio.new_event_loop(), asyncio.new_event_loop()
+        get_loop.side_effect = [loop1, loop2]
+        provider = BedrockProvider(auth=fake_auth)
+        r1 = await provider._get_async_client()  # pyright: ignore[reportPrivateUsage]
+        r2 = await provider._get_async_client()  # pyright: ignore[reportPrivateUsage]
+        assert (r1, r2) == (c1, c2)
+        assert create.call_count == 2
+        loop1.close()
+        loop2.close()
+
+    def test_sync_client_init_failure_mapped(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        mocker.patch("lmux_aws_bedrock.provider.create_sync_client", side_effect=RuntimeError("connection refused"))
+        provider = BedrockProvider(auth=fake_auth)
         with pytest.raises(ProviderError, match="connection refused"):
-            _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+            provider.chat(MODEL, [UserMessage(content="Hi")])
 
-    def test_no_region_no_endpoint_defaults_to_none(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        converse_response: dict[str, Any],
+
+# MARK: Bearer Token Auth
+
+
+class TestBearerAuth:
+    def test_bearer_token_sets_authorization(
+        self, converse_response: dict[str, Any], respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-        provider = BedrockProvider(auth=fake_auth)
-        _ = provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
+        monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "bt-secret")
+        route = _ok_converse(converse_response, respx_mock)
+        provider = BedrockProvider()  # no auth provider needed in bearer mode
+        result = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert result.content == "Hello!"
+        assert route.calls.last.request.headers["authorization"] == "Bearer bt-secret"
 
-        mock_sync_create.assert_called_once()
-        call_kwargs = mock_sync_create.call_args.kwargs
-        assert call_kwargs["region_name"] is None
-        assert call_kwargs["endpoint_url"] is None
+    def test_bearer_token_respects_region(
+        self, converse_response: dict[str, Any], respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "bt-secret")
+        base = "https://bedrock-runtime.eu-central-1.amazonaws.com"
+        route = respx_mock.post(_url(MODEL, "converse", base=base)).mock(
+            return_value=httpx.Response(200, json=converse_response)
+        )
+        provider = BedrockProvider(region="eu-central-1")
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.called
 
 
 # MARK: Register Pricing
@@ -936,16 +817,14 @@ class TestClientManagement:
 
 class TestRegisterPricing:
     def test_custom_pricing_for_unknown_model(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock
+        self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter
     ) -> None:
-        """Custom pricing populates cost for models not in built-in PRICING."""
-        custom_response: dict[str, Any] = {
+        response = {
             "output": {"message": {"role": "assistant", "content": [{"text": "Hello!"}]}},
             "stopReason": "end_turn",
             "usage": {"inputTokens": 1000, "outputTokens": 500, "totalTokens": 1500},
         }
-        mock_sync_client.converse.return_value = custom_response
-
+        respx_mock.post(_url("custom.my-model-v1", "converse")).mock(return_value=httpx.Response(200, json=response))
         sync_provider.register_pricing(
             "custom.my-model-v1",
             ModelPricing(
@@ -953,40 +832,35 @@ class TestRegisterPricing:
             ),
         )
         result = sync_provider.chat("custom.my-model-v1", [UserMessage(content="Hi")])
-
         assert result.cost is not None
         assert result.cost.input_cost == pytest.approx(1000 * 5.0 / 1_000_000)
         assert result.cost.output_cost == pytest.approx(500 * 15.0 / 1_000_000)
 
     def test_custom_pricing_overrides_builtin(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        """User-registered pricing takes precedence over built-in pricing."""
-        mock_sync_client.converse.return_value = converse_response
-
-        custom_pricing = ModelPricing(
-            tiers=[PricingTier(input_cost_per_token=99.0 / 1_000_000, output_cost_per_token=199.0 / 1_000_000)]
+        _ok_converse(converse_response, respx_mock)
+        sync_provider.register_pricing(
+            MODEL,
+            ModelPricing(
+                tiers=[PricingTier(input_cost_per_token=99.0 / 1_000_000, output_cost_per_token=199.0 / 1_000_000)]
+            ),
         )
-        sync_provider.register_pricing("anthropic.claude-sonnet-4", custom_pricing)
-        result = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")])
-
+        result = sync_provider.chat(MODEL, [UserMessage(content="Hi")])
         assert result.cost is not None
         assert result.cost.input_cost == pytest.approx(10 * 99.0 / 1_000_000)
         assert result.cost.output_cost == pytest.approx(5 * 199.0 / 1_000_000)
 
     def test_unregistered_unknown_model_returns_none_cost(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock
+        self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter
     ) -> None:
-        """Without registration, unknown models return cost=None."""
-        unknown_response: dict[str, Any] = {
+        response = {
             "output": {"message": {"role": "assistant", "content": [{"text": "Hello!"}]}},
             "stopReason": "end_turn",
             "usage": {"inputTokens": 10, "outputTokens": 5, "totalTokens": 15},
         }
-        mock_sync_client.converse.return_value = unknown_response
-
+        respx_mock.post(_url("totally-unknown-model", "converse")).mock(return_value=httpx.Response(200, json=response))
         result = sync_provider.chat("totally-unknown-model", [UserMessage(content="Hi")])
-
         assert result.cost is None
 
 
@@ -995,52 +869,57 @@ class TestRegisterPricing:
 
 class TestProviderParamsKwargs:
     def test_empty_params(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
-        _ = sync_provider.chat(
-            "anthropic.claude-sonnet-4", [UserMessage(content="Hi")], provider_params=BedrockParams()
-        )
-
-        call_kwargs = mock_sync_client.converse.call_args.kwargs
-        assert "guardrailConfig" not in call_kwargs
-        assert "additionalModelRequestFields" not in call_kwargs
-        assert "additionalModelResponseFieldPaths" not in call_kwargs
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=BedrockParams())
+        body = json.loads(route.calls.last.request.content)
+        assert "guardrailConfig" not in body
+        assert "additionalModelRequestFields" not in body
+        assert "additionalModelResponseFieldPaths" not in body
 
     def test_all_params(
-        self, sync_provider: BedrockProvider, mock_sync_client: MagicMock, converse_response: dict[str, Any]
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.converse.return_value = converse_response
-
+        route = _ok_converse(converse_response, respx_mock)
         params = BedrockParams(
             guardrail_config=GuardrailConfig(guardrail_identifier="g1", guardrail_version="1", trace="enabled"),
             additional_model_request_fields={"custom_field": "value"},
             additional_model_response_field_paths=["$.path.to.field"],
         )
-        _ = sync_provider.chat("anthropic.claude-sonnet-4", [UserMessage(content="Hi")], provider_params=params)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=params)
+        body = json.loads(route.calls.last.request.content)
+        assert body["guardrailConfig"] == {"guardrailIdentifier": "g1", "guardrailVersion": "1", "trace": "enabled"}
+        assert body["additionalModelRequestFields"] == {"custom_field": "value"}
+        assert body["additionalModelResponseFieldPaths"] == ["$.path.to.field"]
 
-        call_kwargs = mock_sync_client.converse.call_args.kwargs
-        assert call_kwargs["guardrailConfig"] == {
-            "guardrailIdentifier": "g1",
-            "guardrailVersion": "1",
-            "trace": "enabled",
-        }
-        assert call_kwargs["additionalModelRequestFields"] == {"custom_field": "value"}
-        assert call_kwargs["additionalModelResponseFieldPaths"] == ["$.path.to.field"]
+    def test_guardrail_without_trace(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_converse(converse_response, respx_mock)
+        params = BedrockParams(guardrail_config=GuardrailConfig(guardrail_identifier="g1", guardrail_version="1"))
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=params)
+        body = json.loads(route.calls.last.request.content)
+        assert body["guardrailConfig"] == {"guardrailIdentifier": "g1", "guardrailVersion": "1"}
 
 
-# MARK: Preload
+# MARK: Aclose & Preload
+
+
+class TestAclose:
+    async def test_closes_client(
+        self, async_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        _ok_converse(converse_response, respx_mock)
+        await async_provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert async_provider._async_client is not None  # pyright: ignore[reportPrivateUsage]
+        await async_provider.aclose()
+        assert async_provider._async_client is None  # pyright: ignore[reportPrivateUsage]
+
+    async def test_noop_when_no_client(self, async_provider: BedrockProvider) -> None:
+        await async_provider.aclose()
 
 
 class TestPreload:
-    @pytest.fixture
-    def mock_missing_aiobotocore(self, mocker: MockerFixture) -> None:
-        mocker.patch.dict("sys.modules", {"aiobotocore": None})
-
-    def test_preload_imports_boto3_and_aiobotocore(self) -> None:
-        preload()  # should not raise; aiobotocore is installed in dev
-
-    def test_preload_without_aiobotocore(self, mock_missing_aiobotocore: None) -> None:
-        assert mock_missing_aiobotocore is None  # side-effect fixture: patches sys.modules
-        preload()  # should not raise when aiobotocore is missing
+    def test_preload(self) -> None:
+        preload()
