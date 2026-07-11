@@ -79,7 +79,7 @@ def _sync_retry_client(
 
     class _RetryClient(httpx.Client):
         def __init__(self) -> None:
-            super().__init__(base_url=base_url, headers=headers, timeout=timeout)
+            super().__init__(base_url=base_url, headers=headers, timeout=timeout, follow_redirects=True)
 
         def send(self, request: "httpx.Request", **kwargs: object) -> "httpx.Response":
             attempt = 0
@@ -113,7 +113,7 @@ def _async_retry_client(
 
     class _RetryAsyncClient(httpx.AsyncClient):
         def __init__(self) -> None:
-            super().__init__(base_url=base_url, headers=headers, timeout=timeout)
+            super().__init__(base_url=base_url, headers=headers, timeout=timeout, follow_redirects=True)
 
         async def send(self, request: "httpx.Request", **kwargs: object) -> "httpx.Response":
             attempt = 0
@@ -158,7 +158,7 @@ def create_sync_client(
         return _sync_retry_client(
             max_retries=max_retries, base_url=base_url, headers=dict(headers), timeout=_timeout(timeout)
         )
-    return httpx.Client(base_url=base_url, headers=dict(headers), timeout=_timeout(timeout))
+    return httpx.Client(base_url=base_url, headers=dict(headers), timeout=_timeout(timeout), follow_redirects=True)
 
 
 def create_async_client(
@@ -175,7 +175,7 @@ def create_async_client(
         return _async_retry_client(
             max_retries=max_retries, base_url=base_url, headers=dict(headers), timeout=_timeout(timeout)
         )
-    return httpx.AsyncClient(base_url=base_url, headers=dict(headers), timeout=_timeout(timeout))
+    return httpx.AsyncClient(base_url=base_url, headers=dict(headers), timeout=_timeout(timeout), follow_redirects=True)
 
 
 class _SSEAccumulator:
