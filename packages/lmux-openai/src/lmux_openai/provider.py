@@ -25,7 +25,13 @@ from lmux.types import (
     ToolChoice,
     Usage,
 )
-from lmux_openai._exceptions import error_from_response, map_transport_error, raise_for_status
+from lmux_openai._exceptions import (
+    error_from_response,
+    error_from_stream,
+    map_transport_error,
+    parse_json,
+    raise_for_status,
+)
 from lmux_openai._lazy import create_async_client, create_sync_client
 from lmux_openai._mappers import (
     map_chat_chunk,
@@ -169,7 +175,7 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_chat_completion(response.json(), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
@@ -198,7 +204,7 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_chat_completion(response.json(), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
@@ -233,7 +239,10 @@ class OpenAIProvider(
                 for _event, data in iter_sse(response):
                     if data == _SSE_DONE:
                         break
-                    yield self._map_stream_chunk(json.loads(data), model)
+                    chunk = json.loads(data)
+                    if "error" in chunk:
+                        raise error_from_stream(chunk)  # noqa: TRY301
+                    yield self._map_stream_chunk(chunk, model)
         except LmuxError:
             raise
         except Exception as e:
@@ -271,7 +280,10 @@ class OpenAIProvider(
                 async for _event, data in aiter_sse(response):
                     if data == _SSE_DONE:
                         break
-                    yield self._map_stream_chunk(json.loads(data), model)
+                    chunk = json.loads(data)
+                    if "error" in chunk:
+                        raise error_from_stream(chunk)  # noqa: TRY301
+                    yield self._map_stream_chunk(chunk, model)
         except LmuxError:
             raise
         except Exception as e:
@@ -295,7 +307,7 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_embedding_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_embedding_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
@@ -314,7 +326,7 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_embedding_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_embedding_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_response_multipliers(mapped, mapped.model)
 
     # MARK: Responses API
@@ -334,7 +346,7 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_responses_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_responses_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
@@ -352,7 +364,7 @@ class OpenAIProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        mapped = map_responses_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        mapped = map_responses_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_response_multipliers(mapped, mapped.model)
 
     # MARK: Internal Helpers
