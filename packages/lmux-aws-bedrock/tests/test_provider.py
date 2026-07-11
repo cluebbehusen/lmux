@@ -155,6 +155,28 @@ def async_provider(fake_auth: FakeAuth) -> BedrockProvider:
 
 
 @pytest.fixture
+def sync_create_raises(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_aws_bedrock.provider.create_sync_client", side_effect=RuntimeError("client init failed"))
+
+
+@pytest.fixture
+def async_create_raises(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_aws_bedrock.provider.create_async_client", side_effect=RuntimeError("client init failed"))
+
+
+@pytest.fixture
+def async_create_two_clients(mocker: MockerFixture) -> tuple[MagicMock, MagicMock, MagicMock]:
+    c1, c2 = MagicMock(), MagicMock()
+    create = mocker.patch("lmux_aws_bedrock.provider.create_async_client", side_effect=[c1, c2])
+    return create, c1, c2
+
+
+@pytest.fixture
+def mock_get_running_loop(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_aws_bedrock.provider.asyncio.get_running_loop")
+
+
+@pytest.fixture
 def converse_response() -> dict[str, Any]:
     return {
         "output": {"message": {"role": "assistant", "content": [{"text": "Hello!"}]}},
@@ -541,11 +563,11 @@ class TestChatStream:
         with pytest.raises(ProviderError, match="slow down"):
             list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
 
-    def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_aws_bedrock.provider.create_sync_client", side_effect=RuntimeError("boom"))
+    def test_client_init_failure(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
         provider = BedrockProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="boom"):
+        with pytest.raises(ProviderError, match="client init failed"):
             list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+        sync_create_raises.assert_called_once()
 
 
 # MARK: AchatStream
@@ -588,12 +610,12 @@ class TestAchatStream:
             async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass
 
-    async def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_aws_bedrock.provider.create_async_client", side_effect=RuntimeError("boom"))
+    async def test_client_init_failure(self, fake_auth: FakeAuth, async_create_raises: MagicMock) -> None:
         provider = BedrockProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="boom"):
+        with pytest.raises(ProviderError, match="client init failed"):
             async for _ in provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
+        async_create_raises.assert_called_once()
 
 
 # MARK: Embed
@@ -648,11 +670,11 @@ class TestEmbed:
         with pytest.raises(ProviderError, match="refused"):
             sync_provider.embed(EMBED_MODEL, "hello")
 
-    def test_embed_client_init_failure_mapped(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_aws_bedrock.provider.create_sync_client", side_effect=RuntimeError("connection refused"))
+    def test_embed_client_init_failure_mapped(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
         provider = BedrockProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="connection refused"):
+        with pytest.raises(ProviderError, match="client init failed"):
             provider.embed(EMBED_MODEL, "hello")
+        sync_create_raises.assert_called_once()
 
 
 # MARK: Aembed
@@ -711,9 +733,9 @@ class TestClientManagement:
     ) -> None:
         _ok_converse(converse_response, respx_mock)
         sync_provider.chat(MODEL, [UserMessage(content="a")])
-        client = sync_provider._sync_client  # pyright: ignore[reportPrivateUsage]
+        client = sync_provider._sync_client
         sync_provider.chat(MODEL, [UserMessage(content="b")])
-        assert sync_provider._sync_client is client  # pyright: ignore[reportPrivateUsage]
+        assert sync_provider._sync_client is client
 
     def test_auth_resolved_once(
         self, fake_auth: FakeAuth, converse_response: dict[str, Any], respx_mock: respx.MockRouter
@@ -770,29 +792,32 @@ class TestClientManagement:
     ) -> None:
         _ok_converse(converse_response, respx_mock)
         await async_provider.achat(MODEL, [UserMessage(content="a")])
-        client = async_provider._async_client  # pyright: ignore[reportPrivateUsage]
+        client = async_provider._async_client
         await async_provider.achat(MODEL, [UserMessage(content="b")])
-        assert async_provider._async_client is client  # pyright: ignore[reportPrivateUsage]
+        assert async_provider._async_client is client
 
-    async def test_async_client_recreated_on_new_loop(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        c1, c2 = MagicMock(), MagicMock()
-        create = mocker.patch("lmux_aws_bedrock.provider.create_async_client", side_effect=[c1, c2])
-        get_loop = mocker.patch("lmux_aws_bedrock.provider.asyncio.get_running_loop")
+    async def test_async_client_recreated_on_new_loop(
+        self,
+        fake_auth: FakeAuth,
+        async_create_two_clients: tuple[MagicMock, MagicMock, MagicMock],
+        mock_get_running_loop: MagicMock,
+    ) -> None:
+        create, c1, c2 = async_create_two_clients
         loop1, loop2 = asyncio.new_event_loop(), asyncio.new_event_loop()
-        get_loop.side_effect = [loop1, loop2]
+        mock_get_running_loop.side_effect = [loop1, loop2]
         provider = BedrockProvider(auth=fake_auth)
-        r1 = await provider._get_async_client()  # pyright: ignore[reportPrivateUsage]
-        r2 = await provider._get_async_client()  # pyright: ignore[reportPrivateUsage]
+        r1 = await provider._get_async_client()
+        r2 = await provider._get_async_client()
         assert (r1, r2) == (c1, c2)
         assert create.call_count == 2
         loop1.close()
         loop2.close()
 
-    def test_sync_client_init_failure_mapped(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_aws_bedrock.provider.create_sync_client", side_effect=RuntimeError("connection refused"))
+    def test_sync_client_init_failure_mapped(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
         provider = BedrockProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="connection refused"):
+        with pytest.raises(ProviderError, match="client init failed"):
             provider.chat(MODEL, [UserMessage(content="Hi")])
+        sync_create_raises.assert_called_once()
 
 
 # MARK: Bearer Token Auth
@@ -922,9 +947,9 @@ class TestAclose:
     ) -> None:
         _ok_converse(converse_response, respx_mock)
         await async_provider.achat(MODEL, [UserMessage(content="Hi")])
-        assert async_provider._async_client is not None  # pyright: ignore[reportPrivateUsage]
+        assert async_provider._async_client is not None
         await async_provider.aclose()
-        assert async_provider._async_client is None  # pyright: ignore[reportPrivateUsage]
+        assert async_provider._async_client is None
 
     async def test_noop_when_no_client(self, async_provider: BedrockProvider) -> None:
         await async_provider.aclose()
