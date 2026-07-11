@@ -30,6 +30,13 @@ from lmux.types import (
     Usage,
     UserMessage,
 )
+from lmux_groq._wire import (
+    WireChunk,
+    WireCompletion,
+    WireToolCall,
+    WireToolCallDelta,
+    WireUsage,
+)
 
 type CostCalculator = Callable[[str, Usage], Cost | None]
 type Json = dict[str, Any]
@@ -122,88 +129,83 @@ def map_response_format(rf: ResponseFormat) -> Json:
     return {"type": "json_schema", "json_schema": schema_dict}
 
 
-# MARK: Output Mappers (Groq JSON -> lmux)
+# MARK: Output Mappers (Groq wire models -> lmux)
 
 
-def _map_function_tool_call(tc: Json) -> ToolCall:
-    fn = tc["function"]
-    return ToolCall(id=tc["id"], function=FunctionCallResult(name=fn["name"], arguments=fn["arguments"]))
+def _map_function_tool_call(tc: WireToolCall) -> ToolCall:
+    return ToolCall(id=tc.id, function=FunctionCallResult(name=tc.function.name, arguments=tc.function.arguments))
 
 
-def map_chat_completion(completion: Json, provider_name: str, cost_fn: CostCalculator) -> ChatResponse:
-    """Convert a Groq chat completion JSON body to an lmux ChatResponse."""
-    choice = completion["choices"][0]
-    message = choice["message"]
+def map_chat_completion(completion: WireCompletion, provider_name: str, cost_fn: CostCalculator) -> ChatResponse:
+    """Convert a validated Groq chat completion to an lmux ChatResponse."""
+    choice = completion.choices[0]
+    message = choice.message
 
     tool_calls: list[ToolCall] | None = None
-    raw_tool_calls = message.get("tool_calls")
-    if raw_tool_calls:
-        tool_calls = [_map_function_tool_call(tc) for tc in raw_tool_calls if tc.get("type") == "function"]
+    if message.tool_calls:
+        tool_calls = [_map_function_tool_call(tc) for tc in message.tool_calls if tc.type == "function"]
 
-    usage = _map_usage(completion.get("usage"))
-    model = completion["model"]
-    cost = cost_fn(model, usage) if usage else None
+    usage = _map_usage(completion.usage)
+    cost = cost_fn(completion.model, usage) if usage else None
 
     return ChatResponse(
-        content=message.get("content"),
-        reasoning=message.get("reasoning"),
+        content=message.content,
+        reasoning=message.reasoning,
         tool_calls=tool_calls or None,
         usage=usage,
         cost=cost,
-        model=model,
+        model=completion.model,
         provider=provider_name,
-        finish_reason=choice.get("finish_reason"),
+        finish_reason=choice.finish_reason,
     )
 
 
-def _map_usage(usage: Json | None) -> Usage | None:
-    """Extract Usage from a completion/chunk usage dict, or None if absent."""
+def _map_usage(usage: WireUsage | None) -> Usage | None:
+    """Extract Usage from a completion/chunk usage model, or None if absent."""
     if usage is None:
         return None
-    prompt_details = usage.get("prompt_tokens_details") or {}
-    completion_details = usage.get("completion_tokens_details") or {}
+    prompt_details = usage.prompt_tokens_details
+    completion_details = usage.completion_tokens_details
     return Usage(
-        input_tokens=usage["prompt_tokens"],
-        output_tokens=usage["completion_tokens"],
-        cache_read_tokens=prompt_details.get("cached_tokens") or None,
-        reasoning_tokens=completion_details.get("reasoning_tokens") or None,
+        input_tokens=usage.prompt_tokens,
+        output_tokens=usage.completion_tokens,
+        cache_read_tokens=(prompt_details.cached_tokens if prompt_details else None) or None,
+        reasoning_tokens=(completion_details.reasoning_tokens if completion_details else None) or None,
     )
 
 
-def map_chat_chunk(chunk: Json, provider_name: str) -> ChatChunk:
-    """Convert a Groq streaming chunk JSON to an lmux ChatChunk."""
+def map_chat_chunk(chunk: WireChunk, provider_name: str) -> ChatChunk:
+    """Convert a validated Groq streaming chunk to an lmux ChatChunk."""
     delta_text: str | None = None
     reasoning_delta: str | None = None
     tool_call_deltas: list[ToolCallDelta] | None = None
     finish_reason: str | None = None
 
-    choices = chunk.get("choices")
-    if choices:
-        choice = choices[0]
-        delta = choice.get("delta") or {}
-        delta_text = delta.get("content")
-        reasoning_delta = delta.get("reasoning")
-        finish_reason = choice.get("finish_reason")
-        raw_tool_calls = delta.get("tool_calls")
-        if raw_tool_calls:
-            tool_call_deltas = [_map_tool_call_delta(tc) for tc in raw_tool_calls]
+    if chunk.choices:
+        choice = chunk.choices[0]
+        delta = choice.delta
+        delta_text = delta.content
+        reasoning_delta = delta.reasoning
+        finish_reason = choice.finish_reason
+        if delta.tool_calls:
+            tool_call_deltas = [_map_tool_call_delta(tc) for tc in delta.tool_calls]
 
     return ChatChunk(
         delta=delta_text,
         reasoning_delta=reasoning_delta,
         tool_call_deltas=tool_call_deltas,
-        usage=_map_usage(chunk.get("usage")),
+        usage=_map_usage(chunk.usage),
         finish_reason=finish_reason,
-        model=chunk.get("model"),
+        model=chunk.model,
         provider=provider_name,
     )
 
 
-def _map_tool_call_delta(tc: Json) -> ToolCallDelta:
-    fn = tc.get("function")
+def _map_tool_call_delta(tc: WireToolCallDelta) -> ToolCallDelta:
+    fn = tc.function
     return ToolCallDelta(
-        index=tc["index"],
-        id=tc.get("id"),
-        type="function" if tc.get("type") == "function" else None,
-        function=FunctionCallDelta(name=fn.get("name"), arguments=fn.get("arguments")) if fn else None,
+        index=tc.index,
+        id=tc.id,
+        type="function" if tc.type == "function" else None,
+        function=FunctionCallDelta(name=fn.name, arguments=fn.arguments) if fn else None,
     )
