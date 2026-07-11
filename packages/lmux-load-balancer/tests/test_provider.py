@@ -137,7 +137,7 @@ class TestChat:
         lb = LoadBalancerProvider(registry, {"m": {"a/x": 1.0}})
 
         # A non-LoadBalancerParams object must be tolerated (coerced to defaults), not crash.
-        result = lb.chat("m", _messages(), provider_params=BaseProviderParams())  # pyright: ignore[reportArgumentType]
+        result = lb.chat("m", _messages(), provider_params=BaseProviderParams())  # ty: ignore[invalid-argument-type]
         assert result.content == "hi"
 
 

@@ -24,7 +24,7 @@ def preload() -> None:
     Call this during application startup to pay the import cost upfront
     rather than on the first request.
     """
-    import boto3  # noqa: F401, PLC0415  # pyright: ignore[reportUnusedImport]
+    import boto3  # noqa: F401, PLC0415
 
     with contextlib.suppress(ImportError):
-        import aiobotocore  # noqa: F401, PLC0415  # pyright: ignore[reportUnusedImport]
+        import aiobotocore  # noqa: F401, PLC0415

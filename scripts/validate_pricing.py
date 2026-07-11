@@ -116,7 +116,7 @@ def _to_per_million(per_token: float) -> Decimal:
 def extract_lmux_pricing(module_name: str) -> dict[str, PricePoint]:
     """Import a provider's cost module and extract base-tier pricing."""
     mod = importlib.import_module(module_name)
-    pricing_dict: dict[str, Any] = mod._PRICING
+    pricing_dict: dict[str, Any] = mod._PRICING  # noqa: SLF001
     result: dict[str, PricePoint] = {}
     for model_id, model_pricing in pricing_dict.items():
         base_tier = model_pricing.tiers[0]
@@ -136,7 +136,7 @@ def extract_lmux_pricing(module_name: str) -> dict[str, PricePoint]:
 def extract_lmux_tiered_pricing(module_name: str) -> dict[str, TieredPricing]:
     """Import a provider's cost module and extract all pricing tiers."""
     mod = importlib.import_module(module_name)
-    pricing_dict: dict[str, Any] = mod._PRICING
+    pricing_dict: dict[str, Any] = mod._PRICING  # noqa: SLF001
     result: dict[str, TieredPricing] = {}
     for model_id, model_pricing in pricing_dict.items():
         if len(model_pricing.tiers) <= 1:
@@ -410,9 +410,9 @@ def _extract_genai_base_price(value: object) -> Decimal | None:
     if isinstance(value, (int, float)):
         return Decimal(str(value))
     if isinstance(value, dict):
-        base: object = value.get("base")  # pyright: ignore[reportUnknownVariableType]
+        base: object = value.get("base")
         if base is not None:
-            return Decimal(str(base))  # pyright: ignore[reportUnknownArgumentType]
+            return Decimal(str(base))
     return None
 
 
@@ -422,12 +422,12 @@ def _resolve_genai_prices(prices_data: object) -> dict[str, object] | None:
     if isinstance(target, list):
         if not target:
             return None
-        last_entry: object = target[-1]  # pyright: ignore[reportUnknownVariableType]
+        last_entry: object = target[-1]
         if not isinstance(last_entry, dict):
             return None
-        target = last_entry.get("prices", last_entry)  # pyright: ignore[reportUnknownVariableType]
+        target = last_entry.get("prices", last_entry)
     if isinstance(target, dict):
-        return dict(target)  # pyright: ignore[reportUnknownArgumentType]
+        return dict(target)  # ty: ignore[no-matching-overload]
     return None
 
 
@@ -650,8 +650,8 @@ def compare_calculated_costs(
             if expected_total == 0:
                 continue
 
-            actual_total: float = lmux_cost.total_cost  # pyright: ignore[reportAttributeAccessIssue, reportUnknownVariableType]
-            pct = abs(Decimal(str(actual_total)) - Decimal(str(expected_total))) / Decimal(str(expected_total)) * 100  # pyright: ignore[reportUnknownArgumentType]
+            actual_total: float = lmux_cost.total_cost  # ty: ignore[unresolved-attribute]
+            pct = abs(Decimal(str(actual_total)) - Decimal(str(expected_total))) / Decimal(str(expected_total)) * 100
             if pct <= tolerance_pct:
                 continue
 
@@ -659,7 +659,7 @@ def compare_calculated_costs(
                 Mismatch(
                     model=f"{model_id} ({in_tok:,}in/{out_tok:,}out/{cache_tok:,}cache)",
                     field="total_cost",
-                    lmux_value=Decimal(str(round(actual_total, 8))),  # pyright: ignore[reportUnknownArgumentType]
+                    lmux_value=Decimal(str(round(actual_total, 8))),
                     external_value=Decimal(str(round(expected_total, 8))),
                     pct_diff=pct,
                 )

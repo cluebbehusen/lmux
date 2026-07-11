@@ -16,4 +16,4 @@ __all__ = [
 
 def preload() -> None:
     """Eagerly import the Groq SDK."""
-    import groq  # noqa: F401, PLC0415  # pyright: ignore[reportUnusedImport]
+    import groq  # noqa: F401, PLC0415

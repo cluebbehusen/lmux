@@ -7,7 +7,7 @@ import pytest
 from lmux.cost import ModelPricing, PricingTier, per_million_tokens
 from lmux.types import Usage
 from lmux_aws_bedrock.cost import (
-    _REGIONAL_PRICING,  # pyright: ignore[reportPrivateUsage]
+    _REGIONAL_PRICING,
     calculate_bedrock_cost,
 )
 

@@ -24,7 +24,7 @@ class TestAzureAdToken:
     def test_frozen(self) -> None:
         token = AzureAdToken(token="abc")  # noqa: S106
         with pytest.raises(AttributeError):
-            token.token = "xyz"  # pyright: ignore[reportAttributeAccessIssue]  # noqa: S105
+            token.token = "xyz"  # ty: ignore[invalid-assignment]  # noqa: S105
 
     def test_equality(self) -> None:
         assert AzureAdToken(token="abc") == AzureAdToken(token="abc")  # noqa: S106

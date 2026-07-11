@@ -196,7 +196,7 @@ def _map_content_part(part: TextContent | ImageContent) -> "TextBlockParam | Ima
 def _map_image_content(img: ImageContent) -> "ImageBlockParam":
     match = _DATA_URI_PATTERN.match(img.url)
     if match:
-        return {"type": "image", "source": {"type": "base64", "media_type": match.group(1), "data": match.group(2)}}  # pyright: ignore[reportReturnType]  # media_type is a dynamic str, not a literal
+        return {"type": "image", "source": {"type": "base64", "media_type": match.group(1), "data": match.group(2)}}  # ty: ignore[invalid-argument-type, invalid-return-type]  # media_type is a dynamic str, not a literal
     return {"type": "image", "source": {"type": "url", "url": img.url}}
 
 
@@ -229,7 +229,7 @@ def _append_tool_result(result: list["MessageParam"], msg: ToolMessage) -> None:
         if isinstance(last_content, list) and last_content:
             first = last_content[0]
             if isinstance(first, dict) and first.get("type") == "tool_result":
-                last_content.append(tool_block)
+                last_content.append(tool_block)  # ty: ignore[invalid-argument-type]
                 return
     result.append({"role": "user", "content": [tool_block]})
 

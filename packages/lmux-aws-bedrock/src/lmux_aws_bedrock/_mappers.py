@@ -203,7 +203,7 @@ def _append_tool_result(result: list["MessageTypeDef"], msg: ToolMessage) -> Non
     if result and result[-1].get("role") == "user":
         last_content = result[-1]["content"]
         if isinstance(last_content, list) and last_content and "toolResult" in last_content[0]:
-            last_content.append(tool_block)
+            last_content.append(tool_block)  # ty: ignore[invalid-argument-type]
             return
     result.append({"role": "user", "content": [tool_block]})
 
@@ -344,7 +344,7 @@ def _map_stop_reason(stop_reason: str | None) -> str | None:
 
 def _map_converse_usage(response: "ConverseResponseTypeDef") -> Usage | None:
     usage_data = response.get("usage")
-    if usage_data is None:  # pyright: ignore[reportUnnecessaryComparison]
+    if usage_data is None:
         return None
     return _map_token_usage(usage_data)
 
@@ -431,7 +431,7 @@ def _map_content_block_start(data: "ContentBlockStartEventTypeDef") -> ChatChunk
 
 def _map_metadata_event(metadata: "ConverseStreamMetadataEventTypeDef") -> ChatChunk | None:
     usage_data = metadata.get("usage")
-    if usage_data is None:  # pyright: ignore[reportUnnecessaryComparison]
+    if usage_data is None:
         return None
     return ChatChunk(usage=_map_token_usage(usage_data))
 

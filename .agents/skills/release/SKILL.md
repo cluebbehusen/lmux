@@ -74,7 +74,7 @@ grep '^version' packages/lmux-<pkg>/pyproject.toml   # core: packages/lmux/pypro
 Run the full gate from AGENTS.md and do not release a package that isn't green:
 
 ```bash
-uv run ruff format --check && uv run ruff check && uv run basedpyright && uv run pytest
+uv run ruff format --check && uv run ruff check && uv run ty check && uv run pytest
 ```
 
 ### Step 3: Draft the notes and get sign-off

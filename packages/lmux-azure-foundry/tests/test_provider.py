@@ -1097,7 +1097,7 @@ class TestClientManagement:
         _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
 
         mock_sync_create.assert_called_once_with(
-            credential=FakeTokenProviderAuth._provider,  # pyright: ignore[reportPrivateUsage]
+            credential=FakeTokenProviderAuth._provider,
             azure_endpoint="https://test.openai.azure.com/",
             api_version="2025-04-01-preview",
             timeout=None,
@@ -1291,7 +1291,7 @@ class TestAclose:
 
         mock_async_create.assert_called_once()
         mock_async_client.close.assert_awaited_once()
-        assert provider._async_client is None  # pyright: ignore[reportPrivateUsage]
+        assert provider._async_client is None
 
     async def test_aclose_noop_when_no_client(self, fake_auth: FakeAuth) -> None:
         provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)

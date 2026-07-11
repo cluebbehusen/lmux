@@ -34,4 +34,4 @@ __all__ = [
 
 def preload() -> None:
     """Eagerly import the google-genai SDK."""
-    import google.genai  # noqa: PLC0415, F401  # pyright: ignore[reportUnusedImport]
+    import google.genai  # noqa: PLC0415, F401

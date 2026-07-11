@@ -19,4 +19,4 @@ class TestGroqParams:
 
     def test_invalid_service_tier(self) -> None:
         with pytest.raises(ValidationError):
-            _ = GroqParams(service_tier="invalid")  # pyright: ignore[reportArgumentType]
+            _ = GroqParams(service_tier="invalid")  # ty: ignore[invalid-argument-type]

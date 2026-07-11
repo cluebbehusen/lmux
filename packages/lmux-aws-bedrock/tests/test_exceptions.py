@@ -28,7 +28,7 @@ from lmux_aws_bedrock._exceptions import map_bedrock_error
 @pytest.fixture
 def throttling_error() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"},
             "ResponseMetadata": {"HTTPStatusCode": 429},
         },
@@ -39,7 +39,7 @@ def throttling_error() -> ClientError:
 @pytest.fixture
 def throttling_error_with_retry_after() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"},
             "ResponseMetadata": {"HTTPStatusCode": 429, "HTTPHeaders": {"retry-after": "30.5"}},
         },
@@ -50,7 +50,7 @@ def throttling_error_with_retry_after() -> ClientError:
 @pytest.fixture
 def throttling_error_invalid_retry_after() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"},
             "ResponseMetadata": {"HTTPStatusCode": 429, "HTTPHeaders": {"retry-after": "not-a-number"}},
         },
@@ -61,7 +61,7 @@ def throttling_error_invalid_retry_after() -> ClientError:
 @pytest.fixture
 def throttling_error_no_retry_header() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"},
             "ResponseMetadata": {"HTTPStatusCode": 429, "HTTPHeaders": {}},
         },
@@ -72,7 +72,7 @@ def throttling_error_no_retry_header() -> ClientError:
 @pytest.fixture
 def validation_error() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "ValidationException", "Message": "Invalid parameter"},
             "ResponseMetadata": {"HTTPStatusCode": 400},
         },
@@ -83,7 +83,7 @@ def validation_error() -> ClientError:
 @pytest.fixture
 def access_denied_error() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "AccessDeniedException", "Message": "Access denied"},
             "ResponseMetadata": {"HTTPStatusCode": 403},
         },
@@ -94,7 +94,7 @@ def access_denied_error() -> ClientError:
 @pytest.fixture
 def unrecognized_client_error() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "UnrecognizedClientException", "Message": "Unrecognized client"},
             "ResponseMetadata": {"HTTPStatusCode": 403},
         },
@@ -105,7 +105,7 @@ def unrecognized_client_error() -> ClientError:
 @pytest.fixture
 def invalid_signature_error() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "InvalidSignatureException", "Message": "Invalid signature"},
             "ResponseMetadata": {"HTTPStatusCode": 403},
         },
@@ -116,7 +116,7 @@ def invalid_signature_error() -> ClientError:
 @pytest.fixture
 def expired_token_error() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "ExpiredTokenException", "Message": "Token expired"},
             "ResponseMetadata": {"HTTPStatusCode": 403},
         },
@@ -127,7 +127,7 @@ def expired_token_error() -> ClientError:
 @pytest.fixture
 def resource_not_found_error() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "ResourceNotFoundException", "Message": "Model not found"},
             "ResponseMetadata": {"HTTPStatusCode": 404},
         },
@@ -138,7 +138,7 @@ def resource_not_found_error() -> ClientError:
 @pytest.fixture
 def internal_server_error() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "InternalServerException", "Message": "Internal error"},
             "ResponseMetadata": {"HTTPStatusCode": 500},
         },
@@ -149,7 +149,7 @@ def internal_server_error() -> ClientError:
 @pytest.fixture
 def unknown_client_error() -> ClientError:
     return ClientError(
-        error_response={  # pyright: ignore[reportArgumentType]
+        error_response={  # ty: ignore[invalid-argument-type]
             "Error": {"Code": "SomeUnknownError", "Message": "Something unexpected"},
             "ResponseMetadata": {"HTTPStatusCode": 418},
         },
@@ -305,7 +305,7 @@ class TestMapBedrockError:
         [
             pytest.param(
                 ClientError(
-                    error_response={  # pyright: ignore[reportArgumentType]
+                    error_response={  # ty: ignore[invalid-argument-type]
                         "Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"},
                         "ResponseMetadata": {"HTTPStatusCode": 429},
                     },
@@ -315,7 +315,7 @@ class TestMapBedrockError:
             ),
             pytest.param(
                 ClientError(
-                    error_response={  # pyright: ignore[reportArgumentType]
+                    error_response={  # ty: ignore[invalid-argument-type]
                         "Error": {"Code": "ValidationException", "Message": "Invalid"},
                         "ResponseMetadata": {"HTTPStatusCode": 400},
                     },
@@ -325,7 +325,7 @@ class TestMapBedrockError:
             ),
             pytest.param(
                 ClientError(
-                    error_response={  # pyright: ignore[reportArgumentType]
+                    error_response={  # ty: ignore[invalid-argument-type]
                         "Error": {"Code": "AccessDeniedException", "Message": "Denied"},
                         "ResponseMetadata": {"HTTPStatusCode": 403},
                     },
@@ -335,7 +335,7 @@ class TestMapBedrockError:
             ),
             pytest.param(
                 ClientError(
-                    error_response={  # pyright: ignore[reportArgumentType]
+                    error_response={  # ty: ignore[invalid-argument-type]
                         "Error": {"Code": "ResourceNotFoundException", "Message": "Not found"},
                         "ResponseMetadata": {"HTTPStatusCode": 404},
                     },
@@ -345,7 +345,7 @@ class TestMapBedrockError:
             ),
             pytest.param(
                 ClientError(
-                    error_response={  # pyright: ignore[reportArgumentType]
+                    error_response={  # ty: ignore[invalid-argument-type]
                         "Error": {"Code": "InternalServerException", "Message": "Internal"},
                         "ResponseMetadata": {"HTTPStatusCode": 500},
                     },
@@ -355,7 +355,7 @@ class TestMapBedrockError:
             ),
             pytest.param(
                 ClientError(
-                    error_response={  # pyright: ignore[reportArgumentType]
+                    error_response={  # ty: ignore[invalid-argument-type]
                         "Error": {"Code": "UnknownCode", "Message": "Unknown"},
                         "ResponseMetadata": {"HTTPStatusCode": 500},
                     },

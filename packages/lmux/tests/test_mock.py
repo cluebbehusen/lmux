@@ -223,7 +223,7 @@ class TestRegisterPricing:
             tiers=[PricingTier(input_cost_per_token=0.001, output_cost_per_token=0.002)],
         )
         provider.register_pricing("my-model", pricing)
-        assert provider._custom_pricing["my-model"] == pricing  # pyright: ignore[reportPrivateUsage]
+        assert provider._custom_pricing["my-model"] == pricing
 
     def test_register_pricing_overwrites(self) -> None:
         provider = MockProvider()
@@ -235,4 +235,4 @@ class TestRegisterPricing:
         )
         provider.register_pricing("my-model", first)
         provider.register_pricing("my-model", second)
-        assert provider._custom_pricing["my-model"] == second  # pyright: ignore[reportPrivateUsage]
+        assert provider._custom_pricing["my-model"] == second

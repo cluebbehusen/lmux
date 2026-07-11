@@ -1,7 +1,5 @@
 """Mock provider for testing lmux consumer code."""
 
-# pyright: reportUnusedParameter=false
-
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass
 from typing import Literal, override
