@@ -1,9 +1,19 @@
-"""Lazy Groq SDK loading internals."""
+"""HTTP client factories for the Groq provider."""
 
-from typing import TYPE_CHECKING, Any
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
+
+from lmux._http import create_async_client as _create_async
+from lmux._http import create_sync_client as _create_sync
 
 if TYPE_CHECKING:
-    import groq
+    import httpx
+
+DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
+
+
+def _headers(api_key: str) -> Mapping[str, str]:
+    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
 def create_sync_client(
@@ -12,18 +22,11 @@ def create_sync_client(
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
-) -> "groq.Groq":
-    """Create a groq.Groq client, lazily importing the SDK."""
-    import groq  # noqa: PLC0415
-
-    kwargs: dict[str, Any] = {"api_key": api_key}
-    if base_url is not None:
-        kwargs["base_url"] = base_url
-    if timeout is not None:
-        kwargs["timeout"] = timeout
-    if max_retries is not None:
-        kwargs["max_retries"] = max_retries
-    return groq.Groq(**kwargs)
+) -> "httpx.Client":
+    """Create an httpx client for the Groq (OpenAI-compatible) API."""
+    return _create_sync(
+        base_url=base_url or DEFAULT_BASE_URL, headers=_headers(api_key), timeout=timeout, max_retries=max_retries
+    )
 
 
 def create_async_client(
@@ -32,15 +35,8 @@ def create_async_client(
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
-) -> "groq.AsyncGroq":
-    """Create a groq.AsyncGroq client, lazily importing the SDK."""
-    import groq  # noqa: PLC0415
-
-    kwargs: dict[str, Any] = {"api_key": api_key}
-    if base_url is not None:
-        kwargs["base_url"] = base_url
-    if timeout is not None:
-        kwargs["timeout"] = timeout
-    if max_retries is not None:
-        kwargs["max_retries"] = max_retries
-    return groq.AsyncGroq(**kwargs)
+) -> "httpx.AsyncClient":
+    """Create an async httpx client for the Groq (OpenAI-compatible) API."""
+    return _create_async(
+        base_url=base_url or DEFAULT_BASE_URL, headers=_headers(api_key), timeout=timeout, max_retries=max_retries
+    )

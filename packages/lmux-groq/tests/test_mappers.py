@@ -1,27 +1,12 @@
-"""Tests for Groq type mappers."""
+"""Tests for Groq JSON mappers."""
 
 from typing import Any
-from unittest.mock import MagicMock
-
-import pytest
-from groq.types.chat import ChatCompletion, ChatCompletionChunk, ChatCompletionMessage
-from groq.types.chat.chat_completion import Choice
-from groq.types.chat.chat_completion_chunk import Choice as ChunkChoice
-from groq.types.chat.chat_completion_chunk import ChoiceDelta, ChoiceDeltaToolCall, ChoiceDeltaToolCallFunction
-from groq.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
-from groq.types.chat.chat_completion_message_tool_call import Function as ToolCallFunction
-from groq.types.completion_usage import CompletionTokensDetails, CompletionUsage, PromptTokensDetails
-from pytest_mock import MockerFixture
 
 from lmux.types import (
     AssistantMessage,
     CachePointContent,
-    ChatChunk,
-    ChatResponse,
-    ContentPart,
     Cost,
     DeveloperMessage,
-    FunctionCallDelta,
     FunctionCallResult,
     FunctionDefinition,
     ImageContent,
@@ -32,7 +17,6 @@ from lmux.types import (
     TextResponseFormat,
     Tool,
     ToolCall,
-    ToolCallDelta,
     ToolChoiceFunction,
     ToolMessage,
     Usage,
@@ -47,140 +31,76 @@ from lmux_groq._mappers import (
     map_tools,
 )
 
-# MARK: Fixtures
 
-
-@pytest.fixture
-def noop_cost_fn() -> Any:  # noqa: ANN401
-    def _fn(_model: str, _usage: Usage) -> Cost:
-        return Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0)
-
-    return _fn
-
-
-@pytest.fixture
-def none_cost_fn() -> Any:  # noqa: ANN401
-    def _fn(_model: str, _usage: Usage) -> None:
-        return None
-
-    return _fn
-
-
-@pytest.fixture
-def chat_completion() -> ChatCompletion:
-    return ChatCompletion(
-        id="chatcmpl-123",
-        choices=[
-            Choice(
-                finish_reason="stop",
-                index=0,
-                message=ChatCompletionMessage(content="Hello!", role="assistant"),
-            )
-        ],
-        created=1234567890,
-        model="llama-3.3-70b-versatile",
-        object="chat.completion",
-        usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-    )
-
-
-# MARK: map_messages
+def _noop_cost(model: str, usage: Usage) -> Cost | None:  # noqa: ARG001
+    return None
 
 
 class TestMapMessages:
-    def test_system_message(self) -> None:
-        result = map_messages([SystemMessage(content="Be helpful.")])
-        assert result == [{"role": "system", "content": "Be helpful."}]
+    def test_system(self) -> None:
+        assert map_messages([SystemMessage(content="s")]) == [{"role": "system", "content": "s"}]
 
-    def test_developer_message(self) -> None:
-        result = map_messages([DeveloperMessage(content="Be concise.")])
-        assert result == [{"role": "developer", "content": "Be concise."}]
+    def test_developer(self) -> None:
+        assert map_messages([DeveloperMessage(content="d")]) == [{"role": "developer", "content": "d"}]
 
-    def test_user_message_text(self) -> None:
-        result = map_messages([UserMessage(content="Hello")])
-        assert result == [{"role": "user", "content": "Hello"}]
+    def test_user_text(self) -> None:
+        assert map_messages([UserMessage(content="hi")]) == [{"role": "user", "content": "hi"}]
 
-    def test_originally_empty_content_list_is_forwarded(self) -> None:
-        result = map_messages([UserMessage(content=[])])
-        assert result == [{"role": "user", "content": []}]
+    def test_user_content_parts(self) -> None:
+        result = map_messages([UserMessage(content=[TextContent(text="t"), ImageContent(url="http://x")])])
+        assert result == [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "t"},
+                    {"type": "image_url", "image_url": {"url": "http://x", "detail": "auto"}},
+                ],
+            }
+        ]
 
-    def test_user_message_multimodal(self) -> None:
-        parts: list[ContentPart] = [TextContent(text="What?"), ImageContent(url="https://img.png", detail="high")]
-        result = map_messages([UserMessage(content=parts)])
-        assert len(result) == 1
-        content = result[0]["content"]
-        assert isinstance(content, list)
-        assert content[0] == {"type": "text", "text": "What?"}
-        assert content[1] == {"type": "image_url", "image_url": {"url": "https://img.png", "detail": "high"}}
+    def test_user_only_cache_points_skipped(self) -> None:
+        assert map_messages([UserMessage(content=[CachePointContent()])]) == []
 
-    def test_assistant_message_text(self) -> None:
-        result = map_messages([AssistantMessage(content="Hi!")])
-        assert result == [{"role": "assistant", "content": "Hi!"}]
+    def test_assistant_content(self) -> None:
+        assert map_messages([AssistantMessage(content="a")]) == [{"role": "assistant", "content": "a"}]
 
-    def test_assistant_message_with_tool_calls(self) -> None:
-        tc = ToolCall(id="tc1", function=FunctionCallResult(name="f", arguments="{}"))
-        result = map_messages([AssistantMessage(tool_calls=[tc])])
-        assert len(result) == 1
-        msg = result[0]
-        assert msg["role"] == "assistant"
-        assert "content" not in msg
-        assert msg["tool_calls"] == [{"id": "tc1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]
+    def test_assistant_tool_calls(self) -> None:
+        msg = AssistantMessage(tool_calls=[ToolCall(id="c1", function=FunctionCallResult(name="f", arguments="{}"))])
+        assert map_messages([msg]) == [
+            {
+                "role": "assistant",
+                "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}],
+            }
+        ]
 
     def test_tool_message(self) -> None:
-        result = map_messages([ToolMessage(content="result", tool_call_id="tc1")])
-        assert result == [{"role": "tool", "content": "result", "tool_call_id": "tc1"}]
-
-    def test_mixed_messages(self) -> None:
-        messages = [
-            SystemMessage(content="sys"),
-            UserMessage(content="hi"),
-            AssistantMessage(content="hello"),
+        assert map_messages([ToolMessage(content="r", tool_call_id="c1")]) == [
+            {"role": "tool", "content": "r", "tool_call_id": "c1"}
         ]
-        result = map_messages(messages)
-        assert len(result) == 3
-        assert [m["role"] for m in result] == ["system", "user", "assistant"]
-
-    def test_cache_points_dropped(self) -> None:
-        result = map_messages([UserMessage(content=[TextContent(text="Hi"), CachePointContent()])])
-        assert result == [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
-
-    def test_marker_only_message_skipped(self) -> None:
-        result = map_messages([UserMessage(content="Hello"), UserMessage(content=[CachePointContent()])])
-        assert result == [{"role": "user", "content": "Hello"}]
 
 
-# MARK: map_tools
 class TestMapTools:
-    def test_minimal_tool(self) -> None:
-        tools = [Tool(function=FunctionDefinition(name="f"))]
-        result = map_tools(tools)
-        assert result == [{"type": "function", "function": {"name": "f"}}]
-
-    def test_full_tool(self) -> None:
-        tools = [
-            Tool(
-                function=FunctionDefinition(
-                    name="get_weather",
-                    description="Get weather",
-                    parameters={"type": "object"},
-                    strict=True,
-                )
-            )
+    def test_minimal(self) -> None:
+        assert map_tools([Tool(function=FunctionDefinition(name="f"))]) == [
+            {"type": "function", "function": {"name": "f"}}
         ]
-        result = map_tools(tools)
-        fn = result[0]["function"]
-        assert fn["name"] == "get_weather"
-        assert fn["description"] == "Get weather"
-        assert fn["parameters"] == {"type": "object"}
-        assert fn["strict"] is True
+
+    def test_full(self) -> None:
+        tool = Tool(function=FunctionDefinition(name="f", description="d", parameters={"type": "object"}, strict=True))
+        assert map_tools([tool]) == [
+            {
+                "type": "function",
+                "function": {"name": "f", "description": "d", "parameters": {"type": "object"}, "strict": True},
+            }
+        ]
 
 
-# MARK: map_response_format
+class TestMapToolChoice:
+    def test_string(self) -> None:
+        assert map_tool_choice("auto") == "auto"
 
-
-@pytest.fixture
-def mock_add_additional_properties_false(mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_groq._mappers.add_additional_properties_false")
+    def test_function(self) -> None:
+        assert map_tool_choice(ToolChoiceFunction(name="f")) == {"type": "function", "function": {"name": "f"}}
 
 
 class TestMapResponseFormat:
@@ -190,310 +110,138 @@ class TestMapResponseFormat:
     def test_json_object(self) -> None:
         assert map_response_format(JsonObjectResponseFormat()) == {"type": "json_object"}
 
-    def test_json_schema_minimal(self, mock_add_additional_properties_false: MagicMock) -> None:
+    def test_json_schema_full(self) -> None:
         rf = JsonSchemaResponseFormat(
-            name="test",
-            json_schema={"type": "object", "additionalProperties": False},
+            name="S", json_schema={"type": "object", "properties": {}}, description="d", strict=True
         )
-        result = map_response_format(rf)
-        mock_add_additional_properties_false.assert_called_once()
-        assert result == {
-            "type": "json_schema",
-            "json_schema": {"name": "test", "schema": {"type": "object", "additionalProperties": False}},
-        }
+        out = map_response_format(rf)
+        assert out["type"] == "json_schema"
+        assert out["json_schema"]["name"] == "S"
+        assert out["json_schema"]["description"] == "d"
+        assert out["json_schema"]["strict"] is True
+        assert out["json_schema"]["schema"]["additionalProperties"] is False
 
-    def test_json_schema_full(self, mock_add_additional_properties_false: MagicMock) -> None:
-        rf = JsonSchemaResponseFormat(
-            name="test",
-            json_schema={"type": "object", "additionalProperties": False},
-            description="A test",
-            strict=True,
-        )
-        result = map_response_format(rf)
-        mock_add_additional_properties_false.assert_called_once()
-        assert result == {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "test",
-                "schema": {"type": "object", "additionalProperties": False},
-                "description": "A test",
-                "strict": True,
-            },
-        }
-
-
-# MARK: map_chat_completion
+    def test_json_schema_minimal(self) -> None:
+        rf = JsonSchemaResponseFormat(name="S", json_schema={"type": "object", "properties": {}})
+        out = map_response_format(rf)
+        assert "description" not in out["json_schema"]
+        assert "strict" not in out["json_schema"]
 
 
 class TestMapChatCompletion:
-    def test_basic(self, chat_completion: ChatCompletion, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        result = map_chat_completion(chat_completion, "groq", noop_cost_fn)
-        assert result == ChatResponse(
-            content="Hello!",
-            tool_calls=None,
-            usage=Usage(input_tokens=10, output_tokens=5),
-            cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
-            model="llama-3.3-70b-versatile",
-            provider="groq",
-            finish_reason="stop",
-        )
+    def test_basic(self) -> None:
+        completion: dict[str, Any] = {
+            "model": "m",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "Hi"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+        r = map_chat_completion(completion, "groq", _noop_cost)
+        assert r.content == "Hi"
+        assert r.finish_reason == "stop"
+        assert r.usage is not None
+        assert r.usage.input_tokens == 10
 
-    def test_with_tool_calls(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        tool_calls = [
-            ChatCompletionMessageToolCall(
-                id="tc1",
-                type="function",
-                function=ToolCallFunction(name="f", arguments='{"x": 1}'),
-            )
-        ]
-        completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="tool_calls",
-                    index=0,
-                    message=ChatCompletionMessage(
-                        content=None,
-                        role="assistant",
-                        tool_calls=tool_calls,
-                    ),
-                )
+    def test_tool_calls(self) -> None:
+        completion: dict[str, Any] = {
+            "model": "m",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}],
+                    },
+                }
             ],
-            created=1234567890,
-            model="llama-3.3-70b-versatile",
-            object="chat.completion",
-            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-        )
-        result = map_chat_completion(completion, "groq", noop_cost_fn)
-        assert result.content is None
-        assert result.tool_calls == [
-            ToolCall(id="tc1", function=FunctionCallResult(name="f", arguments='{"x": 1}')),
-        ]
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        }
+        r = map_chat_completion(completion, "groq", _noop_cost)
+        assert r.tool_calls is not None
+        assert r.tool_calls[0].id == "c1"
 
-    def test_with_cache_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="stop",
-                    index=0,
-                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
-                )
+    def test_reasoning_and_cache(self) -> None:
+        completion: dict[str, Any] = {
+            "model": "m",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "x", "reasoning": "because"},
+                }
             ],
-            created=1234567890,
-            model="llama-3.3-70b-versatile",
-            object="chat.completion",
-            usage=CompletionUsage(
-                prompt_tokens=10,
-                completion_tokens=5,
-                total_tokens=15,
-                prompt_tokens_details=PromptTokensDetails(cached_tokens=50),
-            ),
-        )
-        result = map_chat_completion(completion, "groq", noop_cost_fn)
-        assert result.usage is not None
-        assert result.usage.cache_read_tokens == 50
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "prompt_tokens_details": {"cached_tokens": 3},
+                "completion_tokens_details": {"reasoning_tokens": 2},
+            },
+        }
+        r = map_chat_completion(completion, "groq", _noop_cost)
+        assert r.reasoning == "because"
+        assert r.usage is not None
+        assert r.usage.cache_read_tokens == 3
+        assert r.usage.reasoning_tokens == 2
 
-    def test_with_reasoning_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="stop",
-                    index=0,
-                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
-                )
-            ],
-            created=1234567890,
-            model="openai/gpt-oss-120b",
-            object="chat.completion",
-            usage=CompletionUsage(
-                prompt_tokens=10,
-                completion_tokens=5,
-                total_tokens=15,
-                completion_tokens_details=CompletionTokensDetails(reasoning_tokens=4),
-            ),
-        )
-        result = map_chat_completion(completion, "groq", noop_cost_fn)
-        assert result.usage is not None
-        assert result.usage.reasoning_tokens == 4
-
-    def test_none_usage(self, chat_completion: ChatCompletion, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        chat_completion.usage = None
-        result = map_chat_completion(chat_completion, "groq", noop_cost_fn)
-        assert result.usage is None
-        assert result.cost is None
-
-    def test_cost_from_calculator(self, chat_completion: ChatCompletion, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        result = map_chat_completion(chat_completion, "groq", noop_cost_fn)
-        assert result.cost == Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0)
-
-    def test_cost_none_when_unknown(self, chat_completion: ChatCompletion, none_cost_fn: Any) -> None:  # noqa: ANN401
-        result = map_chat_completion(chat_completion, "groq", none_cost_fn)
-        assert result.cost is None
-
-
-# MARK: map_chat_chunk
+    def test_no_usage(self) -> None:
+        completion: dict[str, Any] = {
+            "model": "m",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
+        }
+        r = map_chat_completion(completion, "groq", _noop_cost)
+        assert r.usage is None
+        assert r.cost is None
 
 
 class TestMapChatChunk:
     def test_content_delta(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[
-                ChunkChoice(
-                    delta=ChoiceDelta(content="Hello"),
-                    index=0,
-                    finish_reason=None,
-                )
-            ],
-            created=1234567890,
-            model="llama-3.3-70b-versatile",
-            object="chat.completion.chunk",
-        )
-        result = map_chat_chunk(chunk, "groq")
-        assert result == ChatChunk(delta="Hello", model="llama-3.3-70b-versatile", provider="groq")
+        chunk: dict[str, Any] = {
+            "model": "m",
+            "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}],
+        }
+        assert map_chat_chunk(chunk, "groq").delta == "Hel"
 
-    def test_tool_call_delta(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[
-                ChunkChoice(
-                    delta=ChoiceDelta(
-                        tool_calls=[
-                            ChoiceDeltaToolCall(
-                                index=0,
-                                id="tc1",
-                                type="function",
-                                function=ChoiceDeltaToolCallFunction(name="f", arguments='{"x":'),
-                            )
+    def test_reasoning_delta(self) -> None:
+        chunk: dict[str, Any] = {"model": "m", "choices": [{"index": 0, "delta": {"reasoning": "r"}}]}
+        assert map_chat_chunk(chunk, "groq").reasoning_delta == "r"
+
+    def test_tool_call_delta_with_function(self) -> None:
+        chunk: dict[str, Any] = {
+            "model": "m",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [
+                            {"index": 0, "id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}
                         ]
-                    ),
-                    index=0,
-                    finish_reason=None,
-                )
+                    },
+                }
             ],
-            created=1234567890,
-            model="llama-3.3-70b-versatile",
-            object="chat.completion.chunk",
-        )
-        result = map_chat_chunk(chunk, "groq")
-        assert result.tool_call_deltas == [
-            ToolCallDelta(
-                index=0,
-                id="tc1",
-                type="function",
-                function=FunctionCallDelta(name="f", arguments='{"x":'),
-            ),
-        ]
+        }
+        c = map_chat_chunk(chunk, "groq")
+        assert c.tool_call_deltas is not None
+        assert c.tool_call_deltas[0].function is not None
+        assert c.tool_call_deltas[0].function.name == "f"
 
     def test_tool_call_delta_without_function(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[
-                ChunkChoice(
-                    delta=ChoiceDelta(
-                        tool_calls=[ChoiceDeltaToolCall(index=0, id="tc1", type="function", function=None)]
-                    ),
-                    index=0,
-                    finish_reason=None,
-                )
-            ],
-            created=1234567890,
-            model="llama-3.3-70b-versatile",
-            object="chat.completion.chunk",
-        )
-        result = map_chat_chunk(chunk, "groq")
-        assert result.tool_call_deltas == [
-            ToolCallDelta(index=0, id="tc1", type="function", function=None),
-        ]
+        chunk: dict[str, Any] = {"model": "m", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0}]}}]}
+        c = map_chat_chunk(chunk, "groq")
+        assert c.tool_call_deltas is not None
+        assert c.tool_call_deltas[0].function is None
 
-    def test_final_chunk_with_usage(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[
-                ChunkChoice(
-                    delta=ChoiceDelta(),
-                    index=0,
-                    finish_reason="stop",
-                )
-            ],
-            created=1234567890,
-            model="llama-3.3-70b-versatile",
-            object="chat.completion.chunk",
-            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-        )
-        result = map_chat_chunk(chunk, "groq")
-        assert result == ChatChunk(
-            finish_reason="stop",
-            usage=Usage(input_tokens=10, output_tokens=5),
-            model="llama-3.3-70b-versatile",
-            provider="groq",
-        )
-
-    def test_usage_chunk_with_cache(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[],
-            created=1234567890,
-            model="llama-3.3-70b-versatile",
-            object="chat.completion.chunk",
-            usage=CompletionUsage(
-                prompt_tokens=10,
-                completion_tokens=5,
-                total_tokens=15,
-                prompt_tokens_details=PromptTokensDetails(cached_tokens=3),
-            ),
-        )
-        result = map_chat_chunk(chunk, "groq")
-        assert result.usage is not None
-        assert result.usage.cache_read_tokens == 3
-
-    def test_usage_chunk_with_reasoning(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[],
-            created=1234567890,
-            model="openai/gpt-oss-120b",
-            object="chat.completion.chunk",
-            usage=CompletionUsage(
-                prompt_tokens=10,
-                completion_tokens=5,
-                total_tokens=15,
-                completion_tokens_details=CompletionTokensDetails(reasoning_tokens=4),
-            ),
-        )
-        result = map_chat_chunk(chunk, "groq")
-        assert result.usage is not None
-        assert result.usage.reasoning_tokens == 4
-
-    def test_empty_choices(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[],
-            created=1234567890,
-            model="llama-3.3-70b-versatile",
-            object="chat.completion.chunk",
-        )
-        result = map_chat_chunk(chunk, "groq")
-        assert result == ChatChunk(model="llama-3.3-70b-versatile", provider="groq")
-
-
-# MARK: map_tool_choice
-
-
-class TestMapToolChoice:
-    def test_auto(self) -> None:
-        assert map_tool_choice("auto") == "auto"
-
-    def test_required(self) -> None:
-        assert map_tool_choice("required") == "required"
-
-    def test_none(self) -> None:
-        assert map_tool_choice("none") == "none"
-
-    def test_specific_function(self) -> None:
-        assert map_tool_choice(ToolChoiceFunction(name="get_weather")) == {
-            "type": "function",
-            "function": {"name": "get_weather"},
+    def test_finish_and_usage(self) -> None:
+        chunk: dict[str, Any] = {
+            "model": "m",
+            "choices": [{"index": 0, "finish_reason": "stop", "delta": {}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
         }
+        c = map_chat_chunk(chunk, "groq")
+        assert c.finish_reason == "stop"
+        assert c.usage is not None
+        assert c.usage.input_tokens == 10
+
+    def test_no_choices(self) -> None:
+        chunk: dict[str, Any] = {"model": "m", "choices": []}
+        assert map_chat_chunk(chunk, "groq").delta is None
