@@ -1,20 +1,24 @@
-"""Anthropic provider implementation."""
+"""Anthropic provider implementation (SDK-lite, httpx transport)."""
 
 import asyncio
+import json
 import os
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from datetime import date
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, override
 
 if TYPE_CHECKING:
-    import anthropic
+    import httpx
     from google.auth.credentials import Credentials
 
+from lmux._http import aiter_sse, iter_sse
 from lmux.cost import ModelPricing, calculate_cost
+from lmux.exceptions import LmuxError, ProviderError
 from lmux.protocols import AuthProvider, CompletionProvider, PricingProvider
 from lmux.types import ChatChunk, ChatResponse, Cost, Message, ResponseFormat, Tool, ToolChoice, Usage
-from lmux_anthropic._exceptions import map_anthropic_error
+from lmux_anthropic._exceptions import error_from_response, map_transport_error, raise_for_status
 from lmux_anthropic._lazy import (
+    VERTEX_ANTHROPIC_VERSION,
     create_async_client,
     create_async_foundry_client,
     create_async_vertex_client,
@@ -52,18 +56,15 @@ PROVIDER_NAME = "anthropic"
 VERTEX_PROVIDER_NAME = "anthropic-vertex"
 FOUNDRY_PROVIDER_NAME = "anthropic-foundry"
 DEFAULT_MAX_TOKENS = 4096
-
-type SyncAnthropicClient = "anthropic.Anthropic | anthropic.AnthropicVertex | anthropic.AnthropicFoundry"
-type AsyncAnthropicClient = (
-    "anthropic.AsyncAnthropic | anthropic.AsyncAnthropicVertex | anthropic.AsyncAnthropicFoundry"
-)
+_MESSAGES_PATH = "v1/messages"
+_HTTP_ERROR = 400
 
 # Vertex auth providers may return bare credentials, or credentials together
 # with the project ID they resolved (e.g. from ADC or a service account file).
 type VertexAuthResult = "Credentials | tuple[Credentials, str | None]"
 
 # Foundry auth providers return an API key, or a Microsoft Entra ID bearer
-# token provider that the SDK invokes on every request.
+# token provider that the client invokes when building the request.
 type FoundryAuthResult = "str | Callable[[], str]"
 
 
@@ -76,7 +77,7 @@ class AnthropicProvider(
     CompletionProvider[AnthropicParams],
     PricingProvider,
 ):
-    """Anthropic API provider."""
+    """Anthropic API provider over httpx."""
 
     _provider_name: ClassVar[str] = PROVIDER_NAME
 
@@ -94,8 +95,8 @@ class AnthropicProvider(
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
         self._default_max_tokens: int = default_max_tokens
-        self._sync_client: SyncAnthropicClient | None = None
-        self._async_client: AsyncAnthropicClient | None = None
+        self._sync_client: httpx.Client | None = None
+        self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
@@ -118,7 +119,9 @@ class AnthropicProvider(
             return calculate_cost(usage, pricing, as_of)
         return calculate_anthropic_cost(model, usage, as_of)
 
-    def _create_sync_client(self) -> SyncAnthropicClient:
+    # MARK: Client Management
+
+    def _create_sync_client(self) -> "httpx.Client":
         return create_sync_client(
             api_key=self._auth.get_credentials(),
             base_url=self._base_url,
@@ -126,7 +129,7 @@ class AnthropicProvider(
             max_retries=self._max_retries,
         )
 
-    async def _create_async_client(self) -> AsyncAnthropicClient:
+    async def _create_async_client(self) -> "httpx.AsyncClient":
         return create_async_client(
             api_key=await self._auth.aget_credentials(),
             base_url=self._base_url,
@@ -134,12 +137,12 @@ class AnthropicProvider(
             max_retries=self._max_retries,
         )
 
-    def _get_sync_client(self) -> SyncAnthropicClient:
+    def _get_sync_client(self) -> "httpx.Client":
         if self._sync_client is None:
             self._sync_client = self._create_sync_client()
         return self._sync_client
 
-    async def _get_async_client(self) -> AsyncAnthropicClient:
+    async def _get_async_client(self) -> "httpx.AsyncClient":
         loop = asyncio.get_running_loop()
         if self._async_client is None or self._async_loop is not loop:
             self._async_client = await self._create_async_client()
@@ -149,9 +152,19 @@ class AnthropicProvider(
     async def aclose(self) -> None:
         """Close the underlying async HTTP client."""
         if self._async_client is not None:
-            await self._async_client.close()
+            await self._async_client.aclose()
             self._async_client = None
             self._async_loop = None
+
+    # MARK: Request shaping hooks (overridden by Vertex)
+
+    def _request_path(self, model: str, *, stream: bool) -> str:  # noqa: ARG002
+        """Path for the Messages request; ``model``/``stream`` matter only on Vertex."""
+        return _MESSAGES_PATH
+
+    def _transform_body(self, body: dict[str, Any], model: str) -> dict[str, Any]:  # noqa: ARG002
+        """Adjust the request body per-transport; identity for the Anthropic API."""
+        return body
 
     # MARK: Chat
 
@@ -171,27 +184,17 @@ class AnthropicProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> ChatResponse:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
+        body = self._build_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params, stream=False,
+        )  # fmt: skip
         try:
             client = self._get_sync_client()
-            message = client.messages.create(**kwargs, stream=False)
+            response = client.post(self._request_path(model, stream=False), json=self._transform_body(body, model))
         except Exception as e:
-            raise map_anthropic_error(e, self._provider_name) from e
-        as_of = self._resolve_pricing_as_of(provider_params)
-        response = map_message_response(message, self._provider_name, lambda m, u: self._calculate_cost(m, u, as_of))
-        return self._apply_multipliers(response, provider_params)
+            raise map_transport_error(e, self._provider_name) from e
+        raise_for_status(response, self._provider_name)
+        return self._map_response(response.json(), provider_params)
 
     @override
     async def achat(
@@ -209,27 +212,19 @@ class AnthropicProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> ChatResponse:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
+        body = self._build_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params, stream=False,
+        )  # fmt: skip
         try:
             client = await self._get_async_client()
-            message = await client.messages.create(**kwargs, stream=False)
+            response = await client.post(
+                self._request_path(model, stream=False), json=self._transform_body(body, model)
+            )
         except Exception as e:
-            raise map_anthropic_error(e, self._provider_name) from e
-        as_of = self._resolve_pricing_as_of(provider_params)
-        response = map_message_response(message, self._provider_name, lambda m, u: self._calculate_cost(m, u, as_of))
-        return self._apply_multipliers(response, provider_params)
+            raise map_transport_error(e, self._provider_name) from e
+        raise_for_status(response, self._provider_name)
+        return self._map_response(response.json(), provider_params)
 
     @override
     def chat_stream(
@@ -247,51 +242,32 @@ class AnthropicProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> Iterator[ChatChunk]:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
+        body = self._build_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params, stream=True,
+        )  # fmt: skip
         try:
             client = self._get_sync_client()
-            stream = client.messages.create(**kwargs, stream=True)
+            path = self._request_path(model, stream=True)
+            body = self._transform_body(body, model)
         except Exception as e:
-            raise map_anthropic_error(e, self._provider_name) from e
+            raise map_transport_error(e, self._provider_name) from e
 
         as_of = self._resolve_pricing_as_of(provider_params)
-        start_usage: Usage | None = None
-        start_model: str = model
+        stream = _StreamState(model)
         try:
-            for event in stream:
-                if event.type == "message_start":
-                    start_model, start_usage = map_message_start(event)
-                    continue
-                if event.type == "content_block_start":
-                    chunk = map_content_block_start(event)
+            with client.stream("POST", path, json=body) as response:
+                if response.status_code >= _HTTP_ERROR:
+                    response.read()
+                    raise error_from_response(response, self._provider_name)  # noqa: TRY301
+                for _event, data in iter_sse(response):
+                    chunk = stream.feed(json.loads(data))
                     if chunk is not None:
-                        yield chunk
-                    continue
-                if event.type == "content_block_delta":
-                    chunk = map_content_block_delta(event)
-                    if chunk is not None:
-                        yield chunk
-                    continue
-                if event.type == "message_delta" and start_usage is not None:
-                    chunk = map_message_delta(event, start_usage)
-                    cost = self._calculate_cost(start_model, chunk.usage, as_of) if chunk.usage else None
-                    cost = self._apply_cost_multipliers(cost, start_model, provider_params)
-                    yield chunk.model_copy(update={"cost": cost, "model": start_model, "provider": self._provider_name})
-                    continue
+                        yield self._finalize_chunk(chunk, stream, provider_params, as_of)
+        except LmuxError:
+            raise
         except Exception as e:
-            raise map_anthropic_error(e, self._provider_name) from e
+            raise map_transport_error(e, self._provider_name) from e
 
     @override
     async def achat_stream(
@@ -309,55 +285,55 @@ class AnthropicProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AnthropicParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
+        body = self._build_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params, stream=True,
+        )  # fmt: skip
         try:
             client = await self._get_async_client()
-            stream = await client.messages.create(**kwargs, stream=True)
+            path = self._request_path(model, stream=True)
+            body = self._transform_body(body, model)
         except Exception as e:
-            raise map_anthropic_error(e, self._provider_name) from e
+            raise map_transport_error(e, self._provider_name) from e
 
         as_of = self._resolve_pricing_as_of(provider_params)
-        start_usage: Usage | None = None
-        start_model: str = model
+        stream = _StreamState(model)
         try:
-            async for event in stream:
-                if event.type == "message_start":
-                    start_model, start_usage = map_message_start(event)
-                    continue
-                if event.type == "content_block_start":
-                    chunk = map_content_block_start(event)
+            async with client.stream("POST", path, json=body) as response:
+                if response.status_code >= _HTTP_ERROR:
+                    await response.aread()
+                    raise error_from_response(response, self._provider_name)  # noqa: TRY301
+                async for _event, data in aiter_sse(response):
+                    chunk = stream.feed(json.loads(data))
                     if chunk is not None:
-                        yield chunk
-                    continue
-                if event.type == "content_block_delta":
-                    chunk = map_content_block_delta(event)
-                    if chunk is not None:
-                        yield chunk
-                    continue
-                if event.type == "message_delta" and start_usage is not None:
-                    chunk = map_message_delta(event, start_usage)
-                    cost = self._calculate_cost(start_model, chunk.usage, as_of) if chunk.usage else None
-                    cost = self._apply_cost_multipliers(cost, start_model, provider_params)
-                    yield chunk.model_copy(update={"cost": cost, "model": start_model, "provider": self._provider_name})
-                    continue
+                        yield self._finalize_chunk(chunk, stream, provider_params, as_of)
+        except LmuxError:
+            raise
         except Exception as e:
-            raise map_anthropic_error(e, self._provider_name) from e
+            raise map_transport_error(e, self._provider_name) from e
 
     # MARK: Internal Helpers
 
-    def _build_chat_kwargs(  # noqa: PLR0913
+    def _map_response(self, body: dict[str, Any], provider_params: AnthropicParams | None) -> ChatResponse:
+        as_of = self._resolve_pricing_as_of(provider_params)
+        response = map_message_response(body, self._provider_name, lambda m, u: self._calculate_cost(m, u, as_of))
+        return self._apply_multipliers(response, provider_params)
+
+    def _finalize_chunk(
+        self,
+        chunk: ChatChunk,
+        stream: "_StreamState",
+        provider_params: AnthropicParams | None,
+        as_of: date,
+    ) -> ChatChunk:
+        """Attach model/provider/cost to a message_delta chunk; pass others through."""
+        if chunk.usage is None:
+            return chunk
+        cost = self._calculate_cost(stream.model, chunk.usage, as_of)
+        cost = self._apply_cost_multipliers(cost, stream.model, provider_params)
+        return chunk.model_copy(update={"cost": cost, "model": stream.model, "provider": self._provider_name})
+
+    def _build_body(  # noqa: PLR0913
         self,
         model: str,
         messages: Sequence[Message],
@@ -370,48 +346,51 @@ class AnthropicProvider(
         response_format: ResponseFormat | None,
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: AnthropicParams | None,
+        *,
+        stream: bool,
     ) -> dict[str, Any]:
         system, mapped_messages = map_messages(messages)
-        kwargs: dict[str, Any] = {
+        body: dict[str, Any] = {
             "model": model,
             "messages": mapped_messages,
             "max_tokens": max_tokens if max_tokens is not None else self._default_max_tokens,
+            "stream": stream,
         }
         if system is not None:
-            kwargs["system"] = system
+            body["system"] = system
         if temperature is not None:
-            kwargs["temperature"] = temperature
+            body["temperature"] = temperature
         if top_p is not None:
-            kwargs["top_p"] = top_p
+            body["top_p"] = top_p
         if stop is not None:
-            kwargs["stop_sequences"] = [stop] if isinstance(stop, str) else stop
+            body["stop_sequences"] = [stop] if isinstance(stop, str) else stop
         if tools is not None:
-            kwargs["tools"] = map_tools(tools)
+            body["tools"] = map_tools(tools)
         if tool_choice is not None:
-            kwargs["tool_choice"] = map_tool_choice(tool_choice)
+            body["tool_choice"] = map_tool_choice(tool_choice)
         if response_format is not None:
             output_config = map_response_format(response_format)
             if output_config is not None:
-                kwargs["output_config"] = output_config
+                body["output_config"] = output_config
         # provider_params.thinking takes precedence over reasoning_effort, so skip the
         # reasoning_effort mapping entirely when it is set (otherwise a stray
         # output_config.effort would linger after the provider_params update below).
         provider_sets_thinking = provider_params is not None and provider_params.thinking is not None
         if reasoning_effort is not None and not provider_sets_thinking:
             if model_uses_adaptive_thinking(model):
-                kwargs["thinking"] = {"type": "adaptive"}
-                kwargs["output_config"] = {**kwargs.get("output_config", {}), "effort": reasoning_effort}
+                body["thinking"] = {"type": "adaptive"}
+                body["output_config"] = {**body.get("output_config", {}), "effort": reasoning_effort}
             else:
                 budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
-                budget = min(budget, kwargs["max_tokens"] - 1)
-                kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
+                budget = min(budget, body["max_tokens"] - 1)
+                body["thinking"] = {"type": "enabled", "budget_tokens": budget}
         if provider_params is not None:
-            kwargs.update(self._provider_params_kwargs(provider_params))
-        return kwargs
+            body.update(self._provider_params_kwargs(provider_params))
+        return body
 
     @staticmethod
     def _provider_params_kwargs(params: AnthropicParams) -> dict[str, Any]:
-        """Convert AnthropicParams to kwargs for the Anthropic SDK."""
+        """Convert AnthropicParams to request-body kwargs."""
         kwargs: dict[str, Any] = {}
         if params.thinking is not None:
             kwargs["thinking"] = params.thinking
@@ -454,13 +433,36 @@ class AnthropicProvider(
         return response.model_copy(update={"cost": adjusted})
 
 
+class _StreamState:
+    """Accumulates message_start context and maps each streamed event to a chunk."""
+
+    def __init__(self, model: str) -> None:
+        self.model: str = model
+        self._start_usage: Usage | None = None
+
+    def feed(self, event: dict[str, Any]) -> ChatChunk | None:
+        """Map one streamed event to a ChatChunk, or None if it carries no delta."""
+        event_type = event.get("type")
+        if event_type == "message_start":
+            self.model, self._start_usage = map_message_start(event)
+            return None
+        if event_type == "content_block_start":
+            return map_content_block_start(event)
+        if event_type == "content_block_delta":
+            return map_content_block_delta(event)
+        if event_type == "message_delta" and self._start_usage is not None:
+            return map_message_delta(event, self._start_usage)
+        return None
+
+
 class AnthropicVertexProvider(AnthropicProvider):
     """Claude on Vertex AI provider.
 
-    Requires the ``[vertex]`` extra. Reuses the Anthropic API request/response
-    handling unchanged; only client creation and auth differ. ``service_tier``
-    and ``inference_geo`` are Anthropic-API-only parameters and are dropped
-    from outgoing requests; the US-inference cost multiplier never applies.
+    Requires the ``[vertex]`` extra. Reuses the Anthropic Messages API
+    request/response handling; only client creation, endpoint URL, and auth
+    differ. ``service_tier`` and ``inference_geo`` are Anthropic-API-only
+    parameters and are dropped from outgoing requests; the US-inference cost
+    multiplier never applies.
     """
 
     _provider_name: ClassVar[str] = VERTEX_PROVIDER_NAME
@@ -485,6 +487,8 @@ class AnthropicVertexProvider(AnthropicProvider):
         self._vertex_auth: AuthProvider[VertexAuthResult] = auth or AnthropicVertexADCAuthProvider()
         self._project_id: str | None = project_id
         self._region: str | None = region
+        self._resolved_project_id: str | None = None
+        self._resolved_region: str | None = None
 
     @staticmethod
     def _split_auth_result(auth_result: "VertexAuthResult") -> "tuple[Credentials, str | None]":
@@ -492,47 +496,73 @@ class AnthropicVertexProvider(AnthropicProvider):
             return auth_result  # ty: ignore[invalid-return-type]
         return auth_result, None
 
-    def _resolve_project_id(self, auth_project_id: str | None) -> str | None:
+    def _resolve_project_id(self, auth_project_id: str | None) -> str:
         """Resolve the project ID: explicit argument, then env var, then auth-derived.
 
         Matches the SDK's own precedence — the env var wins over a project
         inferred from credentials.
         """
-        if self._project_id is not None:
-            return self._project_id
-        env_project_id = os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID")
-        if env_project_id:
-            return env_project_id
-        return auth_project_id
+        project_id = self._project_id or os.environ.get("ANTHROPIC_VERTEX_PROJECT_ID") or auth_project_id
+        if not project_id:
+            raise ProviderError(  # noqa: TRY003
+                "No project_id was given and it could not be resolved from credentials; pass project_id= "
+                "or set ANTHROPIC_VERTEX_PROJECT_ID",
+                provider=self._provider_name,
+            )
+        return project_id
+
+    def _resolve_region(self) -> str:
+        region = self._region or os.environ.get("CLOUD_ML_REGION")
+        if not region:
+            raise ProviderError(  # noqa: TRY003
+                "No region was given; pass region= or set CLOUD_ML_REGION", provider=self._provider_name
+            )
+        return region
 
     @override
-    def _create_sync_client(self) -> "anthropic.AnthropicVertex":
+    def _create_sync_client(self) -> "httpx.Client":
         credentials, auth_project_id = self._split_auth_result(self._vertex_auth.get_credentials())
+        self._resolved_region = self._resolve_region()
+        self._resolved_project_id = self._resolve_project_id(auth_project_id)
         return create_sync_vertex_client(
             credentials=credentials,
-            project_id=self._resolve_project_id(auth_project_id),
-            region=self._region,
+            region=self._resolved_region,
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
         )
 
     @override
-    async def _create_async_client(self) -> "anthropic.AsyncAnthropicVertex":
+    async def _create_async_client(self) -> "httpx.AsyncClient":
         credentials, auth_project_id = self._split_auth_result(await self._vertex_auth.aget_credentials())
+        self._resolved_region = self._resolve_region()
+        self._resolved_project_id = self._resolve_project_id(auth_project_id)
         return create_async_vertex_client(
             credentials=credentials,
-            project_id=self._resolve_project_id(auth_project_id),
-            region=self._region,
+            region=self._resolved_region,
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
         )
+
+    @override
+    def _request_path(self, model: str, *, stream: bool) -> str:
+        specifier = "streamRawPredict" if stream else "rawPredict"
+        return (
+            f"projects/{self._resolved_project_id}/locations/{self._resolved_region}"
+            f"/publishers/anthropic/models/{model}:{specifier}"
+        )
+
+    @override
+    def _transform_body(self, body: dict[str, Any], model: str) -> dict[str, Any]:
+        transformed = {key: value for key, value in body.items() if key != "model"}
+        transformed["anthropic_version"] = VERTEX_ANTHROPIC_VERSION
+        return transformed
 
     @staticmethod
     @override
     def _provider_params_kwargs(params: AnthropicParams) -> dict[str, Any]:
-        """Convert AnthropicParams to SDK kwargs, dropping Anthropic-API-only parameters."""
+        """Convert AnthropicParams to body kwargs, dropping Anthropic-API-only parameters."""
         kwargs = AnthropicProvider._provider_params_kwargs(params)  # noqa: SLF001
         kwargs.pop("service_tier", None)
         kwargs.pop("inference_geo", None)
@@ -556,7 +586,7 @@ class AnthropicVertexProvider(AnthropicProvider):
 class AnthropicFoundryProvider(AnthropicProvider):
     """Claude in Microsoft Foundry provider.
 
-    Reuses the Anthropic API request/response handling unchanged; only client
+    Reuses the Anthropic Messages API request/response handling; only client
     creation and auth differ. ``service_tier`` and ``inference_geo`` are
     Anthropic-API-only parameters and are dropped from outgoing requests; the
     US-inference cost multiplier never applies.
@@ -590,7 +620,7 @@ class AnthropicFoundryProvider(AnthropicProvider):
         return None, auth_result
 
     @override
-    def _create_sync_client(self) -> "anthropic.AnthropicFoundry":
+    def _create_sync_client(self) -> "httpx.Client":
         api_key, azure_ad_token_provider = self._split_foundry_auth(self._foundry_auth.get_credentials())
         return create_sync_foundry_client(
             api_key=api_key,
@@ -602,7 +632,7 @@ class AnthropicFoundryProvider(AnthropicProvider):
         )
 
     @override
-    async def _create_async_client(self) -> "anthropic.AsyncAnthropicFoundry":
+    async def _create_async_client(self) -> "httpx.AsyncClient":
         api_key, azure_ad_token_provider = self._split_foundry_auth(await self._foundry_auth.aget_credentials())
         return create_async_foundry_client(
             api_key=api_key,
@@ -616,7 +646,7 @@ class AnthropicFoundryProvider(AnthropicProvider):
     @staticmethod
     @override
     def _provider_params_kwargs(params: AnthropicParams) -> dict[str, Any]:
-        """Convert AnthropicParams to SDK kwargs, dropping Anthropic-API-only parameters."""
+        """Convert AnthropicParams to body kwargs, dropping Anthropic-API-only parameters."""
         kwargs = AnthropicProvider._provider_params_kwargs(params)  # noqa: SLF001
         kwargs.pop("service_tier", None)
         kwargs.pop("inference_geo", None)

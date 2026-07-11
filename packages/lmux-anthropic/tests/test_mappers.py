@@ -160,7 +160,7 @@ class TestMapMessages:
         assert isinstance(content, list)
         assert len(content) == 2
         assert content[0] == {"type": "text", "text": "Let me check."}
-        assert content[1]["type"] == "tool_use"  # ty: ignore[not-subscriptable]
+        assert content[1]["type"] == "tool_use"
 
     def test_tool_message(self) -> None:
         _, messages = map_messages([ToolMessage(content="72°F", tool_call_id="call_1")])
@@ -180,8 +180,8 @@ class TestMapMessages:
         content = messages[0]["content"]
         assert isinstance(content, list)
         assert len(content) == 2
-        assert content[0]["tool_use_id"] == "call_1"  # ty: ignore[not-subscriptable]
-        assert content[1]["tool_use_id"] == "call_2"  # ty: ignore[not-subscriptable]
+        assert content[0]["tool_use_id"] == "call_1"
+        assert content[1]["tool_use_id"] == "call_2"
 
     def test_tool_message_after_multimodal_user_not_merged(self) -> None:
         _, messages = map_messages(
@@ -195,7 +195,7 @@ class TestMapMessages:
         assert messages[1]["role"] == "user"
         content = messages[1]["content"]
         assert isinstance(content, list)
-        assert content[0]["type"] == "tool_result"  # ty: ignore[not-subscriptable]
+        assert content[0]["type"] == "tool_result"
 
     def test_tool_message_after_user_not_merged(self) -> None:
         _, messages = map_messages(
@@ -514,19 +514,18 @@ class TestMapResponseFormat:
 
 
 class TestMapMessageResponse:
-    def test_text_response(self, cost_fn: CostCalculator) -> None:
-        message = MagicMock()
-        message.content = [MagicMock(type="text", text="Hello!")]
-        message.usage = MagicMock(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=0,
-            cache_creation=None,
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = "end_turn"
+    def _usage(self, **overrides: object) -> dict[str, Any]:
+        usage: dict[str, Any] = {"input_tokens": 10, "output_tokens": 5}
+        usage.update(overrides)
+        return usage
 
+    def test_text_response(self, cost_fn: CostCalculator) -> None:
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Hello!"}],
+            "usage": self._usage(),
+        }
         result = map_message_response(message, "anthropic", cost_fn)
         assert result == ChatResponse(
             content="Hello!",
@@ -539,24 +538,12 @@ class TestMapMessageResponse:
         )
 
     def test_tool_use_response(self, cost_fn: CostCalculator) -> None:
-        tool_block = MagicMock()
-        tool_block.type = "tool_use"
-        tool_block.id = "call_1"
-        tool_block.name = "get_weather"
-        tool_block.input = {"city": "NYC"}
-
-        message = MagicMock()
-        message.content = [tool_block]
-        message.usage = MagicMock(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=0,
-            cache_creation=None,
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = "tool_use"
-
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "tool_use",
+            "content": [{"type": "tool_use", "id": "call_1", "name": "get_weather", "input": {"city": "NYC"}}],
+            "usage": self._usage(),
+        }
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.content is None
         assert result.tool_calls == [
@@ -565,102 +552,52 @@ class TestMapMessageResponse:
         assert result.finish_reason == "tool_calls"
 
     def test_thinking_blocks_extracted(self, cost_fn: CostCalculator) -> None:
-        thinking_block = MagicMock()
-        thinking_block.type = "thinking"
-        thinking_block.thinking = "Let me think about this..."
-        text_block = MagicMock()
-        text_block.type = "text"
-        text_block.text = "Answer"
-
-        message = MagicMock()
-        message.content = [thinking_block, text_block]
-        message.usage = MagicMock(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=0,
-            cache_creation=None,
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = "end_turn"
-
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": [
+                {"type": "thinking", "thinking": "Let me think about this..."},
+                {"type": "text", "text": "Answer"},
+            ],
+            "usage": self._usage(),
+        }
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.content == "Answer"
         assert result.reasoning == "Let me think about this..."
 
     def test_thinking_blocks_only_no_text(self, cost_fn: CostCalculator) -> None:
-        thinking_block = MagicMock()
-        thinking_block.type = "thinking"
-        thinking_block.thinking = "Deep thought..."
-
-        message = MagicMock()
-        message.content = [thinking_block]
-        message.usage = MagicMock(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=0,
-            cache_creation=None,
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = "end_turn"
-
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": [{"type": "thinking", "thinking": "Deep thought..."}],
+            "usage": self._usage(),
+        }
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.content is None
         assert result.reasoning == "Deep thought..."
 
     def test_multiple_text_blocks_joined(self, cost_fn: CostCalculator) -> None:
-        message = MagicMock()
-        message.content = [
-            MagicMock(type="text", text="Part 1"),
-            MagicMock(type="text", text="Part 2"),
-        ]
-        message.usage = MagicMock(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=0,
-            cache_creation=None,
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = "end_turn"
-
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Part 1"}, {"type": "text", "text": "Part 2"}],
+            "usage": self._usage(),
+        }
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.content == "Part 1\nPart 2"
 
     def test_thinking_with_tool_use_and_text(self, cost_fn: CostCalculator) -> None:
-        thinking_block = MagicMock()
-        thinking_block.type = "thinking"
-        thinking_block.thinking = "Reasoning..."
-
-        tool_block1 = MagicMock()
-        tool_block1.type = "tool_use"
-        tool_block1.id = "call_1"
-        tool_block1.name = "get_weather"
-        tool_block1.input = {"city": "NYC"}
-
-        tool_block2 = MagicMock()
-        tool_block2.type = "tool_use"
-        tool_block2.id = "call_2"
-        tool_block2.name = "get_time"
-        tool_block2.input = {}
-
-        text_block = MagicMock()
-        text_block.type = "text"
-        text_block.text = "Here's the weather"
-
-        message = MagicMock()
-        message.content = [thinking_block, tool_block1, tool_block2, text_block]
-        message.usage = MagicMock(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=0,
-            cache_creation=None,
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = "tool_use"
-
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "tool_use",
+            "content": [
+                {"type": "thinking", "thinking": "Reasoning..."},
+                {"type": "tool_use", "id": "call_1", "name": "get_weather", "input": {"city": "NYC"}},
+                {"type": "tool_use", "id": "call_2", "name": "get_time", "input": {}},
+                {"type": "text", "text": "Here's the weather"},
+            ],
+            "usage": self._usage(),
+        }
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.reasoning == "Reasoning..."
         assert result.tool_calls is not None
@@ -668,57 +605,35 @@ class TestMapMessageResponse:
         assert result.content == "Here's the weather"
 
     def test_unknown_block_type_ignored(self, cost_fn: CostCalculator) -> None:
-        unknown_block = MagicMock()
-        unknown_block.type = "some_future_block"
-        text_block = MagicMock()
-        text_block.type = "text"
-        text_block.text = "Answer"
-
-        message = MagicMock()
-        message.content = [unknown_block, text_block]
-        message.usage = MagicMock(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=0,
-            cache_creation=None,
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = "end_turn"
-
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": [{"type": "some_future_block"}, {"type": "text", "text": "Answer"}],
+            "usage": self._usage(),
+        }
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.content == "Answer"
         assert result.reasoning is None
 
     def test_none_cost_when_unknown_model(self, none_cost_fn: CostCalculator) -> None:
-        message = MagicMock()
-        message.content = [MagicMock(type="text", text="Hello")]
-        message.usage = MagicMock(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=0,
-            cache_creation=None,
-        )
-        message.model = "unknown-model"
-        message.stop_reason = "end_turn"
-
+        message = {
+            "model": "unknown-model",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Hello"}],
+            "usage": self._usage(),
+        }
         result = map_message_response(message, "anthropic", none_cost_fn)
         assert result.cost is None
 
     def test_cache_tokens_mapped(self, cost_fn: CostCalculator) -> None:
-        message = MagicMock()
-        message.content = [MagicMock(type="text", text="Hello")]
-        message.usage = MagicMock(
-            input_tokens=100,
-            output_tokens=50,
-            cache_read_input_tokens=20,
-            cache_creation_input_tokens=10,
-            cache_creation=None,
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = "end_turn"
-
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Hello"}],
+            "usage": self._usage(
+                input_tokens=100, output_tokens=50, cache_read_input_tokens=20, cache_creation_input_tokens=10
+            ),
+        }
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.usage is not None
         # input_tokens is normalized to the inclusive total (100 + 20 + 10)
@@ -727,71 +642,61 @@ class TestMapMessageResponse:
         assert result.usage.cache_creation_tokens == 10
 
     def test_none_stop_reason(self, cost_fn: CostCalculator) -> None:
-        message = MagicMock()
-        message.content = [MagicMock(type="text", text="Hello")]
-        message.usage = MagicMock(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=0,
-            cache_creation=None,
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = None
-
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": None,
+            "content": [{"type": "text", "text": "Hello"}],
+            "usage": self._usage(),
+        }
         result = map_message_response(message, "anthropic", cost_fn)
         assert result.finish_reason is None
 
-    # MARK: Streaming mappers
+    def test_missing_stop_reason(self, cost_fn: CostCalculator) -> None:
+        message = {
+            "model": "claude-sonnet-4-6",
+            "content": [{"type": "text", "text": "Hello"}],
+            "usage": self._usage(),
+        }
+        result = map_message_response(message, "anthropic", cost_fn)
+        assert result.finish_reason is None
 
     def test_breakdown_mapped_from_cache_creation(self) -> None:
-        message = MagicMock()
-        message.content = [MagicMock(type="text", text="Hello")]
-        message.usage = MagicMock(
-            input_tokens=100,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=2000,
-            cache_creation=MagicMock(ephemeral_5m_input_tokens=500, ephemeral_1h_input_tokens=1500),
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = "end_turn"
-
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Hello"}],
+            "usage": self._usage(
+                input_tokens=100,
+                cache_creation_input_tokens=2000,
+                cache_creation={"ephemeral_5m_input_tokens": 500, "ephemeral_1h_input_tokens": 1500},
+            ),
+        }
         result = map_message_response(message, "anthropic", lambda _m, _u: None)
         assert result.usage is not None
         assert result.usage.input_tokens == 2100
         assert result.usage.cache_creation_tokens_by_ttl == {"5m": 500, "1h": 1500}
 
     def test_zero_breakdown_fields_omitted(self) -> None:
-        message = MagicMock()
-        message.content = [MagicMock(type="text", text="Hello")]
-        message.usage = MagicMock(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=1500,
-            cache_creation=MagicMock(ephemeral_5m_input_tokens=0, ephemeral_1h_input_tokens=1500),
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = "end_turn"
-
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Hello"}],
+            "usage": self._usage(
+                cache_creation_input_tokens=1500,
+                cache_creation={"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 1500},
+            ),
+        }
         result = map_message_response(message, "anthropic", lambda _m, _u: None)
         assert result.usage is not None
         assert result.usage.cache_creation_tokens_by_ttl == {"1h": 1500}
 
     def test_all_zero_breakdown_is_none(self) -> None:
-        message = MagicMock()
-        message.content = [MagicMock(type="text", text="Hello")]
-        message.usage = MagicMock(
-            input_tokens=10,
-            output_tokens=5,
-            cache_read_input_tokens=0,
-            cache_creation_input_tokens=0,
-            cache_creation=MagicMock(ephemeral_5m_input_tokens=0, ephemeral_1h_input_tokens=0),
-        )
-        message.model = "claude-sonnet-4-6"
-        message.stop_reason = "end_turn"
-
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Hello"}],
+            "usage": self._usage(cache_creation={"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0}),
+        }
         result = map_message_response(message, "anthropic", lambda _m, _u: None)
         assert result.usage is not None
         assert result.usage.cache_creation_tokens_by_ttl is None
@@ -799,15 +704,18 @@ class TestMapMessageResponse:
 
 class TestMapMessageStart:
     def test_extracts_model_and_usage(self) -> None:
-        event = MagicMock()
-        event.message.model = "claude-sonnet-4-6"
-        event.message.usage = MagicMock(
-            input_tokens=50,
-            output_tokens=0,
-            cache_read_input_tokens=10,
-            cache_creation_input_tokens=5,
-            cache_creation=None,
-        )
+        event = {
+            "type": "message_start",
+            "message": {
+                "model": "claude-sonnet-4-6",
+                "usage": {
+                    "input_tokens": 50,
+                    "output_tokens": 0,
+                    "cache_read_input_tokens": 10,
+                    "cache_creation_input_tokens": 5,
+                },
+            },
+        }
         model, usage = map_message_start(event)
         assert model == "claude-sonnet-4-6"
         assert usage == Usage(input_tokens=65, output_tokens=0, cache_read_tokens=10, cache_creation_tokens=5)
@@ -815,12 +723,11 @@ class TestMapMessageStart:
 
 class TestMapContentBlockStart:
     def test_tool_use_block(self) -> None:
-        event = MagicMock()
-        event.content_block.type = "tool_use"
-        event.content_block.id = "call_1"
-        event.content_block.name = "get_weather"
-        event.index = 0
-
+        event = {
+            "type": "content_block_start",
+            "index": 0,
+            "content_block": {"type": "tool_use", "id": "call_1", "name": "get_weather", "input": {}},
+        }
         result = map_content_block_start(event)
         assert result == ChatChunk(
             tool_call_deltas=[
@@ -829,61 +736,51 @@ class TestMapContentBlockStart:
         )
 
     def test_text_block_returns_none(self) -> None:
-        event = MagicMock()
-        event.content_block.type = "text"
+        event = {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
         assert map_content_block_start(event) is None
 
 
 class TestMapContentBlockDelta:
     def test_text_delta(self) -> None:
-        event = MagicMock()
-        event.delta.type = "text_delta"
-        event.delta.text = "Hello"
-        event.index = 0
-
+        event = {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
         result = map_content_block_delta(event)
         assert result == ChatChunk(delta="Hello")
 
     def test_input_json_delta(self) -> None:
-        event = MagicMock()
-        event.delta.type = "input_json_delta"
-        event.delta.partial_json = '{"city":'
-        event.index = 1
-
+        event = {
+            "type": "content_block_delta",
+            "index": 1,
+            "delta": {"type": "input_json_delta", "partial_json": '{"city":'},
+        }
         result = map_content_block_delta(event)
         assert result == ChatChunk(
             tool_call_deltas=[ToolCallDelta(index=1, function=FunctionCallDelta(arguments='{"city":'))]
         )
 
     def test_thinking_delta_returns_reasoning(self) -> None:
-        event = MagicMock()
-        event.delta.type = "thinking_delta"
-        event.delta.thinking = "Let me think..."
+        event = {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "thinking_delta", "thinking": "Let me think..."},
+        }
         result = map_content_block_delta(event)
         assert result is not None
         assert result.reasoning_delta == "Let me think..."
 
     def test_unknown_delta_type_returns_none(self) -> None:
-        event = MagicMock()
-        event.delta.type = "some_future_delta"
+        event = {"type": "content_block_delta", "index": 0, "delta": {"type": "some_future_delta"}}
         assert map_content_block_delta(event) is None
 
 
 class TestMapMessageDelta:
     def test_final_chunk_with_usage(self) -> None:
-        event = MagicMock()
-        event.delta.stop_reason = "end_turn"
-        event.usage.output_tokens = 50
-
+        event = {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 50}}
         start_usage = Usage(input_tokens=100, output_tokens=0, cache_read_tokens=10, cache_creation_tokens=5)
         result = map_message_delta(event, start_usage)
-
         assert result == ChatChunk(
             finish_reason="stop",
             usage=Usage(input_tokens=100, output_tokens=50, cache_read_tokens=10, cache_creation_tokens=5),
         )
-
-    # MARK: map_tool_choice
 
     def test_delta_usage_carries_breakdown(self) -> None:
         start_usage = Usage(
@@ -892,10 +789,7 @@ class TestMapMessageDelta:
             cache_creation_tokens=2000,
             cache_creation_tokens_by_ttl={"1h": 2000},
         )
-        event = MagicMock()
-        event.usage = MagicMock(output_tokens=42)
-        event.delta = MagicMock(stop_reason="end_turn")
-
+        event = {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 42}}
         chunk = map_message_delta(event, start_usage)
         assert chunk.usage == Usage(
             input_tokens=2100,
