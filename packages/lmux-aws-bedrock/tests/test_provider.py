@@ -428,6 +428,11 @@ class TestChat:
         with pytest.raises(TimeoutError):
             sync_provider.chat(MODEL, [UserMessage(content="Hi")])
 
+    def test_non_json_body_mapped(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(MODEL, "converse")).mock(return_value=httpx.Response(200, content=b"not json"))
+        with pytest.raises(ProviderError):
+            sync_provider.chat(MODEL, [UserMessage(content="Hi")])
+
 
 # MARK: Achat
 
@@ -449,6 +454,11 @@ class TestAchat:
     async def test_transport_error_mapped(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_url(MODEL, "converse")).mock(side_effect=httpx.ConnectError("refused"))
         with pytest.raises(ProviderError, match="refused"):
+            await async_provider.achat(MODEL, [UserMessage(content="Hi")])
+
+    async def test_non_json_body_mapped(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(MODEL, "converse")).mock(return_value=httpx.Response(200, content=b"not json"))
+        with pytest.raises(ProviderError):
             await async_provider.achat(MODEL, [UserMessage(content="Hi")])
 
 

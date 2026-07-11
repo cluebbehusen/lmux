@@ -13,7 +13,7 @@ from lmux.exceptions import (
     RateLimitError,
     TimeoutError,  # noqa: A004
 )
-from lmux_aws_bedrock._exceptions import error_from_response, map_transport_error, raise_for_status
+from lmux_aws_bedrock._exceptions import error_from_response, map_transport_error, parse_json, raise_for_status
 
 
 def _response(
@@ -175,3 +175,16 @@ class TestMapTransportError:
             RuntimeError("boom"),
         ):
             assert isinstance(map_transport_error(error), LmuxError)
+
+
+class TestParseJson:
+    def test_valid_body(self) -> None:
+        assert parse_json(_response(200, json={"ok": 1})) == {"ok": 1}
+
+    def test_malformed_body_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_json(_response(200, content=b"not json"))
+
+    def test_non_object_body_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_json(_response(200, json=["not", "an", "object"]))

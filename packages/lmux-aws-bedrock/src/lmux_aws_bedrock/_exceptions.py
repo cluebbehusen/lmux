@@ -6,7 +6,7 @@ Credentials are still resolved through boto3, so botocore's credential errors ar
 here too.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from lmux.exceptions import (
     AuthenticationError,
@@ -45,6 +45,19 @@ def raise_for_status(response: "httpx.Response") -> None:
     """Raise the mapped lmux error for an error response (body must be readable)."""
     if response.status_code >= _BAD_REQUEST:
         raise error_from_response(response)
+
+
+def parse_json(response: "httpx.Response") -> dict[str, Any]:
+    """Return the JSON object body of a success response, mapping a malformed or non-object body to a ProviderError."""
+    try:
+        data = response.json()
+    except ValueError as e:
+        msg = "malformed response body"
+        raise ProviderError(msg, provider=PROVIDER, status_code=response.status_code) from e
+    if not isinstance(data, dict):
+        msg = "expected a JSON object response body"
+        raise ProviderError(msg, provider=PROVIDER, status_code=response.status_code)
+    return data
 
 
 def error_from_response(response: "httpx.Response") -> LmuxError:

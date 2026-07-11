@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     import boto3
     import httpx
     from aiobotocore.session import AioSession
-    from mypy_boto3_bedrock_runtime.type_defs import ConverseStreamOutputTypeDef
+    from mypy_boto3_bedrock_runtime.type_defs import ConverseResponseTypeDef, ConverseStreamOutputTypeDef
 
 from lmux.cost import ModelPricing, calculate_cost
 from lmux.exceptions import LmuxError, ProviderError
@@ -43,7 +43,7 @@ from lmux.types import (
     Usage,
 )
 from lmux_aws_bedrock._eventstream import decode_messages
-from lmux_aws_bedrock._exceptions import PROVIDER, map_transport_error, raise_for_status
+from lmux_aws_bedrock._exceptions import PROVIDER, map_transport_error, parse_json, raise_for_status
 from lmux_aws_bedrock._lazy import DEFAULT_REGION, bedrock_base_url, create_async_client, create_sync_client
 from lmux_aws_bedrock._mappers import (
     build_embedding_request_body,
@@ -253,7 +253,10 @@ class BedrockProvider(
             raise map_transport_error(e) from e
         raise_for_status(response)
         return map_converse_response(
-            response.json(), model, PROVIDER_NAME, lambda m, u: self._calculate_cost(m, u, as_of)
+            cast("ConverseResponseTypeDef", parse_json(response)),
+            model,
+            PROVIDER_NAME,
+            lambda m, u: self._calculate_cost(m, u, as_of),
         )
 
     @override
@@ -285,7 +288,10 @@ class BedrockProvider(
             raise map_transport_error(e) from e
         raise_for_status(response)
         return map_converse_response(
-            response.json(), model, PROVIDER_NAME, lambda m, u: self._calculate_cost(m, u, as_of)
+            cast("ConverseResponseTypeDef", parse_json(response)),
+            model,
+            PROVIDER_NAME,
+            lambda m, u: self._calculate_cost(m, u, as_of),
         )
 
     @override
@@ -393,7 +399,7 @@ class BedrockProvider(
                 body = build_embedding_request_body(text, dimensions=dimensions).encode()
                 response = client.send(self._build_request(client, path, body))
                 raise_for_status(response)
-                result: dict[str, Any] = response.json()
+                result: dict[str, Any] = parse_json(response)
                 all_embeddings.append(result.get("embedding", []))
                 total_input_tokens += result.get("inputTextTokenCount", 0)
         except LmuxError:
@@ -422,7 +428,7 @@ class BedrockProvider(
                 body = build_embedding_request_body(text, dimensions=dimensions).encode()
                 response = await client.send(self._build_request(client, path, body))
                 raise_for_status(response)
-                result: dict[str, Any] = response.json()
+                result: dict[str, Any] = parse_json(response)
                 all_embeddings.append(result.get("embedding", []))
                 total_input_tokens += result.get("inputTextTokenCount", 0)
         except LmuxError:

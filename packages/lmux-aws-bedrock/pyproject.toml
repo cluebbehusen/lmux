@@ -14,7 +14,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "lmux~=0.9",
+  "lmux~=0.10",
   "httpx~=0.28",
   "boto3>=1.42.31,<2",
 ]
