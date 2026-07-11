@@ -1,6 +1,6 @@
 # lmux-openai
 
-OpenAI provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [openai](https://pypi.org/project/openai/) SDK.
+OpenAI provider for [lmux](https://github.com/cluebbehusen/lmux). Talks to the OpenAI REST API directly over [httpx](https://pypi.org/project/httpx/).
 
 Supports chat completions, streaming, embeddings, and the Responses API.
 
