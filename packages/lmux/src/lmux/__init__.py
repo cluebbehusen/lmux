@@ -6,6 +6,7 @@ from lmux.exceptions import (
     InvalidRequestError,
     LmuxError,
     NotFoundError,
+    PermissionDeniedError,
     ProviderError,
     RateLimitError,
     TimeoutError,  # noqa: A004
@@ -88,6 +89,7 @@ __all__ = [
     "MockProvider",
     "ModelPricing",
     "NotFoundError",
+    "PermissionDeniedError",
     "PricingProvider",
     "PricingSchedule",
     "PricingTier",
