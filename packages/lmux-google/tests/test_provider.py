@@ -220,6 +220,11 @@ class TestChat:
         with pytest.raises(InvalidRequestError):
             provider.chat(MODEL, [UserMessage(content="Hi")])
 
+    def test_non_json_body_mapped(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_CHAT_URL).mock(return_value=httpx.Response(200, content=b"not json"))
+        with pytest.raises(ProviderError):
+            provider.chat(MODEL, [UserMessage(content="Hi")])
+
     def test_transport_error_mapped(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_CHAT_URL).mock(side_effect=httpx.ConnectError("refused"))
         with pytest.raises(ProviderError, match="refused"):
@@ -251,6 +256,12 @@ class TestAchat:
         with pytest.raises(ProviderError, match="refused"):
             await provider.achat(MODEL, [UserMessage(content="Hi")])
 
+    async def test_non_json_body_mapped(self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_CHAT_URL).mock(return_value=httpx.Response(200, content=b"not json"))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        with pytest.raises(ProviderError):
+            await provider.achat(MODEL, [UserMessage(content="Hi")])
+
 
 # MARK: ChatStream
 
@@ -278,6 +289,18 @@ class TestChatStream:
         respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=b"data: {not json}\n\n"))
         with pytest.raises(ProviderError):
             list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+    def test_mid_stream_error_raises_after_partial(
+        self, provider: GoogleProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        first = {"candidates": [{"content": {"parts": [{"text": "Hel"}]}}]}
+        error = {"error": {"message": "mid-stream boom"}}
+        sse = (f"data: {json.dumps(first)}\n\ndata: {json.dumps(error)}\n\n").encode()
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=sse))
+        stream = provider.chat_stream(MODEL, [UserMessage(content="Hi")])
+        assert next(stream).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            next(stream)
 
     def test_client_init_failure(self, api_auth: FakeAPIKeyAuth, mocker: MockerFixture) -> None:
         mocker.patch("lmux_google.provider.create_sync_client", side_effect=RuntimeError("boom"))
@@ -312,6 +335,19 @@ class TestAchatStream:
         with pytest.raises(ProviderError):
             async for _ in provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
+
+    async def test_mid_stream_error_raises_after_partial(
+        self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter
+    ) -> None:
+        first = {"candidates": [{"content": {"parts": [{"text": "Hel"}]}}]}
+        error = {"error": {"message": "mid-stream boom"}}
+        sse = (f"data: {json.dumps(first)}\n\ndata: {json.dumps(error)}\n\n").encode()
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=sse))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        stream = provider.achat_stream(MODEL, [UserMessage(content="Hi")])
+        assert (await anext(stream)).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            await anext(stream)
 
     async def test_client_init_failure(self, api_auth: FakeAPIKeyAuth, mocker: MockerFixture) -> None:
         mocker.patch("lmux_google.provider.create_async_client", side_effect=RuntimeError("boom"))

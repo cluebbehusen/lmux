@@ -1,6 +1,6 @@
 """Map HTTP responses and transport errors to the lmux exception hierarchy."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from lmux.exceptions import (
     AuthenticationError,
@@ -29,6 +29,26 @@ def raise_for_status(response: "httpx.Response") -> None:
     """Raise the mapped lmux error for a non-streamed error response."""
     if response.status_code >= _BAD_REQUEST:
         raise error_from_response(response)
+
+
+def parse_json(response: "httpx.Response") -> dict[str, Any]:
+    """Return the JSON object body of a success response, mapping a malformed or non-object body to a ProviderError."""
+    try:
+        data = response.json()
+    except ValueError as e:
+        msg = "malformed response body"
+        raise ProviderError(msg, provider=PROVIDER, status_code=response.status_code) from e
+    if not isinstance(data, dict):
+        msg = "expected a JSON object response body"
+        raise ProviderError(msg, provider=PROVIDER, status_code=response.status_code)
+    return data
+
+
+def error_from_stream(payload: dict[str, Any]) -> LmuxError:
+    """Map an error object embedded in a streamed response to an lmux error."""
+    error = payload.get("error")
+    message = error.get("message") if isinstance(error, dict) else error
+    return ProviderError(str(message), provider=PROVIDER)
 
 
 def error_from_response(response: "httpx.Response") -> LmuxError:

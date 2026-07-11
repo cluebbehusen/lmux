@@ -24,7 +24,13 @@ from lmux.types import (
     ToolChoice,
     Usage,
 )
-from lmux_google._exceptions import error_from_response, map_transport_error, raise_for_status
+from lmux_google._exceptions import (
+    error_from_response,
+    error_from_stream,
+    map_transport_error,
+    parse_json,
+    raise_for_status,
+)
 from lmux_google._lazy import (
     GEMINI_BASE_URL,
     api_key_headers,
@@ -177,7 +183,7 @@ class GoogleProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_generate_content_response(response.json(), model, PROVIDER_NAME, self._calculate_cost)
+        return map_generate_content_response(parse_json(response), model, PROVIDER_NAME, self._calculate_cost)
 
     @override
     async def achat(
@@ -206,7 +212,7 @@ class GoogleProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_generate_content_response(response.json(), model, PROVIDER_NAME, self._calculate_cost)
+        return map_generate_content_response(parse_json(response), model, PROVIDER_NAME, self._calculate_cost)
 
     @override
     def chat_stream(
@@ -239,7 +245,10 @@ class GoogleProvider(
                     response.read()
                     raise error_from_response(response)  # noqa: TRY301
                 for _event, data in iter_sse(response):
-                    yield self._map_stream_chunk(json.loads(data), model)
+                    chunk = json.loads(data)
+                    if "error" in chunk:
+                        raise error_from_stream(chunk)  # noqa: TRY301
+                    yield self._map_stream_chunk(chunk, model)
         except LmuxError:
             raise
         except Exception as e:
@@ -276,7 +285,10 @@ class GoogleProvider(
                     await response.aread()
                     raise error_from_response(response)  # noqa: TRY301
                 async for _event, data in aiter_sse(response):
-                    yield self._map_stream_chunk(json.loads(data), model)
+                    chunk = json.loads(data)
+                    if "error" in chunk:
+                        raise error_from_stream(chunk)  # noqa: TRY301
+                    yield self._map_stream_chunk(chunk, model)
         except LmuxError:
             raise
         except Exception as e:
@@ -301,7 +313,7 @@ class GoogleProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_batch_embeddings_response(response.json(), model, PROVIDER_NAME, self._calculate_cost)
+        return map_batch_embeddings_response(parse_json(response), model, PROVIDER_NAME, self._calculate_cost)
 
     @override
     async def aembed(
@@ -320,7 +332,7 @@ class GoogleProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_batch_embeddings_response(response.json(), model, PROVIDER_NAME, self._calculate_cost)
+        return map_batch_embeddings_response(parse_json(response), model, PROVIDER_NAME, self._calculate_cost)
 
     # MARK: Internal Helpers
 
