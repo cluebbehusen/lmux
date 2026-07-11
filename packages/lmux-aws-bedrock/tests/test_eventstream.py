@@ -6,7 +6,7 @@ import zlib
 
 from botocore.eventstream import EventStreamBuffer
 
-from lmux_aws_bedrock._eventstream import decode_messages
+from lmux_aws_bedrock._eventstream import EventStreamDecoder, decode_messages
 
 
 def _encode(headers: dict[str, str], payload: bytes) -> bytes:
@@ -40,3 +40,17 @@ class TestDecodeMessages:
 
     def test_empty(self) -> None:
         assert list(decode_messages(b"")) == []
+
+
+class TestEventStreamDecoder:
+    def test_yields_complete_frames(self) -> None:
+        decoder = EventStreamDecoder()
+        messages = list(decoder.feed(_FRAMES))
+        assert [h[":event-type"] for h, _ in messages] == ["messageStart", "contentBlockDelta"]
+
+    def test_holds_partial_frame_until_complete(self) -> None:
+        decoder = EventStreamDecoder()
+        # A few bytes in (>= 4, but short of a full frame) nothing decodes yet.
+        assert list(decoder.feed(_FRAMES[:6])) == []
+        messages = list(decoder.feed(_FRAMES[6:]))
+        assert [h[":event-type"] for h, _ in messages] == ["messageStart", "contentBlockDelta"]

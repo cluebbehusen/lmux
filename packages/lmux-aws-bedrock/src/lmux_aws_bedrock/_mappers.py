@@ -1,6 +1,5 @@
 """Internal mappers between lmux types and Bedrock Converse API types."""
 
-import base64
 import copy
 import json
 import re
@@ -170,8 +169,10 @@ def _map_image_content(img: ImageContent) -> "ContentBlockTypeDef":
     match = _DATA_URI_PATTERN.match(img.url)
     if match:
         fmt = cast("ImageFormatType", match.group(1))
-        data = base64.b64decode(match.group(2))
-        return {"image": {"format": fmt, "source": {"bytes": data}}}
+        # The Converse REST API serializes the image blob as a base64 string in JSON; the base64
+        # payload from the data URI is already that string (boto3 accepted raw bytes and encoded
+        # them itself, but json.dumps cannot serialize bytes).
+        return {"image": {"format": fmt, "source": {"bytes": match.group(2)}}}
     msg = "Bedrock Converse API requires base64 data URIs for images, not URLs"
     raise UnsupportedFeatureError(msg, provider=PROVIDER_NAME)
 

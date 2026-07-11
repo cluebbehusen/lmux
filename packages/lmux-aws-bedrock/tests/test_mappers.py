@@ -101,7 +101,8 @@ class TestMapMessages:
         assert len(messages) == 1
         content = messages[0]["content"]
         assert content[0] == {"text": "What is this?"}
-        assert content[1] == {"image": {"format": "png", "source": {"bytes": raw_bytes}}}
+        # The blob is the base64 string (JSON-serializable), not raw bytes.
+        assert content[1] == {"image": {"format": "png", "source": {"bytes": b64_data}}}
 
     def test_user_message_multimodal_url_raises(self) -> None:
         parts: list[ContentPart] = [ImageContent(url="https://example.com/image.png")]

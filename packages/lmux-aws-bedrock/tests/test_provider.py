@@ -5,6 +5,7 @@ import json
 import struct
 import zlib
 from datetime import date
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
 
@@ -563,6 +564,18 @@ class TestChatStream:
         with pytest.raises(ProviderError, match="slow down"):
             list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
 
+    def test_exception_frame_without_event_type(
+        self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        # A real exception frame carries :exception-type and no :event-type; indexing :event-type
+        # first would KeyError before the error could be surfaced.
+        content = _encode(
+            {":message-type": "exception", ":exception-type": "ThrottlingException"}, b'{"message": "slow down"}'
+        )
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(200, content=content))
+        with pytest.raises(ProviderError, match="slow down"):
+            list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
     def test_client_init_failure(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
         provider = BedrockProvider(auth=fake_auth)
         with pytest.raises(ProviderError, match="client init failed"):
@@ -598,6 +611,19 @@ class TestAchatStream:
     async def test_transport_error_on_open(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_url(MODEL, "converse-stream")).mock(side_effect=httpx.ConnectError("refused"))
         with pytest.raises(ProviderError, match="refused"):
+            async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
+                pass  # pragma: no cover
+
+    async def test_status_error_on_open(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(500, json={"message": "boom"}))
+        with pytest.raises(ProviderError):
+            async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
+                pass  # pragma: no cover
+
+    async def test_malformed_frame_mapped(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+        bad = _encode({":event-type": "contentBlockDelta", ":message-type": "event"}, b"{not json}")
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(200, content=bad))
+        with pytest.raises(ProviderError):
             async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
 
@@ -818,6 +844,37 @@ class TestClientManagement:
         with pytest.raises(ProviderError, match="client init failed"):
             provider.chat(MODEL, [UserMessage(content="Hi")])
         sync_create_raises.assert_called_once()
+
+
+# MARK: SigV4 Auth
+
+
+class TestSigV4Auth:
+    def test_freezes_credentials_per_request(
+        self, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        class _RotatingCredentials:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def get_frozen_credentials(self) -> Any:  # noqa: ANN401
+                self.calls += 1
+                return SimpleNamespace(
+                    access_key="AKIAFAKEEXAMPLE",
+                    secret_key="fake-secret-key",  # noqa: S106
+                    token=f"session-token-{self.calls}",
+                )
+
+        creds = _RotatingCredentials()
+        provider = BedrockProvider(auth=FakeAuth(_Session(credentials=cast("_Credentials", creds))))
+        route = _ok_converse(converse_response, respx_mock)
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        # Credentials are frozen once per request (not cached at client creation), so a rotating
+        # source flows a fresh token into each signature.
+        assert creds.calls == 2
+        assert route.calls[0].request.headers["x-amz-security-token"] == "session-token-1"
+        assert route.calls[1].request.headers["x-amz-security-token"] == "session-token-2"
 
 
 # MARK: Bearer Token Auth

@@ -12,6 +12,7 @@ from collections.abc import Iterator
 _PRELUDE_LEN = 12  # total_length(4) + headers_length(4) + prelude_crc(4)
 _MESSAGE_CRC_LEN = 4
 _HEADER_STRING_TYPE = 7
+_TOTAL_LENGTH_LEN = 4
 
 
 def _parse_headers(raw: bytes) -> dict[str, str]:
@@ -34,13 +35,40 @@ def _parse_headers(raw: bytes) -> dict[str, str]:
     return headers
 
 
+def _decode_frame(frame: bytes) -> tuple[dict[str, str], bytes]:
+    """Decode one complete event-stream message frame into ``(headers, payload)``."""
+    total_length, headers_length = struct.unpack(">II", frame[:8])
+    payload_start = _PRELUDE_LEN + headers_length
+    payload_end = total_length - _MESSAGE_CRC_LEN
+    return _parse_headers(frame[_PRELUDE_LEN:payload_start]), frame[payload_start:payload_end]
+
+
 def decode_messages(data: bytes) -> Iterator[tuple[dict[str, str], bytes]]:
     """Yield ``(headers, payload)`` for each complete event-stream message in ``data``."""
     offset = 0
     while offset < len(data):
-        total_length, headers_length = struct.unpack(">II", data[offset : offset + 8])
-        headers_start = offset + _PRELUDE_LEN
-        payload_start = headers_start + headers_length
-        payload_end = offset + total_length - _MESSAGE_CRC_LEN
-        yield _parse_headers(data[headers_start:payload_start]), data[payload_start:payload_end]
+        total_length = struct.unpack(">I", data[offset : offset + _TOTAL_LENGTH_LEN])[0]
+        yield _decode_frame(data[offset : offset + total_length])
         offset += total_length
+
+
+class EventStreamDecoder:
+    """Incremental event-stream decoder.
+
+    Feed it response byte chunks as they arrive; each ``feed`` yields every complete
+    ``(headers, payload)`` message now buffered, holding any trailing partial frame until
+    the rest of its bytes arrive.
+    """
+
+    def __init__(self) -> None:
+        self._buffer = bytearray()
+
+    def feed(self, chunk: bytes) -> Iterator[tuple[dict[str, str], bytes]]:
+        self._buffer.extend(chunk)
+        while len(self._buffer) >= _TOTAL_LENGTH_LEN:
+            total_length = struct.unpack(">I", self._buffer[:_TOTAL_LENGTH_LEN])[0]
+            if len(self._buffer) < total_length:
+                break
+            frame = bytes(self._buffer[:total_length])
+            del self._buffer[:total_length]
+            yield _decode_frame(frame)

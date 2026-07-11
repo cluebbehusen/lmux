@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     import boto3
     import httpx
     from aiobotocore.session import AioSession
+    from botocore.credentials import Credentials
 
 from lmux.cost import ModelPricing, calculate_cost
 from lmux.exceptions import LmuxError, ProviderError
@@ -41,7 +42,7 @@ from lmux.types import (
     ToolChoice,
     Usage,
 )
-from lmux_aws_bedrock._eventstream import decode_messages
+from lmux_aws_bedrock._eventstream import EventStreamDecoder
 from lmux_aws_bedrock._exceptions import PROVIDER, map_transport_error, parse_body, raise_for_status
 from lmux_aws_bedrock._lazy import DEFAULT_REGION, bedrock_base_url, create_async_client, create_sync_client
 from lmux_aws_bedrock._mappers import (
@@ -83,36 +84,41 @@ def _today() -> date:
 
 @dataclass(frozen=True)
 class _AuthContext:
-    """Resolved per-provider auth: a region plus either a bearer token or SigV4 creds."""
+    """Resolved per-provider auth: a region plus either a bearer token or a SigV4 credentials source."""
 
     region: str
     bearer_token: str | None = None
-    access_key: str | None = None
-    secret_key: str | None = None
-    session_token: str | None = None
+    credentials: "Credentials | None" = None
 
     def apply(self, request: "httpx.Request") -> None:
         """Attach the auth header(s) to a fully built request."""
         if self.bearer_token is not None:
             request.headers["Authorization"] = f"Bearer {self.bearer_token}"
             return
+        credentials = self.credentials
+        if credentials is None:  # pragma: no cover - always set when bearer_token is None
+            _raise_no_credentials()
+        # Freeze credentials per request: a refreshable source (SSO, assume-role, IMDS) rotates the
+        # keys over the provider's lifetime, so signing with a snapshot taken at client creation
+        # would start failing once the original token expires.
+        frozen = credentials.get_frozen_credentials()
         signed = sign(
             method=request.method,
             url=str(request.url),
             headers={"content-type": _JSON_CONTENT_TYPE},
             body=request.content,
-            access_key=self.access_key or "",
-            secret_key=self.secret_key or "",
+            access_key=frozen.access_key or "",
+            secret_key=frozen.secret_key or "",
             region=self.region,
             service=_SERVICE,
             now=datetime.now(UTC),
-            session_token=self.session_token,
+            session_token=frozen.token,
         )
         request.headers.update(signed)
 
 
 def _resolve_auth_context(auth: "AuthProvider[boto3.Session, AioSession]", region_override: str | None) -> _AuthContext:
-    """Resolve the auth mode once: bearer token if present, else SigV4 credentials."""
+    """Resolve the auth mode once: bearer token if present, else a SigV4 credentials source."""
     bearer = os.environ.get(_BEARER_TOKEN_ENV)
     if bearer:
         return _AuthContext(region=region_override or DEFAULT_REGION, bearer_token=bearer)
@@ -121,14 +127,8 @@ def _resolve_auth_context(auth: "AuthProvider[boto3.Session, AioSession]", regio
     credentials = session.get_credentials()
     if credentials is None:
         _raise_no_credentials()
-    frozen = credentials.get_frozen_credentials()
     region = region_override or session.region_name or DEFAULT_REGION
-    return _AuthContext(
-        region=region,
-        access_key=frozen.access_key,
-        secret_key=frozen.secret_key,
-        session_token=frozen.token,
-    )
+    return _AuthContext(region=region, credentials=credentials)
 
 
 def _raise_no_credentials() -> NoReturn:
@@ -322,11 +322,23 @@ class BedrockProvider(
         try:
             client = self._get_sync_client()
             path = self._endpoint_path(model, _CONVERSE_STREAM)
-            response = client.send(self._build_request(client, path, self._converse_body(kwargs)))
+            response = client.send(self._build_request(client, path, self._converse_body(kwargs)), stream=True)
         except Exception as e:
             raise map_transport_error(e) from e
-        raise_for_status(response)
-        yield from self._iter_stream(response.content, model, as_of)
+        try:
+            self._raise_for_stream_status(response)
+            decoder = EventStreamDecoder()
+            for raw in response.iter_bytes():
+                for headers, payload in decoder.feed(raw):
+                    chunk = self._map_stream_event(_decode_event(headers, payload), model, as_of)
+                    if chunk is not None:
+                        yield chunk
+        except LmuxError:
+            raise
+        except Exception as e:
+            raise map_transport_error(e) from e
+        finally:
+            response.close()
 
     @override
     async def achat_stream(
@@ -352,24 +364,43 @@ class BedrockProvider(
         try:
             client = await self._get_async_client()
             path = self._endpoint_path(model, _CONVERSE_STREAM)
-            response = await client.send(self._build_request(client, path, self._converse_body(kwargs)))
+            response = await client.send(self._build_request(client, path, self._converse_body(kwargs)), stream=True)
         except Exception as e:
             raise map_transport_error(e) from e
-        raise_for_status(response)
-        for chunk in self._iter_stream(response.content, model, as_of):
-            yield chunk
-
-    def _iter_stream(self, content: bytes, model: str, as_of: date) -> Iterator[ChatChunk]:
-        """Decode an event-stream body into ChatChunks, stamping cost on the usage chunk."""
         try:
-            for event in _decode_stream(content):
-                chunk = map_stream_event(WireStreamEvent.model_validate(event))
-                if chunk is not None:
-                    yield self._finalize_chunk(chunk, model, as_of)
+            await self._araise_for_stream_status(response)
+            decoder = EventStreamDecoder()
+            async for raw in response.aiter_bytes():
+                for headers, payload in decoder.feed(raw):
+                    chunk = self._map_stream_event(_decode_event(headers, payload), model, as_of)
+                    if chunk is not None:
+                        yield chunk
         except LmuxError:
             raise
         except Exception as e:
             raise map_transport_error(e) from e
+        finally:
+            await response.aclose()
+
+    @staticmethod
+    def _raise_for_stream_status(response: "httpx.Response") -> None:
+        """Read the body and raise the mapped error before iterating a streamed response."""
+        if response.is_error:
+            response.read()
+            raise_for_status(response)
+
+    @staticmethod
+    async def _araise_for_stream_status(response: "httpx.Response") -> None:
+        if response.is_error:
+            await response.aread()
+            raise_for_status(response)
+
+    def _map_stream_event(self, event: dict[str, Any], model: str, as_of: date) -> ChatChunk | None:
+        """Map one decoded event to a ChatChunk, stamping cost on the usage chunk (None if not user-facing)."""
+        chunk = map_stream_event(WireStreamEvent.model_validate(event))
+        if chunk is None:
+            return None
+        return self._finalize_chunk(chunk, model, as_of)
 
     def _finalize_chunk(self, chunk: ChatChunk, model: str, as_of: date) -> ChatChunk:
         if chunk.usage is None:
@@ -545,16 +576,16 @@ class BedrockProvider(
         return kwargs
 
 
-def _decode_stream(content: bytes) -> Iterator[dict[str, Any]]:
-    """Decode an AWS event-stream body into ``{event_type: payload}`` dicts.
+def _decode_event(headers: dict[str, str], payload: bytes) -> dict[str, Any]:
+    """Decode one event-stream message into a ``{event_type: payload}`` dict.
 
-    Frames whose ``:message-type`` is ``exception`` (a mid-stream service error) are
-    raised rather than yielded, preserving the boto3 client's fail-on-error behavior.
+    Exception frames (a mid-stream service error) carry ``:message-type: exception`` and an
+    ``:exception-type`` header but no ``:event-type``, so the message type is checked before the
+    event type is read; those frames are raised rather than returned, preserving the boto3
+    client's fail-on-error behavior.
     """
-    for headers, payload in decode_messages(content):
-        event_type = headers[":event-type"]
-        data: dict[str, Any] = json.loads(payload) if payload else {}
-        if headers.get(":message-type") == _EXCEPTION_MESSAGE_TYPE:
-            message = data.get("message") or data.get("Message") or event_type
-            raise ProviderError(str(message), provider=PROVIDER_NAME)
-        yield {event_type: data}
+    data: dict[str, Any] = json.loads(payload) if payload else {}
+    if headers.get(":message-type") == _EXCEPTION_MESSAGE_TYPE:
+        message = data.get("message") or data.get("Message") or headers.get(":exception-type", "")
+        raise ProviderError(str(message), provider=PROVIDER_NAME)
+    return {headers[":event-type"]: data}
