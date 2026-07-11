@@ -13,7 +13,13 @@ from lmux.cost import ModelPricing, calculate_cost
 from lmux.exceptions import LmuxError
 from lmux.protocols import AuthProvider, CompletionProvider, PricingProvider
 from lmux.types import ChatChunk, ChatResponse, Cost, Message, ResponseFormat, Tool, ToolChoice, Usage
-from lmux_groq._exceptions import error_from_response, map_transport_error, raise_for_status
+from lmux_groq._exceptions import (
+    error_from_response,
+    error_from_stream,
+    map_transport_error,
+    parse_json,
+    raise_for_status,
+)
 from lmux_groq._lazy import create_async_client, create_sync_client
 from lmux_groq._mappers import (
     map_chat_chunk,
@@ -123,7 +129,7 @@ class GroqProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_chat_completion(response.json(), PROVIDER_NAME, self._calculate_cost)
+        return map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
 
     @override
     async def achat(
@@ -151,7 +157,7 @@ class GroqProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_chat_completion(response.json(), PROVIDER_NAME, self._calculate_cost)
+        return map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
 
     @override
     def chat_stream(
@@ -185,7 +191,10 @@ class GroqProvider(
                 for _event, data in iter_sse(response):
                     if data == _SSE_DONE:
                         break
-                    yield self._map_stream_chunk(json.loads(data), model)
+                    chunk = json.loads(data)
+                    if "error" in chunk:
+                        raise error_from_stream(chunk)  # noqa: TRY301
+                    yield self._map_stream_chunk(chunk, model)
         except LmuxError:
             raise
         except Exception as e:
@@ -223,7 +232,10 @@ class GroqProvider(
                 async for _event, data in aiter_sse(response):
                     if data == _SSE_DONE:
                         break
-                    yield self._map_stream_chunk(json.loads(data), model)
+                    chunk = json.loads(data)
+                    if "error" in chunk:
+                        raise error_from_stream(chunk)  # noqa: TRY301
+                    yield self._map_stream_chunk(chunk, model)
         except LmuxError:
             raise
         except Exception as e:

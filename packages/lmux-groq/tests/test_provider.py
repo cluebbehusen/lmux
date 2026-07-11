@@ -142,6 +142,11 @@ class TestChat:
         with pytest.raises(ProviderError, match="refused"):
             sync_provider.chat(MODEL, [UserMessage(content="Hi")])
 
+    def test_non_json_body_mapped(self, sync_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=b"not json"))
+        with pytest.raises(ProviderError):
+            sync_provider.chat(MODEL, [UserMessage(content="Hi")])
+
     def test_cost_calculated(
         self, sync_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
@@ -173,6 +178,11 @@ class TestAchat:
         with pytest.raises(ProviderError, match="refused"):
             await async_provider.achat(MODEL, [UserMessage(content="Hi")])
 
+    async def test_non_json_body_mapped(self, async_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=b"not json"))
+        with pytest.raises(ProviderError):
+            await async_provider.achat(MODEL, [UserMessage(content="Hi")])
+
 
 # MARK: ChatStream
 
@@ -200,6 +210,18 @@ class TestChatStream:
         respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=b"data: {not json}\n\n"))
         with pytest.raises(ProviderError):
             list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+    def test_mid_stream_error_raises_after_partial(
+        self, sync_provider: GroqProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        first = {"model": MODEL, "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}]}
+        error = {"error": {"message": "mid-stream boom"}}
+        sse = (f"data: {json.dumps(first)}\n\ndata: {json.dumps(error)}\n\n").encode()
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=sse))
+        stream = sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")])
+        assert next(stream).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            next(stream)
 
     def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
         mocker.patch("lmux_groq.provider.create_sync_client", side_effect=RuntimeError("boom"))
@@ -237,6 +259,18 @@ class TestAchatStream:
         with pytest.raises(ProviderError):
             async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
+
+    async def test_mid_stream_error_raises_after_partial(
+        self, async_provider: GroqProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        first = {"model": MODEL, "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}]}
+        error = {"error": {"message": "mid-stream boom"}}
+        sse = (f"data: {json.dumps(first)}\n\ndata: {json.dumps(error)}\n\n").encode()
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=sse))
+        stream = async_provider.achat_stream(MODEL, [UserMessage(content="Hi")])
+        assert (await anext(stream)).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            await anext(stream)
 
     async def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
         mocker.patch("lmux_groq.provider.create_async_client", side_effect=RuntimeError("boom"))
