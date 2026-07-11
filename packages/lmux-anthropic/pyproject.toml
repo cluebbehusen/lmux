@@ -14,12 +14,12 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "lmux~=0.9",
-  "anthropic~=0.83",
+  "lmux~=0.10",
+  "httpx~=0.28",
 ]
 
 [project.optional-dependencies]
-vertex = ["anthropic[vertex]~=0.83"]
+vertex = ["google-auth~=2.0"]
 
 [project.urls]
 Homepage = "https://github.com/cluebbehusen/lmux"

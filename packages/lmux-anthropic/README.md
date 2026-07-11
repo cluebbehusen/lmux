@@ -1,6 +1,6 @@
 # lmux-anthropic
 
-Anthropic provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [anthropic](https://pypi.org/project/anthropic/) SDK.
+Anthropic provider for [lmux](https://github.com/cluebbehusen/lmux). Talks to the Anthropic Messages API directly over [httpx](https://pypi.org/project/httpx/).
 
 Supports chat completions and streaming.
 
@@ -94,7 +94,7 @@ Cache reads/writes are reported on `response.usage` (`cache_read_tokens`, `cache
 
 ## Claude on Vertex AI
 
-Requires the `vertex` extra, which pulls in `google-auth` via `anthropic[vertex]`:
+Requires the `vertex` extra, which pulls in `google-auth`:
 
 ```bash
 uv add "lmux-anthropic[vertex]"
