@@ -172,6 +172,28 @@ def async_provider(fake_auth: FakeAuth) -> AnthropicProvider:
     return AnthropicProvider(auth=fake_auth)
 
 
+@pytest.fixture
+def sync_create_raises(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic.provider.create_sync_client", side_effect=RuntimeError("client init failed"))
+
+
+@pytest.fixture
+def async_create_raises(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic.provider.create_async_client", side_effect=RuntimeError("client init failed"))
+
+
+@pytest.fixture
+def async_create_two_clients(mocker: MockerFixture) -> tuple[MagicMock, MagicMock, MagicMock]:
+    c1, c2 = MagicMock(), MagicMock()
+    create = mocker.patch("lmux_anthropic.provider.create_async_client", side_effect=[c1, c2])
+    return create, c1, c2
+
+
+@pytest.fixture
+def mock_get_running_loop(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic.provider.asyncio.get_running_loop")
+
+
 def _ok(respx_mock: respx.MockRouter, message: dict[str, Any] | None = None) -> respx.Route:
     return respx_mock.post(_URL).mock(
         return_value=httpx.Response(200, json=message if message is not None else _message())
@@ -573,11 +595,11 @@ class TestChatStream:
         with pytest.raises(ProviderError):
             list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
 
-    def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_anthropic.provider.create_sync_client", side_effect=RuntimeError("boom"))
+    def test_client_init_failure(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
         provider = AnthropicProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="boom"):
+        with pytest.raises(ProviderError, match="client init failed"):
             list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+        sync_create_raises.assert_called_once()
 
 
 # MARK: AchatStream
@@ -625,12 +647,12 @@ class TestAchatStream:
             async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
 
-    async def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_anthropic.provider.create_async_client", side_effect=RuntimeError("boom"))
+    async def test_client_init_failure(self, fake_auth: FakeAuth, async_create_raises: MagicMock) -> None:
         provider = AnthropicProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="boom"):
+        with pytest.raises(ProviderError, match="client init failed"):
             async for _ in provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
+        async_create_raises.assert_called_once()
 
 
 # MARK: Client management
@@ -672,24 +694,27 @@ class TestClientManagement:
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert json.loads(route.calls.last.request.content)["max_tokens"] == 8192
 
-    def test_sync_init_failure_mapped(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_anthropic.provider.create_sync_client", side_effect=RuntimeError("connection refused"))
+    def test_sync_init_failure_mapped(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
         provider = AnthropicProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="connection refused"):
+        with pytest.raises(ProviderError, match="client init failed"):
             provider.chat(MODEL, [UserMessage(content="Hi")])
+        sync_create_raises.assert_called_once()
 
-    async def test_async_init_failure_mapped(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_anthropic.provider.create_async_client", side_effect=RuntimeError("connection refused"))
+    async def test_async_init_failure_mapped(self, fake_auth: FakeAuth, async_create_raises: MagicMock) -> None:
         provider = AnthropicProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="connection refused"):
+        with pytest.raises(ProviderError, match="client init failed"):
             await provider.achat(MODEL, [UserMessage(content="Hi")])
+        async_create_raises.assert_called_once()
 
-    async def test_async_client_recreated_on_new_loop(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        c1, c2 = MagicMock(), MagicMock()
-        create = mocker.patch("lmux_anthropic.provider.create_async_client", side_effect=[c1, c2])
-        get_loop = mocker.patch("lmux_anthropic.provider.asyncio.get_running_loop")
+    async def test_async_client_recreated_on_new_loop(
+        self,
+        fake_auth: FakeAuth,
+        async_create_two_clients: tuple[MagicMock, MagicMock, MagicMock],
+        mock_get_running_loop: MagicMock,
+    ) -> None:
+        create, c1, c2 = async_create_two_clients
         loop1, loop2 = asyncio.new_event_loop(), asyncio.new_event_loop()
-        get_loop.side_effect = [loop1, loop2]
+        mock_get_running_loop.side_effect = [loop1, loop2]
         provider = AnthropicProvider(auth=fake_auth)
         r1 = await provider._get_async_client()
         r2 = await provider._get_async_client()
