@@ -1,21 +1,8 @@
-"""Tests for OpenAI type mappers."""
+"""Tests for OpenAI JSON mappers."""
 
-from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock
+from typing import Any
 
 import pytest
-from openai.types.chat import ChatCompletion, ChatCompletionChunk, ChatCompletionMessage, ChatCompletionMessageToolCall
-from openai.types.chat.chat_completion import Choice
-from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
-from openai.types.chat.chat_completion_chunk import ChoiceDelta, ChoiceDeltaToolCall, ChoiceDeltaToolCallFunction
-from openai.types.chat.chat_completion_message_function_tool_call import Function as ToolCallFunction
-from openai.types.completion_usage import CompletionTokensDetails, CompletionUsage, PromptTokensDetails
-from openai.types.create_embedding_response import CreateEmbeddingResponse
-from openai.types.create_embedding_response import Usage as EmbUsage
-from openai.types.embedding import Embedding
-
-if TYPE_CHECKING:
-    from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCallUnion
 
 from lmux.types import (
     AssistantMessage,
@@ -57,6 +44,12 @@ from lmux_openai._mappers import (
     map_tool_choice,
     map_tools,
 )
+from lmux_openai._wire import (
+    WireChunk,
+    WireCompletion,
+    WireEmbeddingResponse,
+    WireResponsesResponse,
+)
 
 # MARK: Fixtures
 
@@ -78,34 +71,15 @@ def none_cost_fn() -> Any:  # noqa: ANN401
 
 
 @pytest.fixture
-def chat_completion() -> ChatCompletion:
-    return ChatCompletion(
-        id="chatcmpl-123",
-        choices=[
-            Choice(
-                finish_reason="stop",
-                index=0,
-                message=ChatCompletionMessage(content="Hello!", role="assistant"),
-            )
-        ],
-        created=1234567890,
-        model="gpt-4o",
-        object="chat.completion",
-        usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-    )
-
-
-@pytest.fixture
-def responses_mock() -> MagicMock:
-    mock = MagicMock()
-    mock.id = "resp_123"
-    mock.output_text = "Hello!"
-    mock.model = "gpt-4o"
-    mock.usage.input_tokens = 10
-    mock.usage.output_tokens = 5
-    mock.usage.input_tokens_details = None
-    mock.usage.output_tokens_details = None
-    return mock
+def chat_completion() -> dict[str, Any]:
+    return {
+        "id": "chatcmpl-123",
+        "model": "gpt-4o",
+        "object": "chat.completion",
+        "created": 1234567890,
+        "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "Hello!"}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
 
 
 # MARK: map_messages
@@ -113,56 +87,49 @@ def responses_mock() -> MagicMock:
 
 class TestMapMessages:
     def test_system_message(self) -> None:
-        result = map_messages([SystemMessage(content="Be helpful.")])
-        assert result == [{"role": "system", "content": "Be helpful."}]
+        assert map_messages([SystemMessage(content="Be helpful.")]) == [{"role": "system", "content": "Be helpful."}]
 
     def test_developer_message(self) -> None:
-        result = map_messages([DeveloperMessage(content="Be concise.")])
-        assert result == [{"role": "developer", "content": "Be concise."}]
+        assert map_messages([DeveloperMessage(content="Be concise.")]) == [
+            {"role": "developer", "content": "Be concise."}
+        ]
 
     def test_user_message_text(self) -> None:
-        result = map_messages([UserMessage(content="Hello")])
-        assert result == [{"role": "user", "content": "Hello"}]
+        assert map_messages([UserMessage(content="Hello")]) == [{"role": "user", "content": "Hello"}]
 
     def test_originally_empty_content_list_is_forwarded(self) -> None:
-        result = map_messages([UserMessage(content=[])])
-        assert result == [{"role": "user", "content": []}]
+        assert map_messages([UserMessage(content=[])]) == [{"role": "user", "content": []}]
 
     def test_user_message_multimodal(self) -> None:
         parts: list[ContentPart] = [TextContent(text="What?"), ImageContent(url="https://img.png", detail="high")]
         result = map_messages([UserMessage(content=parts)])
-        assert len(result) == 1
-        content = result[0]["content"]
-        assert isinstance(content, list)
-        assert content[0] == {"type": "text", "text": "What?"}
-        assert content[1] == {"type": "image_url", "image_url": {"url": "https://img.png", "detail": "high"}}
+        assert result == [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What?"},
+                    {"type": "image_url", "image_url": {"url": "https://img.png", "detail": "high"}},
+                ],
+            }
+        ]
 
     def test_assistant_message_text(self) -> None:
-        result = map_messages([AssistantMessage(content="Hi!")])
-        assert result == [{"role": "assistant", "content": "Hi!"}]
+        assert map_messages([AssistantMessage(content="Hi!")]) == [{"role": "assistant", "content": "Hi!"}]
 
     def test_assistant_message_with_tool_calls(self) -> None:
         tc = ToolCall(id="tc1", function=FunctionCallResult(name="f", arguments="{}"))
         result = map_messages([AssistantMessage(tool_calls=[tc])])
-        assert len(result) == 1
-        msg = result[0]
-        assert msg["role"] == "assistant"
-        assert "content" not in msg
-        assert msg["tool_calls"] == [{"id": "tc1", "type": "function", "function": {"name": "f", "arguments": "{}"}}]
+        assert result == [
+            {
+                "role": "assistant",
+                "tool_calls": [{"id": "tc1", "type": "function", "function": {"name": "f", "arguments": "{}"}}],
+            }
+        ]
 
     def test_tool_message(self) -> None:
-        result = map_messages([ToolMessage(content="result", tool_call_id="tc1")])
-        assert result == [{"role": "tool", "content": "result", "tool_call_id": "tc1"}]
-
-    def test_mixed_messages(self) -> None:
-        messages = [
-            SystemMessage(content="sys"),
-            UserMessage(content="hi"),
-            AssistantMessage(content="hello"),
+        assert map_messages([ToolMessage(content="result", tool_call_id="tc1")]) == [
+            {"role": "tool", "content": "result", "tool_call_id": "tc1"}
         ]
-        result = map_messages(messages)
-        assert len(result) == 3
-        assert [m["role"] for m in result] == ["system", "user", "assistant"]
 
     def test_cache_points_dropped(self) -> None:
         result = map_messages([UserMessage(content=[TextContent(text="Hi"), CachePointContent()])])
@@ -174,474 +141,33 @@ class TestMapMessages:
 
 
 # MARK: map_tools
+
+
 class TestMapTools:
     def test_minimal_tool(self) -> None:
-        tools = [Tool(function=FunctionDefinition(name="f"))]
-        result = map_tools(tools)
-        assert result == [{"type": "function", "function": {"name": "f"}}]
+        assert map_tools([Tool(function=FunctionDefinition(name="f"))]) == [
+            {"type": "function", "function": {"name": "f"}}
+        ]
 
     def test_full_tool(self) -> None:
         tools = [
             Tool(
                 function=FunctionDefinition(
-                    name="get_weather",
-                    description="Get weather",
-                    parameters={"type": "object"},
-                    strict=True,
+                    name="get_weather", description="Get weather", parameters={"type": "object"}, strict=True
                 )
             )
         ]
-        result = map_tools(tools)
-        fn = result[0]["function"]
-        assert fn["name"] == "get_weather"
-        assert fn["description"] == "Get weather"
-        assert fn["parameters"] == {"type": "object"}
-        assert fn["strict"] is True
-
-
-# MARK: map_response_format
-
-
-class TestMapResponseFormat:
-    def test_text(self) -> None:
-        assert map_response_format(TextResponseFormat()) == {"type": "text"}
-
-    def test_json_object(self) -> None:
-        assert map_response_format(JsonObjectResponseFormat()) == {"type": "json_object"}
-
-    def test_json_schema_minimal(self) -> None:
-        rf = JsonSchemaResponseFormat(name="test", json_schema={"type": "object"})
-        result = map_response_format(rf)
-        assert result == {
-            "type": "json_schema",
-            "json_schema": {"name": "test", "schema": {"type": "object"}},
-        }
-
-    def test_json_schema_full(self) -> None:
-        rf = JsonSchemaResponseFormat(
-            name="test",
-            json_schema={"type": "object"},
-            description="A test",
-            strict=True,
-        )
-        result = map_response_format(rf)
-        assert result == {
-            "type": "json_schema",
-            "json_schema": {"name": "test", "schema": {"type": "object"}, "description": "A test", "strict": True},
-        }
-
-
-# MARK: map_response_input
-
-
-class TestMapResponseInput:
-    def test_string_passthrough(self) -> None:
-        assert map_response_input("Hello") == "Hello"
-
-    def test_list_of_items(self) -> None:
-        items = [
-            ResponseInputMessage(role="user", content="call the tool"),
-            ResponseInputFunctionCallOutput(call_id="call_1", output='{"result": 42}'),
+        assert map_tools(tools) == [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get weather",
+                    "parameters": {"type": "object"},
+                    "strict": True,
+                },
+            }
         ]
-        result = map_response_input(items)
-        assert result == [
-            {"role": "user", "content": "call the tool"},
-            {"type": "function_call_output", "call_id": "call_1", "output": '{"result": 42}'},
-        ]
-
-
-# MARK: map_chat_completion
-
-
-class TestMapChatCompletion:
-    def test_basic(self, chat_completion: ChatCompletion, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        result = map_chat_completion(chat_completion, "openai", noop_cost_fn)
-        assert result == ChatResponse(
-            content="Hello!",
-            tool_calls=None,
-            usage=Usage(input_tokens=10, output_tokens=5),
-            cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
-            model="gpt-4o",
-            provider="openai",
-            finish_reason="stop",
-        )
-
-    def test_with_tool_calls(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        tool_calls: list[ChatCompletionMessageToolCallUnion] = [
-            ChatCompletionMessageToolCall(
-                id="tc1",
-                type="function",
-                function=ToolCallFunction(name="f", arguments='{"x": 1}'),
-            )
-        ]
-        completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="tool_calls",
-                    index=0,
-                    message=ChatCompletionMessage(
-                        content=None,
-                        role="assistant",
-                        tool_calls=tool_calls,
-                    ),
-                )
-            ],
-            created=1234567890,
-            model="gpt-4o",
-            object="chat.completion",
-            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-        )
-        result = map_chat_completion(completion, "openai", noop_cost_fn)
-        assert result.content is None
-        assert result.tool_calls == [
-            ToolCall(id="tc1", function=FunctionCallResult(name="f", arguments='{"x": 1}')),
-        ]
-
-    def test_with_cache_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="stop",
-                    index=0,
-                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
-                )
-            ],
-            created=1234567890,
-            model="gpt-4o",
-            object="chat.completion",
-            usage=CompletionUsage(
-                prompt_tokens=10,
-                completion_tokens=5,
-                total_tokens=15,
-                prompt_tokens_details=PromptTokensDetails(cached_tokens=50),
-            ),
-        )
-        result = map_chat_completion(completion, "openai", noop_cost_fn)
-        assert result.usage is not None
-        assert result.usage.cache_read_tokens == 50
-
-    def test_with_cache_write_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="stop",
-                    index=0,
-                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
-                )
-            ],
-            created=1234567890,
-            model="gpt-5.6-sol",
-            object="chat.completion",
-            usage=CompletionUsage(
-                prompt_tokens=10,
-                completion_tokens=5,
-                total_tokens=15,
-                prompt_tokens_details=PromptTokensDetails(cached_tokens=2, cache_write_tokens=6),
-            ),
-        )
-        result = map_chat_completion(completion, "openai", noop_cost_fn)
-        assert result.usage is not None
-        assert result.usage.cache_read_tokens == 2
-        assert result.usage.cache_creation_tokens == 6
-
-    def test_with_reasoning_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="stop",
-                    index=0,
-                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
-                )
-            ],
-            created=1234567890,
-            model="o3",
-            object="chat.completion",
-            usage=CompletionUsage(
-                prompt_tokens=10,
-                completion_tokens=25,
-                total_tokens=35,
-                completion_tokens_details=CompletionTokensDetails(reasoning_tokens=20),
-            ),
-        )
-        result = map_chat_completion(completion, "openai", noop_cost_fn)
-        assert result.usage is not None
-        assert result.usage.reasoning_tokens == 20
-
-    def test_none_usage(self, chat_completion: ChatCompletion, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        chat_completion.usage = None
-        result = map_chat_completion(chat_completion, "openai", noop_cost_fn)
-        assert result.usage is None
-        assert result.cost is None
-
-    def test_cost_from_calculator(self, chat_completion: ChatCompletion, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        result = map_chat_completion(chat_completion, "openai", noop_cost_fn)
-        assert result.cost == Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0)
-
-    def test_cost_none_when_unknown(self, chat_completion: ChatCompletion, none_cost_fn: Any) -> None:  # noqa: ANN401
-        result = map_chat_completion(chat_completion, "openai", none_cost_fn)
-        assert result.cost is None
-
-
-# MARK: map_chat_chunk
-
-
-class TestMapChatChunk:
-    def test_content_delta(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[
-                ChunkChoice(
-                    delta=ChoiceDelta(content="Hello"),
-                    index=0,
-                    finish_reason=None,
-                )
-            ],
-            created=1234567890,
-            model="gpt-4o",
-            object="chat.completion.chunk",
-        )
-        result = map_chat_chunk(chunk, "openai")
-        assert result == ChatChunk(delta="Hello", model="gpt-4o", provider="openai")
-
-    def test_tool_call_delta(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[
-                ChunkChoice(
-                    delta=ChoiceDelta(
-                        tool_calls=[
-                            ChoiceDeltaToolCall(
-                                index=0,
-                                id="tc1",
-                                type="function",
-                                function=ChoiceDeltaToolCallFunction(name="f", arguments='{"x":'),
-                            )
-                        ]
-                    ),
-                    index=0,
-                    finish_reason=None,
-                )
-            ],
-            created=1234567890,
-            model="gpt-4o",
-            object="chat.completion.chunk",
-        )
-        result = map_chat_chunk(chunk, "openai")
-        assert result.tool_call_deltas == [
-            ToolCallDelta(
-                index=0,
-                id="tc1",
-                type="function",
-                function=FunctionCallDelta(name="f", arguments='{"x":'),
-            ),
-        ]
-
-    def test_tool_call_delta_without_function(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[
-                ChunkChoice(
-                    delta=ChoiceDelta(
-                        tool_calls=[ChoiceDeltaToolCall(index=0, id="tc1", type="function", function=None)]
-                    ),
-                    index=0,
-                    finish_reason=None,
-                )
-            ],
-            created=1234567890,
-            model="gpt-4o",
-            object="chat.completion.chunk",
-        )
-        result = map_chat_chunk(chunk, "openai")
-        assert result.tool_call_deltas == [
-            ToolCallDelta(index=0, id="tc1", type="function", function=None),
-        ]
-
-    def test_final_chunk_with_usage(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[
-                ChunkChoice(
-                    delta=ChoiceDelta(),
-                    index=0,
-                    finish_reason="stop",
-                )
-            ],
-            created=1234567890,
-            model="gpt-4o",
-            object="chat.completion.chunk",
-            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-        )
-        result = map_chat_chunk(chunk, "openai")
-        assert result == ChatChunk(
-            finish_reason="stop",
-            usage=Usage(input_tokens=10, output_tokens=5),
-            model="gpt-4o",
-            provider="openai",
-        )
-
-    def test_usage_chunk_with_cache(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[],
-            created=1234567890,
-            model="gpt-4o",
-            object="chat.completion.chunk",
-            usage=CompletionUsage(
-                prompt_tokens=10,
-                completion_tokens=5,
-                total_tokens=15,
-                prompt_tokens_details=PromptTokensDetails(cached_tokens=3),
-            ),
-        )
-        result = map_chat_chunk(chunk, "openai")
-        assert result.usage is not None
-        assert result.usage.cache_read_tokens == 3
-
-    def test_usage_chunk_with_cache_write(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[],
-            created=1234567890,
-            model="gpt-5.6-sol",
-            object="chat.completion.chunk",
-            usage=CompletionUsage(
-                prompt_tokens=10,
-                completion_tokens=5,
-                total_tokens=15,
-                prompt_tokens_details=PromptTokensDetails(cached_tokens=1, cache_write_tokens=4),
-            ),
-        )
-        result = map_chat_chunk(chunk, "openai")
-        assert result.usage is not None
-        assert result.usage.cache_read_tokens == 1
-        assert result.usage.cache_creation_tokens == 4
-
-    def test_usage_chunk_with_reasoning_tokens(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[],
-            created=1234567890,
-            model="o3",
-            object="chat.completion.chunk",
-            usage=CompletionUsage(
-                prompt_tokens=10,
-                completion_tokens=25,
-                total_tokens=35,
-                completion_tokens_details=CompletionTokensDetails(reasoning_tokens=20),
-            ),
-        )
-        result = map_chat_chunk(chunk, "openai")
-        assert result.usage is not None
-        assert result.usage.reasoning_tokens == 20
-
-    def test_empty_choices(self) -> None:
-        chunk = ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[],
-            created=1234567890,
-            model="gpt-4o",
-            object="chat.completion.chunk",
-        )
-        result = map_chat_chunk(chunk, "openai")
-        assert result == ChatChunk(model="gpt-4o", provider="openai")
-
-
-# MARK: map_embedding_response
-
-
-class TestMapEmbeddingResponse:
-    def test_single_embedding(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        response = CreateEmbeddingResponse(
-            data=[Embedding(embedding=[0.1, 0.2, 0.3], index=0, object="embedding")],
-            model="text-embedding-3-small",
-            object="list",
-            usage=EmbUsage(prompt_tokens=5, total_tokens=5),
-        )
-        result = map_embedding_response(response, "openai", noop_cost_fn)
-        assert result == EmbeddingResponse(
-            embeddings=[[0.1, 0.2, 0.3]],
-            usage=Usage(input_tokens=5, output_tokens=0),
-            cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
-            model="text-embedding-3-small",
-            provider="openai",
-        )
-
-    def test_multiple_embeddings_sorted_by_index(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        response = CreateEmbeddingResponse(
-            data=[
-                Embedding(embedding=[0.3, 0.4], index=1, object="embedding"),
-                Embedding(embedding=[0.1, 0.2], index=0, object="embedding"),
-            ],
-            model="text-embedding-3-small",
-            object="list",
-            usage=EmbUsage(prompt_tokens=10, total_tokens=10),
-        )
-        result = map_embedding_response(response, "openai", noop_cost_fn)
-        assert result.embeddings == [[0.1, 0.2], [0.3, 0.4]]
-
-
-# MARK: map_responses_response
-
-
-class TestMapResponsesResponse:
-    def test_basic(self, responses_mock: MagicMock, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        result = map_responses_response(responses_mock, "openai", noop_cost_fn)
-        assert result == ResponseResponse(
-            id="resp_123",
-            output_text="Hello!",
-            usage=Usage(input_tokens=10, output_tokens=5),
-            cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
-            model="gpt-4o",
-            provider="openai",
-        )
-
-    def test_with_cached_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        mock = MagicMock()
-        mock.id = "resp_123"
-        mock.output_text = "Hello!"
-        mock.model = "gpt-4o"
-        mock.usage.input_tokens = 10
-        mock.usage.output_tokens = 5
-        mock.usage.input_tokens_details.cached_tokens = 50
-        result = map_responses_response(mock, "openai", noop_cost_fn)
-        assert result.usage is not None
-        assert result.usage.cache_read_tokens == 50
-
-    def test_with_cache_write_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        mock = MagicMock()
-        mock.id = "resp_123"
-        mock.output_text = "Hello!"
-        mock.model = "gpt-5.6-sol"
-        mock.usage.input_tokens = 10
-        mock.usage.output_tokens = 5
-        mock.usage.input_tokens_details.cached_tokens = 2
-        mock.usage.input_tokens_details.cache_write_tokens = 6
-        mock.usage.output_tokens_details = None
-        result = map_responses_response(mock, "openai", noop_cost_fn)
-        assert result.usage is not None
-        assert result.usage.cache_read_tokens == 2
-        assert result.usage.cache_creation_tokens == 6
-
-    def test_with_reasoning_tokens(self, responses_mock: MagicMock, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        responses_mock.usage.output_tokens_details = MagicMock(reasoning_tokens=4)
-        result = map_responses_response(responses_mock, "openai", noop_cost_fn)
-        assert result.usage is not None
-        assert result.usage.reasoning_tokens == 4
-
-    def test_none_usage(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        mock = MagicMock()
-        mock.id = "resp_456"
-        mock.output_text = "Hi!"
-        mock.model = "gpt-4o"
-        mock.usage = None
-        result = map_responses_response(mock, "openai", noop_cost_fn)
-        assert result.usage is None
-        assert result.cost is None
 
 
 # MARK: map_tool_choice
@@ -662,3 +188,379 @@ class TestMapToolChoice:
             "type": "function",
             "function": {"name": "get_weather"},
         }
+
+
+# MARK: map_response_format
+
+
+class TestMapResponseFormat:
+    def test_text(self) -> None:
+        assert map_response_format(TextResponseFormat()) == {"type": "text"}
+
+    def test_json_object(self) -> None:
+        assert map_response_format(JsonObjectResponseFormat()) == {"type": "json_object"}
+
+    def test_json_schema_minimal(self) -> None:
+        rf = JsonSchemaResponseFormat(name="test", json_schema={"type": "object"})
+        assert map_response_format(rf) == {
+            "type": "json_schema",
+            "json_schema": {"name": "test", "schema": {"type": "object"}},
+        }
+
+    def test_json_schema_full(self) -> None:
+        rf = JsonSchemaResponseFormat(name="test", json_schema={"type": "object"}, description="A test", strict=True)
+        assert map_response_format(rf) == {
+            "type": "json_schema",
+            "json_schema": {"name": "test", "schema": {"type": "object"}, "description": "A test", "strict": True},
+        }
+
+
+# MARK: map_response_input
+
+
+class TestMapResponseInput:
+    def test_string_passthrough(self) -> None:
+        assert map_response_input("Hello") == "Hello"
+
+    def test_list_of_items(self) -> None:
+        items = [
+            ResponseInputMessage(role="user", content="call the tool"),
+            ResponseInputFunctionCallOutput(call_id="call_1", output='{"result": 42}'),
+        ]
+        assert map_response_input(items) == [
+            {"role": "user", "content": "call the tool"},
+            {"type": "function_call_output", "call_id": "call_1", "output": '{"result": 42}'},
+        ]
+
+
+# MARK: map_chat_completion
+
+
+class TestMapChatCompletion:
+    def test_basic(self, chat_completion: dict[str, Any], noop_cost_fn: Any) -> None:  # noqa: ANN401
+        result = map_chat_completion(WireCompletion.model_validate(chat_completion), "openai", noop_cost_fn)
+        assert result == ChatResponse(
+            content="Hello!",
+            tool_calls=None,
+            usage=Usage(input_tokens=10, output_tokens=5),
+            cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
+            model="gpt-4o",
+            provider="openai",
+            finish_reason="stop",
+        )
+
+    def test_with_tool_calls_filters_non_function(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        completion = {
+            "id": "chatcmpl-123",
+            "model": "gpt-4o",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {"id": "tc1", "type": "function", "function": {"name": "f", "arguments": '{"x": 1}'}},
+                            {"id": "tc2", "type": "custom", "custom": {}},
+                        ],
+                    },
+                }
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+        result = map_chat_completion(WireCompletion.model_validate(completion), "openai", noop_cost_fn)
+        assert result.content is None
+        assert result.tool_calls == [ToolCall(id="tc1", function=FunctionCallResult(name="f", arguments='{"x": 1}'))]
+
+    def test_reasoning_content(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        completion = {
+            "id": "c",
+            "model": "o3",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "Hi", "reasoning_content": "thinking"},
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        }
+        result = map_chat_completion(WireCompletion.model_validate(completion), "openai", noop_cost_fn)
+        assert result.reasoning == "thinking"
+
+    def test_with_cache_read_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        completion = {
+            "id": "c",
+            "model": "gpt-4o",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "prompt_tokens_details": {"cached_tokens": 50}},
+        }
+        result = map_chat_completion(WireCompletion.model_validate(completion), "openai", noop_cost_fn)
+        assert result.usage is not None
+        assert result.usage.cache_read_tokens == 50
+
+    def test_with_cache_write_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        completion = {
+            "id": "c",
+            "model": "gpt-5.6-sol",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "prompt_tokens_details": {"cached_tokens": 2, "cache_write_tokens": 6},
+            },
+        }
+        result = map_chat_completion(WireCompletion.model_validate(completion), "openai", noop_cost_fn)
+        assert result.usage is not None
+        assert result.usage.cache_read_tokens == 2
+        assert result.usage.cache_creation_tokens == 6
+
+    def test_with_reasoning_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        completion = {
+            "id": "c",
+            "model": "o3",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 25,
+                "completion_tokens_details": {"reasoning_tokens": 20},
+            },
+        }
+        result = map_chat_completion(WireCompletion.model_validate(completion), "openai", noop_cost_fn)
+        assert result.usage is not None
+        assert result.usage.reasoning_tokens == 20
+
+    def test_none_usage(self, chat_completion: dict[str, Any], noop_cost_fn: Any) -> None:  # noqa: ANN401
+        del chat_completion["usage"]
+        result = map_chat_completion(WireCompletion.model_validate(chat_completion), "openai", noop_cost_fn)
+        assert result.usage is None
+        assert result.cost is None
+
+    def test_cost_none_when_unknown(self, chat_completion: dict[str, Any], none_cost_fn: Any) -> None:  # noqa: ANN401
+        result = map_chat_completion(WireCompletion.model_validate(chat_completion), "openai", none_cost_fn)
+        assert result.cost is None
+
+
+# MARK: map_chat_chunk
+
+
+class TestMapChatChunk:
+    def test_content_delta(self) -> None:
+        chunk = {"model": "gpt-4o", "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hello"}}]}
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "openai") == ChatChunk(
+            delta="Hello", model="gpt-4o", provider="openai"
+        )
+
+    def test_reasoning_delta(self) -> None:
+        chunk = {
+            "model": "o3",
+            "choices": [{"index": 0, "finish_reason": None, "delta": {"reasoning_content": "hmm"}}],
+        }
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "openai").reasoning_delta == "hmm"
+
+    def test_tool_call_delta(self) -> None:
+        chunk = {
+            "model": "gpt-4o",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": None,
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "tc1",
+                                "type": "function",
+                                "function": {"name": "f", "arguments": '{"x":'},
+                            }
+                        ]
+                    },
+                }
+            ],
+        }
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "openai").tool_call_deltas == [
+            ToolCallDelta(index=0, id="tc1", type="function", function=FunctionCallDelta(name="f", arguments='{"x":'))
+        ]
+
+    def test_tool_call_delta_without_function(self) -> None:
+        chunk = {
+            "model": "gpt-4o",
+            "choices": [{"index": 0, "finish_reason": None, "delta": {"tool_calls": [{"index": 0, "id": "tc1"}]}}],
+        }
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "openai").tool_call_deltas == [
+            ToolCallDelta(index=0, id="tc1", type=None, function=None)
+        ]
+
+    def test_final_chunk_with_usage(self) -> None:
+        chunk = {
+            "model": "gpt-4o",
+            "choices": [{"index": 0, "finish_reason": "stop", "delta": {}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "openai") == ChatChunk(
+            finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=5), model="gpt-4o", provider="openai"
+        )
+
+    def test_usage_chunk_with_cache_write(self) -> None:
+        chunk = {
+            "model": "gpt-5.6-sol",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "prompt_tokens_details": {"cached_tokens": 1, "cache_write_tokens": 4},
+            },
+        }
+        result = map_chat_chunk(WireChunk.model_validate(chunk), "openai")
+        assert result.usage is not None
+        assert result.usage.cache_read_tokens == 1
+        assert result.usage.cache_creation_tokens == 4
+
+    def test_empty_choices(self) -> None:
+        assert map_chat_chunk(WireChunk.model_validate({"model": "gpt-4o", "choices": []}), "openai") == ChatChunk(
+            model="gpt-4o", provider="openai"
+        )
+
+    def test_missing_choices(self) -> None:
+        assert map_chat_chunk(WireChunk.model_validate({"model": "gpt-4o"}), "openai") == ChatChunk(
+            model="gpt-4o", provider="openai"
+        )
+
+
+# MARK: map_embedding_response
+
+
+class TestMapEmbeddingResponse:
+    def test_single_embedding(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {
+            "object": "list",
+            "model": "text-embedding-3-small",
+            "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}],
+            "usage": {"prompt_tokens": 5, "total_tokens": 5},
+        }
+        assert map_embedding_response(
+            WireEmbeddingResponse.model_validate(response), "openai", noop_cost_fn
+        ) == EmbeddingResponse(
+            embeddings=[[0.1, 0.2, 0.3]],
+            usage=Usage(input_tokens=5, output_tokens=0),
+            cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
+            model="text-embedding-3-small",
+            provider="openai",
+        )
+
+    def test_multiple_embeddings_sorted_by_index(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {
+            "object": "list",
+            "model": "text-embedding-3-small",
+            "data": [
+                {"object": "embedding", "index": 1, "embedding": [0.3, 0.4]},
+                {"object": "embedding", "index": 0, "embedding": [0.1, 0.2]},
+            ],
+            "usage": {"prompt_tokens": 10, "total_tokens": 10},
+        }
+        assert map_embedding_response(
+            WireEmbeddingResponse.model_validate(response), "openai", noop_cost_fn
+        ).embeddings == [[0.1, 0.2], [0.3, 0.4]]
+
+
+# MARK: map_responses_response
+
+
+class TestMapResponsesResponse:
+    def test_basic(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {
+            "id": "resp_123",
+            "model": "gpt-4o",
+            "output": [
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Hello!"}],
+                }
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+        }
+        assert map_responses_response(
+            WireResponsesResponse.model_validate(response), "openai", noop_cost_fn
+        ) == ResponseResponse(
+            id="resp_123",
+            output_text="Hello!",
+            usage=Usage(input_tokens=10, output_tokens=5),
+            cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
+            model="gpt-4o",
+            provider="openai",
+        )
+
+    def test_output_text_skips_non_message_and_non_text(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {
+            "id": "resp_1",
+            "model": "gpt-4o",
+            "output": [
+                {"type": "reasoning", "content": [{"type": "output_text", "text": "ignored"}]},
+                {
+                    "type": "message",
+                    "content": [
+                        {"type": "refusal", "refusal": "no"},
+                        {"type": "output_text", "text": "part-a "},
+                        {"type": "output_text", "text": "part-b"},
+                    ],
+                },
+            ],
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+        assert (
+            map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn).output_text
+            == "part-a part-b"
+        )
+
+    def test_output_missing(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {"id": "r", "model": "gpt-4o", "usage": {"input_tokens": 1, "output_tokens": 1}}
+        assert (
+            map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn).output_text
+            == ""
+        )
+
+    def test_with_cached_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {
+            "id": "r",
+            "model": "gpt-4o",
+            "output": [],
+            "usage": {"input_tokens": 10, "output_tokens": 5, "input_tokens_details": {"cached_tokens": 50}},
+        }
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn)
+        assert result.usage is not None
+        assert result.usage.cache_read_tokens == 50
+
+    def test_with_cache_write_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {
+            "id": "r",
+            "model": "gpt-5.6-sol",
+            "output": [],
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "input_tokens_details": {"cached_tokens": 2, "cache_write_tokens": 6},
+            },
+        }
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn)
+        assert result.usage is not None
+        assert result.usage.cache_read_tokens == 2
+        assert result.usage.cache_creation_tokens == 6
+
+    def test_with_reasoning_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {
+            "id": "r",
+            "model": "o3",
+            "output": [],
+            "usage": {"input_tokens": 10, "output_tokens": 5, "output_tokens_details": {"reasoning_tokens": 4}},
+        }
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn)
+        assert result.usage is not None
+        assert result.usage.reasoning_tokens == 4
+
+    def test_none_usage(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {"id": "r", "model": "gpt-4o", "output": []}
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn)
+        assert result.usage is None
+        assert result.cost is None

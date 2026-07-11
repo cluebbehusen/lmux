@@ -14,8 +14,8 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "lmux~=0.9",
-  "openai~=2.45",
+  "lmux~=0.10",
+  "httpx~=0.28",
 ]
 
 [project.urls]

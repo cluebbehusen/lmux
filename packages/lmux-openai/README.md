@@ -1,6 +1,6 @@
 # lmux-openai
 
-OpenAI provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [openai](https://pypi.org/project/openai/) SDK.
+OpenAI provider for [lmux](https://github.com/cluebbehusen/lmux). Talks to the OpenAI REST API directly over [httpx](https://pypi.org/project/httpx/).
 
 Supports chat completions, streaming, embeddings, and the Responses API.
 
@@ -97,11 +97,33 @@ response = provider.chat(
 
 ```python
 OpenAIProvider(
-    auth=...,            # AuthProvider[str], default: OpenAIEnvAuthProvider()
-    base_url=...,        # Optional base URL override
-    timeout=...,         # Request timeout in seconds
-    max_retries=...,     # Max retry attempts
-    data_residency=...,  # bool, default: False — apply 10% uplift for regional endpoints
+    auth=...,             # AuthProvider[str], default: OpenAIEnvAuthProvider()
+    base_url=...,         # Optional base URL override
+    timeout=...,          # Request timeout in seconds
+    max_retries=...,      # Max retry attempts
+    data_residency=...,   # bool, default: False — apply 10% uplift for regional endpoints
+    organization=...,     # Optional org id -> OpenAI-Organization header
+    project=...,          # Optional project id -> OpenAI-Project header
+    default_headers=...,  # Optional Mapping[str, str] added to every request
+)
+```
+
+lmux does not read OpenAI's `OPENAI_BASE_URL` / `OPENAI_ORG_ID` / `OPENAI_PROJECT_ID`
+environment variables (only the API key, via `OpenAIEnvAuthProvider`). Pass `base_url`,
+`organization`, and `project` explicitly instead.
+
+### Custom Headers
+
+`default_headers` applies to every request — useful for gateways and proxies (e.g. a
+`Helicone-Auth` token). lmux-managed headers (`Authorization`, `Content-Type`,
+`OpenAI-Organization`, `OpenAI-Project`) take precedence and cannot be overridden by
+`default_headers`; use `organization` / `project` for those.
+
+```python
+provider = OpenAIProvider(
+    organization="org-abc",
+    project="proj-123",
+    default_headers={"Helicone-Auth": "Bearer sk-helicone-..."},
 )
 ```
 
