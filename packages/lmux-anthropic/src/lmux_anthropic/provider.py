@@ -20,7 +20,7 @@ from lmux_anthropic._exceptions import (
     error_from_response,
     error_from_stream,
     map_transport_error,
-    parse_json,
+    parse_message,
     raise_for_status,
 )
 from lmux_anthropic._lazy import (
@@ -43,6 +43,13 @@ from lmux_anthropic._mappers import (
     map_tool_choice,
     map_tools,
     model_uses_adaptive_thinking,
+)
+from lmux_anthropic._wire import (
+    WireContentBlockDeltaEvent,
+    WireContentBlockStartEvent,
+    WireMessage,
+    WireMessageDeltaEvent,
+    WireMessageStartEvent,
 )
 from lmux_anthropic.auth import (
     AnthropicEnvAuthProvider,
@@ -200,7 +207,7 @@ class AnthropicProvider(
         except Exception as e:
             raise map_transport_error(e, self._provider_name) from e
         raise_for_status(response, self._provider_name)
-        return self._map_response(parse_json(response, self._provider_name), provider_params)
+        return self._map_response(parse_message(response, self._provider_name), provider_params)
 
     @override
     async def achat(
@@ -230,7 +237,7 @@ class AnthropicProvider(
         except Exception as e:
             raise map_transport_error(e, self._provider_name) from e
         raise_for_status(response, self._provider_name)
-        return self._map_response(parse_json(response, self._provider_name), provider_params)
+        return self._map_response(parse_message(response, self._provider_name), provider_params)
 
     @override
     def chat_stream(
@@ -326,9 +333,9 @@ class AnthropicProvider(
 
     # MARK: Internal Helpers
 
-    def _map_response(self, body: dict[str, Any], provider_params: AnthropicParams | None) -> ChatResponse:
+    def _map_response(self, message: WireMessage, provider_params: AnthropicParams | None) -> ChatResponse:
         as_of = self._resolve_pricing_as_of(provider_params)
-        response = map_message_response(body, self._provider_name, lambda m, u: self._calculate_cost(m, u, as_of))
+        response = map_message_response(message, self._provider_name, lambda m, u: self._calculate_cost(m, u, as_of))
         return self._apply_multipliers(response, provider_params)
 
     def _finalize_chunk(
@@ -456,14 +463,14 @@ class _StreamState:
         """Map one streamed event to a ChatChunk, or None if it carries no delta."""
         event_type = event.get("type")
         if event_type == "message_start":
-            self.model, self._start_usage = map_message_start(event)
+            self.model, self._start_usage = map_message_start(WireMessageStartEvent.model_validate(event))
             return None
         if event_type == "content_block_start":
-            return map_content_block_start(event)
+            return map_content_block_start(WireContentBlockStartEvent.model_validate(event))
         if event_type == "content_block_delta":
-            return map_content_block_delta(event)
+            return map_content_block_delta(WireContentBlockDeltaEvent.model_validate(event))
         if event_type == "message_delta" and self._start_usage is not None:
-            return map_message_delta(event, self._start_usage)
+            return map_message_delta(WireMessageDeltaEvent.model_validate(event), self._start_usage)
         return None
 
 

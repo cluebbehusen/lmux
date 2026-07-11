@@ -17,9 +17,10 @@ from lmux_anthropic._exceptions import (
     error_from_response,
     error_from_stream,
     map_transport_error,
-    parse_json,
+    parse_message,
     raise_for_status,
 )
+from lmux_anthropic._wire import WireMessage
 
 
 def _response(status: int, *, message: str = "boom", headers: dict[str, str] | None = None) -> httpx.Response:
@@ -131,17 +132,28 @@ class TestMapTransportError:
         assert isinstance(map_transport_error(RuntimeError("x")), LmuxError)
 
 
-class TestParseJson:
+class TestParseMessage:
     def test_valid_body(self) -> None:
-        assert parse_json(httpx.Response(200, json={"ok": 1})) == {"ok": 1}
+        body = {
+            "model": "claude-sonnet-4-6",
+            "content": [{"type": "text", "text": "hi"}],
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+            "stop_reason": "end_turn",
+        }
+        result = parse_message(httpx.Response(200, json=body))
+        assert result == WireMessage.model_validate(body)
 
     def test_malformed_body_maps_to_provider_error(self) -> None:
         with pytest.raises(ProviderError):
-            parse_json(httpx.Response(200, text="not json"))
+            parse_message(httpx.Response(200, text="not json"))
 
     def test_non_object_body_maps_to_provider_error(self) -> None:
         with pytest.raises(ProviderError):
-            parse_json(httpx.Response(200, json=["not", "an", "object"]))
+            parse_message(httpx.Response(200, json=["not", "an", "object"]))
+
+    def test_missing_required_field_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_message(httpx.Response(200, json={"model": "m"}))  # no content / usage
 
 
 class TestErrorFromStream:

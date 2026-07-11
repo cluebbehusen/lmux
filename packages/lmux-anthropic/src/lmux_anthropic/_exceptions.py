@@ -2,6 +2,8 @@
 
 from typing import TYPE_CHECKING, Any
 
+from pydantic import ValidationError
+
 from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
@@ -12,6 +14,7 @@ from lmux.exceptions import (
     RateLimitError,
     TimeoutError,  # noqa: A004
 )
+from lmux_anthropic._wire import WireMessage
 
 if TYPE_CHECKING:
     import httpx
@@ -31,17 +34,13 @@ def raise_for_status(response: "httpx.Response", provider: str = PROVIDER) -> No
         raise error_from_response(response, provider)
 
 
-def parse_json(response: "httpx.Response", provider: str = PROVIDER) -> dict[str, Any]:
-    """Return the JSON object body of a success response, mapping a malformed or non-object body to a ProviderError."""
+def parse_message(response: "httpx.Response", provider: str = PROVIDER) -> WireMessage:
+    """Validate a success body into a WireMessage, mapping a malformed or mis-shaped body to a ProviderError."""
     try:
-        data = response.json()
-    except ValueError as e:
+        return WireMessage.model_validate_json(response.content)
+    except ValidationError as e:
         msg = "malformed response body"
         raise ProviderError(msg, provider=provider, status_code=response.status_code) from e
-    if not isinstance(data, dict):
-        msg = "expected a JSON object response body"
-        raise ProviderError(msg, provider=provider, status_code=response.status_code)
-    return data
 
 
 def error_from_stream(payload: dict[str, Any], provider: str = PROVIDER) -> LmuxError:
