@@ -129,8 +129,15 @@ class TestFoundryBaseUrl:
     def test_from_resource(self) -> None:
         assert foundry_base_url("res") == "https://res.services.ai.azure.com/anthropic"
 
-    def test_base_url_wins(self) -> None:
-        assert _resolve_foundry_base_url("https://custom", "res") == "https://custom"
+    def test_base_url_and_resource_conflict(self) -> None:
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            _resolve_foundry_base_url("https://custom", "res")
+
+    def test_explicit_resource_conflicts_with_env_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A stale env base URL must not silently override an explicitly selected resource.
+        monkeypatch.setenv("ANTHROPIC_FOUNDRY_BASE_URL", "https://env.foundry")
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            _resolve_foundry_base_url(None, "res")
 
     def test_from_resource_when_no_base_url(self) -> None:
         assert _resolve_foundry_base_url(None, "res") == "https://res.services.ai.azure.com/anthropic"

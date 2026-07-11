@@ -184,10 +184,15 @@ def foundry_auth_headers(api_key: str | None, azure_ad_token_provider: "Callable
 
 
 def _resolve_foundry_base_url(base_url: str | None, resource: str | None) -> str:
+    # base_url and resource are mutually exclusive; resolve both (explicit or env) so a stale
+    # ANTHROPIC_FOUNDRY_BASE_URL can't silently override an explicitly selected resource.
     base_url = base_url or os.environ.get("ANTHROPIC_FOUNDRY_BASE_URL")
-    if base_url is not None:
-        return base_url
     resource = resource or os.environ.get("ANTHROPIC_FOUNDRY_RESOURCE")
+    if base_url is not None:
+        if resource is not None:
+            msg = "Foundry base_url and resource are mutually exclusive"
+            raise ValueError(msg)
+        return base_url
     if resource is not None:
         return foundry_base_url(resource)
     msg = (

@@ -182,11 +182,17 @@ class AnthropicProvider(
         return body
 
     def _request_headers(self) -> Mapping[str, str]:
-        """Auth headers applied per request.
+        """Auth headers applied per request (sync path).
 
         Empty for the direct API — its static ``x-api-key`` lives on the cached client.
         Vertex and Foundry override this to resolve/refresh a short-lived token on every
         request, so a long-lived provider never sends an expired credential.
+        """
+        return {}
+
+    async def _arequest_headers(self) -> Mapping[str, str]:
+        """Auth headers for the async path. Vertex/Foundry override this to offload the
+        (blocking) token refresh to a worker thread so it never stalls the event loop.
         """
         return {}
 
@@ -249,7 +255,7 @@ class AnthropicProvider(
             response = await client.post(
                 self._request_path(model, stream=False),
                 json=self._transform_body(body, model),
-                headers=self._request_headers(),
+                headers=await self._arequest_headers(),
             )
         except Exception as e:
             raise map_transport_error(e, self._provider_name) from e
@@ -327,7 +333,7 @@ class AnthropicProvider(
             client = await self._get_async_client()
             path = self._request_path(model, stream=True)
             body = self._transform_body(body, model)
-            headers = self._request_headers()
+            headers = await self._arequest_headers()
         except Exception as e:
             raise map_transport_error(e, self._provider_name) from e
 
@@ -578,6 +584,11 @@ class AnthropicVertexProvider(AnthropicProvider):
         return vertex_auth_headers(self._sync_credentials())
 
     @override
+    async def _arequest_headers(self) -> Mapping[str, str]:
+        # The token refresh does blocking HTTP; run it off the event loop.
+        return await asyncio.to_thread(vertex_auth_headers, self._sync_credentials())
+
+    @override
     def _create_sync_client(self) -> "httpx.Client":
         self._sync_credentials()
         self._resolved_region = self._resolve_region()
@@ -698,6 +709,12 @@ class AnthropicFoundryProvider(AnthropicProvider):
     @override
     def _request_headers(self) -> Mapping[str, str]:
         return foundry_auth_headers(*self._sync_foundry_auth())
+
+    @override
+    async def _arequest_headers(self) -> Mapping[str, str]:
+        # An Entra token provider may do blocking HTTP; run it off the event loop.
+        api_key, token_provider = self._sync_foundry_auth()
+        return await asyncio.to_thread(foundry_auth_headers, api_key, token_provider)
 
     @override
     def _create_sync_client(self) -> "httpx.Client":
