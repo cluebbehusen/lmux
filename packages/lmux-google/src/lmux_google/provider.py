@@ -28,7 +28,7 @@ from lmux_google._exceptions import (
     error_from_response,
     error_from_stream,
     map_transport_error,
-    parse_json,
+    parse_body,
     raise_for_status,
 )
 from lmux_google._lazy import (
@@ -49,6 +49,10 @@ from lmux_google._mappers import (
     map_response_format,
     map_tool_choice,
     map_tools,
+)
+from lmux_google._wire import (
+    WireBatchEmbeddingsResponse,
+    WireGenerateContentResponse,
 )
 from lmux_google.auth import GoogleADCAuthProvider
 from lmux_google.cost import calculate_google_cost
@@ -183,7 +187,9 @@ class GoogleProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_generate_content_response(parse_json(response), model, PROVIDER_NAME, self._calculate_cost)
+        return map_generate_content_response(
+            parse_body(response, WireGenerateContentResponse), model, PROVIDER_NAME, self._calculate_cost
+        )
 
     @override
     async def achat(
@@ -212,7 +218,9 @@ class GoogleProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_generate_content_response(parse_json(response), model, PROVIDER_NAME, self._calculate_cost)
+        return map_generate_content_response(
+            parse_body(response, WireGenerateContentResponse), model, PROVIDER_NAME, self._calculate_cost
+        )
 
     @override
     def chat_stream(
@@ -313,7 +321,9 @@ class GoogleProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_batch_embeddings_response(parse_json(response), model, PROVIDER_NAME, self._calculate_cost)
+        return map_batch_embeddings_response(
+            parse_body(response, WireBatchEmbeddingsResponse), model, PROVIDER_NAME, self._calculate_cost
+        )
 
     @override
     async def aembed(
@@ -332,12 +342,14 @@ class GoogleProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_batch_embeddings_response(parse_json(response), model, PROVIDER_NAME, self._calculate_cost)
+        return map_batch_embeddings_response(
+            parse_body(response, WireBatchEmbeddingsResponse), model, PROVIDER_NAME, self._calculate_cost
+        )
 
     # MARK: Internal Helpers
 
     def _map_stream_chunk(self, chunk: Json, model: str) -> ChatChunk:
-        mapped = map_generate_content_chunk(chunk, model, PROVIDER_NAME)
+        mapped = map_generate_content_chunk(WireGenerateContentResponse.model_validate(chunk), model, PROVIDER_NAME)
         if mapped.usage is not None:
             mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
         return mapped
