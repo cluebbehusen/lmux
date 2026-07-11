@@ -48,6 +48,28 @@ def async_provider(fake_auth: FakeAuth) -> GroqProvider:
 
 
 @pytest.fixture
+def sync_create_raises(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_groq.provider.create_sync_client", side_effect=RuntimeError("client init failed"))
+
+
+@pytest.fixture
+def async_create_raises(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_groq.provider.create_async_client", side_effect=RuntimeError("client init failed"))
+
+
+@pytest.fixture
+def async_create_two_clients(mocker: MockerFixture) -> tuple[MagicMock, MagicMock, MagicMock]:
+    c1, c2 = MagicMock(), MagicMock()
+    create = mocker.patch("lmux_groq.provider.create_async_client", side_effect=[c1, c2])
+    return create, c1, c2
+
+
+@pytest.fixture
+def mock_get_running_loop(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_groq.provider.asyncio.get_running_loop")
+
+
+@pytest.fixture
 def completion() -> dict[str, Any]:
     return {
         "id": "chatcmpl-123",
@@ -223,11 +245,11 @@ class TestChatStream:
         with pytest.raises(ProviderError, match="mid-stream boom"):
             next(stream)
 
-    def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_groq.provider.create_sync_client", side_effect=RuntimeError("boom"))
+    def test_client_init_failure(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
         provider = GroqProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="boom"):
+        with pytest.raises(ProviderError, match="client init failed"):
             list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+        sync_create_raises.assert_called_once()
 
     def test_stream_without_done(self, sync_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
         chunk = {"model": MODEL, "choices": [{"index": 0, "finish_reason": "stop", "delta": {"content": "x"}}]}
@@ -272,12 +294,12 @@ class TestAchatStream:
         with pytest.raises(ProviderError, match="mid-stream boom"):
             await anext(stream)
 
-    async def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_groq.provider.create_async_client", side_effect=RuntimeError("boom"))
+    async def test_client_init_failure(self, fake_auth: FakeAuth, async_create_raises: MagicMock) -> None:
         provider = GroqProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="boom"):
+        with pytest.raises(ProviderError, match="client init failed"):
             async for _ in provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
+        async_create_raises.assert_called_once()
 
     async def test_stream_without_done(self, async_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
         chunk = {"model": MODEL, "choices": [{"index": 0, "finish_reason": "stop", "delta": {"content": "x"}}]}
@@ -329,24 +351,27 @@ class TestClientManagement:
         assert provider._sync_client is not None
         assert provider._sync_client.timeout.read == 30.0
 
-    def test_sync_init_failure_mapped(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_groq.provider.create_sync_client", side_effect=RuntimeError("connection refused"))
+    def test_sync_init_failure_mapped(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
         provider = GroqProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="connection refused"):
+        with pytest.raises(ProviderError, match="client init failed"):
             provider.chat(MODEL, [UserMessage(content="Hi")])
+        sync_create_raises.assert_called_once()
 
-    async def test_async_init_failure_mapped(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        mocker.patch("lmux_groq.provider.create_async_client", side_effect=RuntimeError("connection refused"))
+    async def test_async_init_failure_mapped(self, fake_auth: FakeAuth, async_create_raises: MagicMock) -> None:
         provider = GroqProvider(auth=fake_auth)
-        with pytest.raises(ProviderError, match="connection refused"):
+        with pytest.raises(ProviderError, match="client init failed"):
             await provider.achat(MODEL, [UserMessage(content="Hi")])
+        async_create_raises.assert_called_once()
 
-    async def test_async_client_recreated_on_new_loop(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
-        c1, c2 = MagicMock(), MagicMock()
-        create = mocker.patch("lmux_groq.provider.create_async_client", side_effect=[c1, c2])
-        get_loop = mocker.patch("lmux_groq.provider.asyncio.get_running_loop")
+    async def test_async_client_recreated_on_new_loop(
+        self,
+        fake_auth: FakeAuth,
+        async_create_two_clients: tuple[MagicMock, MagicMock, MagicMock],
+        mock_get_running_loop: MagicMock,
+    ) -> None:
+        create, c1, c2 = async_create_two_clients
         loop1, loop2 = asyncio.new_event_loop(), asyncio.new_event_loop()
-        get_loop.side_effect = [loop1, loop2]
+        mock_get_running_loop.side_effect = [loop1, loop2]
         provider = GroqProvider(auth=fake_auth)
         r1 = await provider._get_async_client()
         r2 = await provider._get_async_client()
