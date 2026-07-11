@@ -218,6 +218,11 @@ class TestChat:
         with pytest.raises(ProviderError, match="refused"):
             sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
 
+    def test_non_json_body_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=b"not json"))
+        with pytest.raises(ProviderError):
+            sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
+
     def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
         mocker.patch("lmux_azure_foundry.provider.create_sync_client", side_effect=RuntimeError("boom"))
         provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
@@ -320,6 +325,13 @@ class TestAchat:
         with pytest.raises(ProviderError, match="refused"):
             await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
 
+    async def test_non_json_body_mapped(
+        self, async_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=b"not json"))
+        with pytest.raises(ProviderError):
+            await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
+
     async def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
         mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=RuntimeError("boom"))
         provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
@@ -366,6 +378,18 @@ class TestChatStream:
         with pytest.raises(ProviderError):
             list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
 
+    def test_mid_stream_error_raises_after_partial(
+        self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        first = {"model": "gpt-4o", "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}]}
+        error = {"error": {"message": "mid-stream boom"}}
+        sse = (f"data: {json.dumps(first)}\n\ndata: {json.dumps(error)}\n\n").encode()
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=sse))
+        stream = sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")])
+        assert next(stream).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            next(stream)
+
     def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
         mocker.patch("lmux_azure_foundry.provider.create_sync_client", side_effect=RuntimeError("boom"))
         provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
@@ -406,6 +430,18 @@ class TestAchatStream:
         with pytest.raises(ProviderError):
             async for _ in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
+
+    async def test_mid_stream_error_raises_after_partial(
+        self, async_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        first = {"model": "gpt-4o", "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}]}
+        error = {"error": {"message": "mid-stream boom"}}
+        sse = (f"data: {json.dumps(first)}\n\ndata: {json.dumps(error)}\n\n").encode()
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=sse))
+        stream = async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")])
+        assert (await anext(stream)).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            await anext(stream)
 
     async def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
         mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=RuntimeError("boom"))

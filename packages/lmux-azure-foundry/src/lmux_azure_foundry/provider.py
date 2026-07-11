@@ -25,7 +25,13 @@ from lmux.types import (
     ToolChoice,
     Usage,
 )
-from lmux_azure_foundry._exceptions import error_from_response, map_transport_error, raise_for_status
+from lmux_azure_foundry._exceptions import (
+    error_from_response,
+    error_from_stream,
+    map_transport_error,
+    parse_json,
+    raise_for_status,
+)
 from lmux_azure_foundry._lazy import auth_headers, create_async_client, create_sync_client
 from lmux_azure_foundry._mappers import (
     map_chat_chunk,
@@ -178,7 +184,7 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_chat_completion(response.json(), PROVIDER_NAME, self._calculate_cost)
+        result = map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_multipliers(result, provider_params)
 
     @override
@@ -212,7 +218,7 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_chat_completion(response.json(), PROVIDER_NAME, self._calculate_cost)
+        result = map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_multipliers(result, provider_params)
 
     @override
@@ -248,7 +254,10 @@ class AzureFoundryProvider(
                 for _event, data in iter_sse(response):
                     if data == _SSE_DONE:
                         break
-                    yield self._map_stream_chunk(json.loads(data), model, provider_params)
+                    chunk = json.loads(data)
+                    if "error" in chunk:
+                        raise error_from_stream(chunk)  # noqa: TRY301
+                    yield self._map_stream_chunk(chunk, model, provider_params)
         except LmuxError:
             raise
         except Exception as e:
@@ -289,7 +298,10 @@ class AzureFoundryProvider(
                 async for _event, data in aiter_sse(response):
                     if data == _SSE_DONE:
                         break
-                    yield self._map_stream_chunk(json.loads(data), model, provider_params)
+                    chunk = json.loads(data)
+                    if "error" in chunk:
+                        raise error_from_stream(chunk)  # noqa: TRY301
+                    yield self._map_stream_chunk(chunk, model, provider_params)
         except LmuxError:
             raise
         except Exception as e:
@@ -313,7 +325,7 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_embedding_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        result = map_embedding_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_embedding_multipliers(result, provider_params)
 
     @override
@@ -334,7 +346,7 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_embedding_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        result = map_embedding_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_embedding_multipliers(result, provider_params)
 
     # MARK: Responses
@@ -354,7 +366,7 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_responses_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        result = map_responses_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_response_multipliers(result, provider_params)
 
     @override
@@ -374,7 +386,7 @@ class AzureFoundryProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_responses_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        result = map_responses_response(parse_json(response), PROVIDER_NAME, self._calculate_cost)
         return self._apply_response_multipliers(result, provider_params)
 
     # MARK: Cost Multipliers
