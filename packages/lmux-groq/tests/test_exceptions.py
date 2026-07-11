@@ -16,9 +16,10 @@ from lmux_groq._exceptions import (
     error_from_response,
     error_from_stream,
     map_transport_error,
-    parse_json,
+    parse_completion,
     raise_for_status,
 )
+from lmux_groq._wire import WireCompletion
 
 
 def _resp(status: int, *, json: object = None, text: str = "", headers: dict[str, str] | None = None) -> httpx.Response:
@@ -84,17 +85,26 @@ class TestErrorMessage:
         assert "plain text error" in str(error_from_response(_resp(400, text="plain text error")))
 
 
-class TestParseJson:
+class TestParseCompletion:
     def test_valid_body(self) -> None:
-        assert parse_json(_resp(200, json={"ok": 1})) == {"ok": 1}
+        body = {
+            "model": "m",
+            "choices": [{"message": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}],
+        }
+        result = parse_completion(_resp(200, json=body))
+        assert result == WireCompletion.model_validate(body)
 
     def test_malformed_body_maps_to_provider_error(self) -> None:
         with pytest.raises(ProviderError):
-            parse_json(_resp(200, text="not json"))
+            parse_completion(_resp(200, text="not json"))
 
     def test_non_object_body_maps_to_provider_error(self) -> None:
         with pytest.raises(ProviderError):
-            parse_json(_resp(200, json=["not", "an", "object"]))
+            parse_completion(_resp(200, json=["not", "an", "object"]))
+
+    def test_missing_required_field_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_completion(_resp(200, json={"model": "m"}))  # no choices
 
 
 class TestErrorFromStream:
