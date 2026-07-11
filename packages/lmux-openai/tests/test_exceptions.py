@@ -1,187 +1,88 @@
-"""Tests for OpenAI exception mapping."""
+"""Tests for OpenAI HTTP error mapping."""
 
-from unittest.mock import MagicMock
-
-import openai
+import httpx
 import pytest
 
 from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
-    LmuxError,
     NotFoundError,
     ProviderError,
     RateLimitError,
     TimeoutError,  # noqa: A004
 )
-from lmux_openai._exceptions import map_openai_error
-
-# MARK: Fixtures
+from lmux_openai._exceptions import error_from_response, map_transport_error, raise_for_status
 
 
-@pytest.fixture
-def auth_error() -> openai.AuthenticationError:
-    response = MagicMock()
-    response.status_code = 401
-    response.headers = {}
-    return openai.AuthenticationError(message="test error", response=response, body=None)
+def _resp(status: int, *, json: object = None, text: str = "", headers: dict[str, str] | None = None) -> httpx.Response:
+    if json is not None:
+        return httpx.Response(status, json=json, headers=headers or {})
+    return httpx.Response(status, text=text, headers=headers or {})
 
 
-@pytest.fixture
-def rate_limit_error() -> openai.RateLimitError:
-    response = MagicMock()
-    response.status_code = 429
-    response.headers = {}
-    return openai.RateLimitError(message="test error", response=response, body=None)
+class TestRaiseForStatus:
+    def test_ok_does_not_raise(self) -> None:
+        raise_for_status(_resp(200, json={}))
+
+    def test_error_raises(self) -> None:
+        with pytest.raises(InvalidRequestError):
+            raise_for_status(_resp(400, json={"error": {"message": "bad"}}))
 
 
-@pytest.fixture
-def rate_limit_error_with_retry() -> openai.RateLimitError:
-    response = MagicMock()
-    response.status_code = 429
-    response.headers = {"retry-after": "30.5"}
-    return openai.RateLimitError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def rate_limit_error_invalid_retry() -> openai.RateLimitError:
-    response = MagicMock()
-    response.status_code = 429
-    response.headers = {"retry-after": "not-a-number"}
-    return openai.RateLimitError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def bad_request_error() -> openai.BadRequestError:
-    response = MagicMock()
-    response.status_code = 400
-    response.headers = {}
-    return openai.BadRequestError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def not_found_error() -> openai.NotFoundError:
-    response = MagicMock()
-    response.status_code = 404
-    response.headers = {}
-    return openai.NotFoundError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def internal_server_error() -> openai.InternalServerError:
-    response = MagicMock()
-    response.status_code = 500
-    response.headers = {}
-    return openai.InternalServerError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def timeout_error() -> openai.APITimeoutError:
-    return openai.APITimeoutError(request=MagicMock())
-
-
-@pytest.fixture
-def unprocessable_error() -> openai.UnprocessableEntityError:
-    response = MagicMock()
-    response.status_code = 422
-    response.headers = {}
-    return openai.UnprocessableEntityError(message="test error", response=response, body=None)
-
-
-# MARK: Tests
-
-
-class TestMapOpenAIError:
-    def test_authentication_error(self, auth_error: openai.AuthenticationError) -> None:
-        result = map_openai_error(auth_error)
-        assert isinstance(result, AuthenticationError)
-        assert result.provider == "openai"
-        assert result.status_code == 401
-
-    def test_rate_limit_error(self, rate_limit_error: openai.RateLimitError) -> None:
-        result = map_openai_error(rate_limit_error)
-        assert isinstance(result, RateLimitError)
-        assert result.provider == "openai"
-        assert result.status_code == 429
-        assert result.retry_after is None
-
-    def test_rate_limit_with_retry_after(self, rate_limit_error_with_retry: openai.RateLimitError) -> None:
-        result = map_openai_error(rate_limit_error_with_retry)
-        assert isinstance(result, RateLimitError)
-        assert result.retry_after == 30.5
-
-    def test_rate_limit_invalid_retry_after(self, rate_limit_error_invalid_retry: openai.RateLimitError) -> None:
-        result = map_openai_error(rate_limit_error_invalid_retry)
-        assert isinstance(result, RateLimitError)
-        assert result.retry_after is None
-
-    def test_bad_request_error(self, bad_request_error: openai.BadRequestError) -> None:
-        result = map_openai_error(bad_request_error)
-        assert isinstance(result, InvalidRequestError)
-        assert result.status_code == 400
-
-    def test_not_found_error(self, not_found_error: openai.NotFoundError) -> None:
-        result = map_openai_error(not_found_error)
-        assert isinstance(result, NotFoundError)
-        assert result.status_code == 404
-
-    def test_internal_server_error(self, internal_server_error: openai.InternalServerError) -> None:
-        result = map_openai_error(internal_server_error)
-        assert isinstance(result, ProviderError)
-        assert result.status_code == 500
-
-    def test_timeout_error(self, timeout_error: openai.APITimeoutError) -> None:
-        result = map_openai_error(timeout_error)
-        assert isinstance(result, TimeoutError)
-        assert result.provider == "openai"
-
-    def test_generic_api_error(self, unprocessable_error: openai.UnprocessableEntityError) -> None:
-        result = map_openai_error(unprocessable_error)
-        assert isinstance(result, ProviderError)
-        assert result.provider == "openai"
-
-    def test_non_openai_exception(self) -> None:
-        error = RuntimeError("something broke")
-        result = map_openai_error(error)
-        assert isinstance(result, ProviderError)
-        assert result.provider == "openai"
-
-    def test_rate_limit_no_response_attribute(self) -> None:
-        """Exercise _extract_retry_after when error has no response."""
-        exc = openai.RateLimitError(message="rate limited", response=MagicMock(status_code=429, headers={}), body=None)
-        # Remove the response attribute so _extract_retry_after hits the None branch
-        del exc.response
-        result = map_openai_error(exc)
-        assert isinstance(result, RateLimitError)
-        assert result.retry_after is None
-
+class TestErrorFromResponse:
     @pytest.mark.parametrize(
-        "error",
+        ("status", "exc"),
         [
-            pytest.param(
-                openai.AuthenticationError(message="e", response=MagicMock(status_code=401, headers={}), body=None),
-                id="auth",
-            ),
-            pytest.param(
-                openai.RateLimitError(message="e", response=MagicMock(status_code=429, headers={}), body=None),
-                id="rate_limit",
-            ),
-            pytest.param(
-                openai.BadRequestError(message="e", response=MagicMock(status_code=400, headers={}), body=None),
-                id="bad_request",
-            ),
-            pytest.param(
-                openai.NotFoundError(message="e", response=MagicMock(status_code=404, headers={}), body=None),
-                id="not_found",
-            ),
-            pytest.param(
-                openai.InternalServerError(message="e", response=MagicMock(status_code=500, headers={}), body=None),
-                id="internal_server",
-            ),
-            pytest.param(openai.APITimeoutError(request=MagicMock()), id="timeout"),
-            pytest.param(RuntimeError("fallback"), id="runtime"),
+            (401, AuthenticationError),
+            (403, AuthenticationError),
+            (429, RateLimitError),
+            (400, InvalidRequestError),
+            (404, NotFoundError),
+            (500, ProviderError),
+            (418, ProviderError),
         ],
     )
-    def test_all_mapped_errors_are_lmux_errors(self, error: Exception) -> None:
-        result = map_openai_error(error)
-        assert isinstance(result, LmuxError)
+    def test_status_mapping(self, status: int, exc: type[Exception]) -> None:
+        err = error_from_response(_resp(status, json={"error": {"message": "m"}}))
+        assert isinstance(err, exc)
+        assert getattr(err, "status_code", None) == status
+
+    def test_retry_after_valid(self) -> None:
+        err = error_from_response(_resp(429, json={"error": {"message": "m"}}, headers={"retry-after": "1.5"}))
+        assert isinstance(err, RateLimitError)
+        assert err.retry_after == 1.5
+
+    def test_retry_after_absent(self) -> None:
+        err = error_from_response(_resp(429, json={"error": {"message": "m"}}))
+        assert isinstance(err, RateLimitError)
+        assert err.retry_after is None
+
+    def test_retry_after_invalid(self) -> None:
+        err = error_from_response(_resp(429, json={"error": {"message": "m"}}, headers={"retry-after": "soon"}))
+        assert isinstance(err, RateLimitError)
+        assert err.retry_after is None
+
+
+class TestErrorMessage:
+    def test_error_dict_with_message(self) -> None:
+        assert "the message" in str(error_from_response(_resp(400, json={"error": {"message": "the message"}})))
+
+    def test_error_dict_without_message_falls_back(self) -> None:
+        assert isinstance(error_from_response(_resp(400, json={"error": {"code": "x"}})), InvalidRequestError)
+
+    def test_json_but_not_error_dict(self) -> None:
+        assert isinstance(error_from_response(_resp(400, json=["not", "a", "dict"])), InvalidRequestError)
+
+    def test_non_json_body(self) -> None:
+        assert "plain text error" in str(error_from_response(_resp(400, text="plain text error")))
+
+
+class TestMapTransportError:
+    def test_timeout(self) -> None:
+        assert isinstance(map_transport_error(httpx.ReadTimeout("timed out")), TimeoutError)
+
+    def test_connect_error(self) -> None:
+        assert isinstance(map_transport_error(httpx.ConnectError("refused")), ProviderError)
+
+    def test_generic_exception(self) -> None:
+        assert isinstance(map_transport_error(Exception("boom")), ProviderError)

@@ -1,13 +1,16 @@
-"""OpenAI provider implementation."""
+"""OpenAI provider implementation (SDK-lite, httpx transport)."""
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
-    import openai
+    import httpx
 
+from lmux._http import aiter_sse, iter_sse
 from lmux.cost import ModelPricing, calculate_cost
+from lmux.exceptions import LmuxError
 from lmux.protocols import AuthProvider, CompletionProvider, EmbeddingProvider, PricingProvider, ResponsesProvider
 from lmux.types import (
     ChatChunk,
@@ -22,7 +25,7 @@ from lmux.types import (
     ToolChoice,
     Usage,
 )
-from lmux_openai._exceptions import map_openai_error
+from lmux_openai._exceptions import error_from_response, map_transport_error, raise_for_status
 from lmux_openai._lazy import create_async_client, create_sync_client
 from lmux_openai._mappers import (
     map_chat_chunk,
@@ -45,6 +48,12 @@ from lmux_openai.cost import (
 from lmux_openai.params import OpenAIParams
 
 PROVIDER_NAME = "openai"
+_CHAT_PATH = "/chat/completions"
+_EMBEDDINGS_PATH = "/embeddings"
+_RESPONSES_PATH = "/responses"
+
+_HTTP_ERROR = 400
+_SSE_DONE = "[DONE]"
 
 
 class OpenAIProvider(
@@ -53,7 +62,7 @@ class OpenAIProvider(
     ResponsesProvider[OpenAIParams],
     PricingProvider,
 ):
-    """OpenAI API provider."""
+    """OpenAI API provider over httpx."""
 
     def __init__(
         self,
@@ -69,8 +78,8 @@ class OpenAIProvider(
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
         self._data_residency: bool = data_residency
-        self._sync_client: openai.OpenAI | None = None
-        self._async_client: openai.AsyncOpenAI | None = None
+        self._sync_client: httpx.Client | None = None
+        self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
@@ -103,7 +112,7 @@ class OpenAIProvider(
             return response
         return response.model_copy(update={"cost": adjusted})
 
-    def _get_sync_client(self) -> "openai.OpenAI":
+    def _get_sync_client(self) -> "httpx.Client":
         if self._sync_client is None:
             self._sync_client = create_sync_client(
                 api_key=self._auth.get_credentials(),
@@ -113,7 +122,7 @@ class OpenAIProvider(
             )
         return self._sync_client
 
-    async def _get_async_client(self) -> "openai.AsyncOpenAI":
+    async def _get_async_client(self) -> "httpx.AsyncClient":
         loop = asyncio.get_running_loop()
         if self._async_client is None or self._async_loop is not loop:
             self._async_client = create_async_client(
@@ -128,7 +137,7 @@ class OpenAIProvider(
     async def aclose(self) -> None:
         """Close the underlying async HTTP client."""
         if self._async_client is not None:
-            await self._async_client.close()
+            await self._async_client.aclose()
             self._async_client = None
             self._async_loop = None
 
@@ -150,26 +159,18 @@ class OpenAIProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
     ) -> ChatResponse:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
+        body = self._build_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params,
+        )  # fmt: skip
         try:
             client = self._get_sync_client()
-            completion = client.chat.completions.create(**kwargs, stream=False)
+            response = client.post(_CHAT_PATH, json={**body, "stream": False})
         except Exception as e:
-            raise map_openai_error(e) from e
-        response = map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
-        return self._apply_response_multipliers(response, completion.model)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        mapped = map_chat_completion(response.json(), PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
     async def achat(
@@ -187,26 +188,18 @@ class OpenAIProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
     ) -> ChatResponse:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
+        body = self._build_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params,
+        )  # fmt: skip
         try:
             client = await self._get_async_client()
-            completion = await client.chat.completions.create(**kwargs, stream=False)
+            response = await client.post(_CHAT_PATH, json={**body, "stream": False})
         except Exception as e:
-            raise map_openai_error(e) from e
-        response = map_chat_completion(completion, PROVIDER_NAME, self._calculate_cost)
-        return self._apply_response_multipliers(response, completion.model)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        mapped = map_chat_completion(response.json(), PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
     def chat_stream(
@@ -224,35 +217,27 @@ class OpenAIProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
     ) -> Iterator[ChatChunk]:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
-        kwargs["stream_options"] = {"include_usage": True}
+        body = self._stream_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params,
+        )  # fmt: skip
         try:
             client = self._get_sync_client()
-            stream = client.chat.completions.create(**kwargs, stream=True)
         except Exception as e:
-            raise map_openai_error(e) from e
-
+            raise map_transport_error(e) from e
         try:
-            for chunk in stream:
-                mapped = map_chat_chunk(chunk, PROVIDER_NAME)
-                if mapped.usage is not None:
-                    cost = self._apply_cost_multipliers(self._calculate_cost(chunk.model, mapped.usage), chunk.model)
-                    mapped = mapped.model_copy(update={"cost": cost})
-                yield mapped
+            with client.stream("POST", _CHAT_PATH, json=body) as response:
+                if response.status_code >= _HTTP_ERROR:
+                    response.read()
+                    raise error_from_response(response)  # noqa: TRY301
+                for _event, data in iter_sse(response):
+                    if data == _SSE_DONE:
+                        break
+                    yield self._map_stream_chunk(json.loads(data), model)
+        except LmuxError:
+            raise
         except Exception as e:
-            raise map_openai_error(e) from e
+            raise map_transport_error(e) from e
 
     @override
     async def achat_stream(
@@ -270,35 +255,27 @@ class OpenAIProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: OpenAIParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
-        kwargs = self._build_chat_kwargs(
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            stop,
-            tools,
-            tool_choice,
-            response_format,
-            reasoning_effort,
-            provider_params,
-        )
-        kwargs["stream_options"] = {"include_usage": True}
+        body = self._stream_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params,
+        )  # fmt: skip
         try:
             client = await self._get_async_client()
-            stream = await client.chat.completions.create(**kwargs, stream=True)
         except Exception as e:
-            raise map_openai_error(e) from e
-
+            raise map_transport_error(e) from e
         try:
-            async for chunk in stream:
-                mapped = map_chat_chunk(chunk, PROVIDER_NAME)
-                if mapped.usage is not None:
-                    cost = self._apply_cost_multipliers(self._calculate_cost(chunk.model, mapped.usage), chunk.model)
-                    mapped = mapped.model_copy(update={"cost": cost})
-                yield mapped
+            async with client.stream("POST", _CHAT_PATH, json=body) as response:
+                if response.status_code >= _HTTP_ERROR:
+                    await response.aread()
+                    raise error_from_response(response)  # noqa: TRY301
+                async for _event, data in aiter_sse(response):
+                    if data == _SSE_DONE:
+                        break
+                    yield self._map_stream_chunk(json.loads(data), model)
+        except LmuxError:
+            raise
         except Exception as e:
-            raise map_openai_error(e) from e
+            raise map_transport_error(e) from e
 
     # MARK: Embeddings
 
@@ -311,16 +288,15 @@ class OpenAIProvider(
         dimensions: int | None = None,
         provider_params: OpenAIParams | None = None,
     ) -> EmbeddingResponse:
-        extra: dict[str, Any] = self._provider_params_kwargs(provider_params) if provider_params else {}
-        if dimensions is not None:
-            extra["dimensions"] = dimensions
+        body = self._embed_body(model, input, dimensions, provider_params)
         try:
             client = self._get_sync_client()
-            response = client.embeddings.create(model=model, input=input, **extra)
+            response = client.post(_EMBEDDINGS_PATH, json=body)
         except Exception as e:
-            raise map_openai_error(e) from e
-        mapped = map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
-        return self._apply_response_multipliers(mapped, response.model)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        mapped = map_embedding_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
     async def aembed(
@@ -331,16 +307,15 @@ class OpenAIProvider(
         dimensions: int | None = None,
         provider_params: OpenAIParams | None = None,
     ) -> EmbeddingResponse:
-        extra: dict[str, Any] = self._provider_params_kwargs(provider_params) if provider_params else {}
-        if dimensions is not None:
-            extra["dimensions"] = dimensions
+        body = self._embed_body(model, input, dimensions, provider_params)
         try:
             client = await self._get_async_client()
-            response = await client.embeddings.create(model=model, input=input, **extra)
+            response = await client.post(_EMBEDDINGS_PATH, json=body)
         except Exception as e:
-            raise map_openai_error(e) from e
-        mapped = map_embedding_response(response, PROVIDER_NAME, self._calculate_cost)
-        return self._apply_response_multipliers(mapped, response.model)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        mapped = map_embedding_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(mapped, mapped.model)
 
     # MARK: Responses API
 
@@ -352,14 +327,15 @@ class OpenAIProvider(
         *,
         provider_params: OpenAIParams | None = None,
     ) -> ResponseResponse:
-        extra = self._responses_kwargs(provider_params)
+        body = self._responses_body(model, input, provider_params)
         try:
             client = self._get_sync_client()
-            response = client.responses.create(model=model, input=map_response_input(input), stream=False, **extra)
+            response = client.post(_RESPONSES_PATH, json={**body, "stream": False})
         except Exception as e:
-            raise map_openai_error(e) from e
-        mapped = map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
-        return self._apply_response_multipliers(mapped, response.model)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        mapped = map_responses_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(mapped, mapped.model)
 
     @override
     async def acreate_response(
@@ -369,30 +345,56 @@ class OpenAIProvider(
         *,
         provider_params: OpenAIParams | None = None,
     ) -> ResponseResponse:
-        extra = self._responses_kwargs(provider_params)
+        body = self._responses_body(model, input, provider_params)
         try:
             client = await self._get_async_client()
-            response = await client.responses.create(
-                model=model, input=map_response_input(input), stream=False, **extra
-            )
+            response = await client.post(_RESPONSES_PATH, json={**body, "stream": False})
         except Exception as e:
-            raise map_openai_error(e) from e
-        mapped = map_responses_response(response, PROVIDER_NAME, self._calculate_cost)
-        return self._apply_response_multipliers(mapped, response.model)
+            raise map_transport_error(e) from e
+        raise_for_status(response)
+        mapped = map_responses_response(response.json(), PROVIDER_NAME, self._calculate_cost)
+        return self._apply_response_multipliers(mapped, mapped.model)
 
     # MARK: Internal Helpers
 
-    @staticmethod
-    def _responses_kwargs(provider_params: OpenAIParams | None) -> dict[str, Any]:
-        """Build extra kwargs for the Responses API."""
-        extra: dict[str, Any] = OpenAIProvider._provider_params_kwargs(provider_params) if provider_params else {}
-        # Responses API uses reasoning={"effort": ...}, not flat reasoning_effort
-        if provider_params is not None and provider_params.reasoning_effort is not None:
-            extra["reasoning"] = {"effort": provider_params.reasoning_effort}
-        return extra
+    def _map_stream_chunk(self, chunk: dict[str, Any], model: str) -> ChatChunk:
+        mapped = map_chat_chunk(chunk, PROVIDER_NAME)
+        if mapped.usage is not None:
+            cost_model = chunk.get("model") or model
+            cost = self._apply_cost_multipliers(self._calculate_cost(cost_model, mapped.usage), cost_model)
+            mapped = mapped.model_copy(update={"cost": cost})
+        return mapped
 
     @staticmethod
-    def _build_chat_kwargs(  # noqa: PLR0913
+    def _embed_body(
+        model: str,
+        input: str | list[str],  # noqa: A002
+        dimensions: int | None,
+        provider_params: OpenAIParams | None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"model": model, "input": input}
+        if dimensions is not None:
+            body["dimensions"] = dimensions
+        if provider_params is not None:
+            body.update(OpenAIProvider._provider_params_kwargs(provider_params))
+        return body
+
+    @staticmethod
+    def _responses_body(
+        model: str,
+        input: str | Sequence[ResponseInputItem],  # noqa: A002
+        provider_params: OpenAIParams | None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"model": model, "input": map_response_input(input)}
+        if provider_params is not None:
+            body.update(OpenAIProvider._provider_params_kwargs(provider_params))
+            # Responses API uses reasoning={"effort": ...}, not flat reasoning_effort
+            if provider_params.reasoning_effort is not None:
+                body["reasoning"] = {"effort": provider_params.reasoning_effort}
+        return body
+
+    def _stream_body(  # noqa: PLR0913
+        self,
         model: str,
         messages: Sequence[Message],
         temperature: float | None,
@@ -405,35 +407,52 @@ class OpenAIProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: OpenAIParams | None,
     ) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": map_messages(messages),
-        }
+        body = self._build_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params,
+        )  # fmt: skip
+        return {**body, "stream": True, "stream_options": {"include_usage": True}}
+
+    @staticmethod
+    def _build_body(  # noqa: PLR0913
+        model: str,
+        messages: Sequence[Message],
+        temperature: float | None,
+        max_tokens: int | None,
+        top_p: float | None,
+        stop: str | list[str] | None,
+        tools: list[Tool] | None,
+        tool_choice: ToolChoice | None,
+        response_format: ResponseFormat | None,
+        reasoning_effort: Literal["low", "medium", "high"] | None,
+        provider_params: OpenAIParams | None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"model": model, "messages": map_messages(messages)}
         if temperature is not None:
-            kwargs["temperature"] = temperature
+            body["temperature"] = temperature
         if max_tokens is not None:
             if model.startswith(("gpt-5", "o1", "o3", "o4")):
-                kwargs["max_completion_tokens"] = max_tokens
+                body["max_completion_tokens"] = max_tokens
             else:
-                kwargs["max_tokens"] = max_tokens
+                body["max_tokens"] = max_tokens
         if top_p is not None:
-            kwargs["top_p"] = top_p
+            body["top_p"] = top_p
         if stop is not None:
-            kwargs["stop"] = stop
+            body["stop"] = stop
         if tools is not None:
-            kwargs["tools"] = map_tools(tools)
+            body["tools"] = map_tools(tools)
         if tool_choice is not None:
-            kwargs["tool_choice"] = map_tool_choice(tool_choice)
+            body["tool_choice"] = map_tool_choice(tool_choice)
         if response_format is not None:
-            kwargs["response_format"] = map_response_format(response_format)
+            body["response_format"] = map_response_format(response_format)
         if reasoning_effort is not None:
-            kwargs["reasoning_effort"] = reasoning_effort
+            body["reasoning_effort"] = reasoning_effort
         if provider_params is not None:
-            kwargs.update(OpenAIProvider._provider_params_kwargs(provider_params))
+            body.update(OpenAIProvider._provider_params_kwargs(provider_params))
             # Chat Completions uses flat reasoning_effort; provider_params overrides top-level
             if provider_params.reasoning_effort is not None:
-                kwargs["reasoning_effort"] = provider_params.reasoning_effort
-        return kwargs
+                body["reasoning_effort"] = provider_params.reasoning_effort
+        return body
 
     @staticmethod
     def _provider_params_kwargs(params: OpenAIParams) -> dict[str, Any]:

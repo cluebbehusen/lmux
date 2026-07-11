@@ -1,4 +1,6 @@
-"""Map OpenAI SDK exceptions to lmux exception hierarchy."""
+"""Map HTTP responses and transport errors to the lmux exception hierarchy."""
+
+from typing import TYPE_CHECKING
 
 from lmux.exceptions import (
     AuthenticationError,
@@ -10,49 +12,63 @@ from lmux.exceptions import (
     TimeoutError,  # noqa: A004
 )
 
+if TYPE_CHECKING:
+    import httpx
+
 PROVIDER = "openai"
 
+_AUTH = 401
+_FORBIDDEN = 403
+_BAD_REQUEST = 400
+_NOT_FOUND = 404
+_RATE_LIMIT = 429
 
-def map_openai_error(error: Exception) -> LmuxError:  # noqa: PLR0911
-    """Convert an OpenAI SDK exception to the corresponding lmux exception."""
-    import openai  # noqa: PLC0415
 
-    if isinstance(error, openai.AuthenticationError):
-        return AuthenticationError(str(error), provider=PROVIDER, status_code=401)
+def raise_for_status(response: "httpx.Response") -> None:
+    """Raise the mapped lmux error for a non-streamed error response."""
+    if response.status_code >= _BAD_REQUEST:
+        raise error_from_response(response)
 
-    if isinstance(error, openai.RateLimitError):
-        retry_after = _extract_retry_after(error)
-        return RateLimitError(str(error), provider=PROVIDER, status_code=429, retry_after=retry_after)
 
-    if isinstance(error, openai.BadRequestError):
-        return InvalidRequestError(str(error), provider=PROVIDER, status_code=400)
+def error_from_response(response: "httpx.Response") -> LmuxError:
+    """Map an HTTP error response to an lmux exception (body must be readable)."""
+    code = response.status_code
+    msg = _message(response)
+    if code in (_AUTH, _FORBIDDEN):
+        return AuthenticationError(msg, provider=PROVIDER, status_code=code)
+    if code == _RATE_LIMIT:
+        return RateLimitError(msg, provider=PROVIDER, status_code=code, retry_after=_retry_after(response))
+    if code == _BAD_REQUEST:
+        return InvalidRequestError(msg, provider=PROVIDER, status_code=code)
+    if code == _NOT_FOUND:
+        return NotFoundError(msg, provider=PROVIDER, status_code=code)
+    return ProviderError(msg, provider=PROVIDER, status_code=code)
 
-    if isinstance(error, openai.NotFoundError):
-        return NotFoundError(str(error), provider=PROVIDER, status_code=404)
 
-    if isinstance(error, openai.InternalServerError):
-        status = error.status_code
-        return ProviderError(str(error), provider=PROVIDER, status_code=status)
+def map_transport_error(error: Exception) -> LmuxError:
+    """Map an httpx transport error (or client-creation failure) to an lmux error."""
+    import httpx  # noqa: PLC0415
 
-    if isinstance(error, openai.APITimeoutError):
+    if isinstance(error, httpx.TimeoutException):
         return TimeoutError(str(error), provider=PROVIDER)
-
-    if isinstance(error, openai.APIError):
-        status: int | None = getattr(error, "status_code", None)
-        return ProviderError(str(error), provider=PROVIDER, status_code=status)
-
     return ProviderError(str(error), provider=PROVIDER)
 
 
-def _extract_retry_after(error: Exception) -> float | None:
-    """Extract Retry-After header value from an OpenAI error response."""
-    response = getattr(error, "response", None)
-    if response is None:
-        return None
-    retry_header = response.headers.get("retry-after")
-    if retry_header is None:
+def _message(response: "httpx.Response") -> str:
+    try:
+        data = response.json()
+    except ValueError:
+        return response.text
+    if isinstance(data, dict) and isinstance(data.get("error"), dict):
+        return str(data["error"].get("message") or response.text)
+    return response.text
+
+
+def _retry_after(response: "httpx.Response") -> float | None:
+    header = response.headers.get("retry-after")
+    if header is None:
         return None
     try:
-        return float(retry_header)
-    except (ValueError, TypeError):
+        return float(header)
+    except ValueError:
         return None

@@ -1,13 +1,19 @@
-"""Lazy OpenAI SDK loading internals.
+"""HTTP client factories for the OpenAI provider."""
 
-Client creation is isolated here so tests can easily mock it
-without patching sys.modules or using TYPE_CHECKING tricks.
-"""
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
-from typing import TYPE_CHECKING, Any
+from lmux._http import create_async_client as _create_async
+from lmux._http import create_sync_client as _create_sync
 
 if TYPE_CHECKING:
-    import openai
+    import httpx
+
+DEFAULT_BASE_URL = "https://api.openai.com/v1"
+
+
+def _headers(api_key: str) -> Mapping[str, str]:
+    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
 def create_sync_client(
@@ -16,18 +22,11 @@ def create_sync_client(
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
-) -> "openai.OpenAI":
-    """Create an openai.OpenAI client, lazily importing the SDK."""
-    import openai  # noqa: PLC0415
-
-    kwargs: dict[str, Any] = {"api_key": api_key}
-    if base_url is not None:
-        kwargs["base_url"] = base_url
-    if timeout is not None:
-        kwargs["timeout"] = timeout
-    if max_retries is not None:
-        kwargs["max_retries"] = max_retries
-    return openai.OpenAI(**kwargs)
+) -> "httpx.Client":
+    """Create an httpx client for the OpenAI API."""
+    return _create_sync(
+        base_url=base_url or DEFAULT_BASE_URL, headers=_headers(api_key), timeout=timeout, max_retries=max_retries
+    )
 
 
 def create_async_client(
@@ -36,15 +35,8 @@ def create_async_client(
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
-) -> "openai.AsyncOpenAI":
-    """Create an openai.AsyncOpenAI client, lazily importing the SDK."""
-    import openai  # noqa: PLC0415
-
-    kwargs: dict[str, Any] = {"api_key": api_key}
-    if base_url is not None:
-        kwargs["base_url"] = base_url
-    if timeout is not None:
-        kwargs["timeout"] = timeout
-    if max_retries is not None:
-        kwargs["max_retries"] = max_retries
-    return openai.AsyncOpenAI(**kwargs)
+) -> "httpx.AsyncClient":
+    """Create an async httpx client for the OpenAI API."""
+    return _create_async(
+        base_url=base_url or DEFAULT_BASE_URL, headers=_headers(api_key), timeout=timeout, max_retries=max_retries
+    )
