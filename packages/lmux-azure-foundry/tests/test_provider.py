@@ -1,42 +1,43 @@
-"""Tests for Azure AI Foundry provider."""
+"""Tests for the Azure AI Foundry provider (SDK-lite, respx)."""
 
 import asyncio
+import json
 from collections.abc import Callable
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
-import openai
+import httpx
 import pytest
-from openai.types.chat import ChatCompletion, ChatCompletionChunk, ChatCompletionMessage
-from openai.types.chat.chat_completion import Choice
-from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
-from openai.types.chat.chat_completion_chunk import ChoiceDelta
-from openai.types.completion_usage import CompletionUsage
-from openai.types.create_embedding_response import CreateEmbeddingResponse
-from openai.types.create_embedding_response import Usage as EmbUsage
-from openai.types.embedding import Embedding
+import respx
 from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError
-from lmux.types import (
-    FunctionDefinition,
-    JsonObjectResponseFormat,
-    ResponseInputMessage,
-    Tool,
-    UserMessage,
-)
+from lmux.types import FunctionDefinition, JsonObjectResponseFormat, ResponseInputMessage, Tool, UserMessage
 from lmux_azure_foundry import preload
 from lmux_azure_foundry.auth import AzureAdToken
 from lmux_azure_foundry.params import AzureFoundryParams
 from lmux_azure_foundry.provider import AzureFoundryProvider
 
+ENDPOINT = "https://test.openai.azure.com/"
+API_VERSION = "2025-04-01-preview"
+
+
+def _chat_url(model: str) -> str:
+    return f"https://test.openai.azure.com/openai/deployments/{model}/chat/completions"
+
+
+def _emb_url(model: str) -> str:
+    return f"https://test.openai.azure.com/openai/deployments/{model}/embeddings"
+
+
+RESPONSES_URL = "https://test.openai.azure.com/openai/responses"
+
+
 # MARK: Shared Fixtures
 
 
 class FakeAuth:
-    """Fake auth provider that returns an API key."""
-
     def get_credentials(self) -> str:
         return "fake-api-key"
 
@@ -45,27 +46,23 @@ class FakeAuth:
 
 
 class FakeTokenAuth:
-    """Fake auth provider that returns an AzureAdToken."""
-
     def get_credentials(self) -> AzureAdToken:
         return AzureAdToken(token="fake-ad-token")  # noqa: S106
 
     async def aget_credentials(self) -> AzureAdToken:
-        return AzureAdToken(token="fake-ad-token")  # pragma: no cover  # noqa: S106
+        return AzureAdToken(token="fake-ad-token")  # noqa: S106
 
 
 class FakeTokenProviderAuth:
-    """Fake auth provider that returns a token provider callable."""
-
     @staticmethod
     def _provider() -> str:
-        return "fresh-token"  # pragma: no cover
+        return "fresh-token"
 
     def get_credentials(self) -> Callable[[], str]:
         return self._provider
 
     async def aget_credentials(self) -> Callable[[], str]:
-        return self._provider  # pragma: no cover
+        return self._provider
 
 
 @pytest.fixture
@@ -74,422 +71,217 @@ def fake_auth() -> FakeAuth:
 
 
 @pytest.fixture
-def chat_completion() -> ChatCompletion:
-    return ChatCompletion(
-        id="chatcmpl-123",
-        choices=[
-            Choice(
-                finish_reason="stop",
-                index=0,
-                message=ChatCompletionMessage(content="Hello!", role="assistant"),
-            )
+def sync_provider(fake_auth: FakeAuth) -> AzureFoundryProvider:
+    return AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
+
+
+@pytest.fixture
+def async_provider(fake_auth: FakeAuth) -> AzureFoundryProvider:
+    return AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
+
+
+@pytest.fixture
+def completion() -> dict[str, Any]:
+    return {
+        "id": "chatcmpl-123",
+        "model": "gpt-4o",
+        "object": "chat.completion",
+        "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "Hello!"}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
+
+
+@pytest.fixture
+def embedding_response() -> dict[str, Any]:
+    return {
+        "model": "text-embedding-3-small",
+        "object": "list",
+        "data": [{"index": 0, "embedding": [0.1, 0.2, 0.3], "object": "embedding"}],
+        "usage": {"prompt_tokens": 5, "total_tokens": 5},
+    }
+
+
+@pytest.fixture
+def responses_body() -> dict[str, Any]:
+    return {
+        "id": "resp_123",
+        "model": "gpt-5-pro",
+        "output": [
+            {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Hi!"}]},
         ],
-        created=1234567890,
-        model="gpt-4o",
-        object="chat.completion",
-        usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-    )
+        "usage": {"input_tokens": 10, "output_tokens": 5},
+    }
 
 
-@pytest.fixture
-def stream_chunks() -> list[ChatCompletionChunk]:
-    return [
-        ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[ChunkChoice(delta=ChoiceDelta(content="Hel"), index=0, finish_reason=None)],
-            created=1234567890,
-            model="gpt-4o",
-            object="chat.completion.chunk",
-        ),
-        ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[ChunkChoice(delta=ChoiceDelta(content="lo!"), index=0, finish_reason=None)],
-            created=1234567890,
-            model="gpt-4o",
-            object="chat.completion.chunk",
-        ),
-        ChatCompletionChunk(
-            id="chatcmpl-123",
-            choices=[ChunkChoice(delta=ChoiceDelta(), index=0, finish_reason="stop")],
-            created=1234567890,
-            model="gpt-4o",
-            object="chat.completion.chunk",
-            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-        ),
+def _sse_stream() -> bytes:
+    chunks = [
+        {"model": "gpt-4o", "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}]},
+        {"model": "gpt-4o", "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "lo!"}}]},
+        {
+            "model": "gpt-4o",
+            "choices": [{"index": 0, "finish_reason": "stop", "delta": {}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        },
     ]
+    lines = [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
+    return ("\n\n".join(lines) + "\n\n").encode()
 
 
-@pytest.fixture
-def embedding_response() -> CreateEmbeddingResponse:
-    return CreateEmbeddingResponse(
-        data=[Embedding(embedding=[0.1, 0.2, 0.3], index=0, object="embedding")],
-        model="text-embedding-3-small",
-        object="list",
-        usage=EmbUsage(prompt_tokens=5, total_tokens=5),
-    )
-
-
-@pytest.fixture
-def mock_sync_client() -> MagicMock:
-    return MagicMock()
-
-
-@pytest.fixture
-def mock_sync_create(mock_sync_client: MagicMock, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_azure_foundry.provider.create_sync_client", return_value=mock_sync_client)
-
-
-@pytest.fixture
-def sync_provider(fake_auth: FakeAuth, mock_sync_create: MagicMock) -> AzureFoundryProvider:
-    assert mock_sync_create  # fixture activates the patch
-    return AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-
-
-@pytest.fixture
-def mock_async_client() -> MagicMock:
-    mock = MagicMock()
-    mock.chat.completions.create = AsyncMock()
-    mock.embeddings.create = AsyncMock()
-    mock.responses.create = AsyncMock()
-    mock.close = AsyncMock()
-    return mock
-
-
-@pytest.fixture
-def responses_mock() -> MagicMock:
-    mock_response = MagicMock()
-    mock_response.id = "resp_123"
-    mock_response.output_text = "Hi!"
-    mock_response.model = "gpt-5-pro"
-    mock_response.usage = MagicMock()
-    mock_response.usage.input_tokens = 10
-    mock_response.usage.output_tokens = 5
-    mock_response.usage.input_tokens_details = None
-    mock_response.usage.output_tokens_details = None
-    return mock_response
-
-
-@pytest.fixture
-def mock_async_create(mock_async_client: MagicMock, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_azure_foundry.provider.create_async_client", return_value=mock_async_client)
-
-
-@pytest.fixture
-def async_provider(fake_auth: FakeAuth, mock_async_create: MagicMock) -> AzureFoundryProvider:
-    assert mock_async_create  # fixture activates the patch
-    return AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-
-
-@pytest.fixture
-def bad_request_error() -> openai.BadRequestError:
-    response = MagicMock()
-    response.status_code = 400
-    response.headers = {}
-    return openai.BadRequestError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def auth_error() -> openai.AuthenticationError:
-    response = MagicMock()
-    response.status_code = 401
-    response.headers = {}
-    return openai.AuthenticationError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def server_error() -> openai.InternalServerError:
-    response = MagicMock()
-    response.status_code = 500
-    response.headers = {}
-    return openai.InternalServerError(message="test error", response=response, body=None)
-
-
-@pytest.fixture
-def failing_sync_create(auth_error: openai.AuthenticationError, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_azure_foundry.provider.create_sync_client", side_effect=auth_error)
-
-
-@pytest.fixture
-def failing_async_create(auth_error: openai.AuthenticationError, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=auth_error)
-
-
-@pytest.fixture
-def failing_sync_create_server(server_error: openai.InternalServerError, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_azure_foundry.provider.create_sync_client", side_effect=server_error)
-
-
-@pytest.fixture
-def failing_async_create_server(server_error: openai.InternalServerError, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=server_error)
-
-
-@pytest.fixture
-def failing_sync_create_bad_request(bad_request_error: openai.BadRequestError, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_azure_foundry.provider.create_sync_client", side_effect=bad_request_error)
-
-
-@pytest.fixture
-def failing_async_create_bad_request(bad_request_error: openai.BadRequestError, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=bad_request_error)
+def _ok_chat(completion: dict[str, Any], respx_mock: respx.MockRouter, model: str = "gpt-4o") -> respx.Route:
+    return respx_mock.post(_chat_url(model)).mock(return_value=httpx.Response(200, json=completion))
 
 
 # MARK: Chat
 
 
 class TestChat:
-    def test_basic_chat(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    def test_basic(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
+        route = _ok_chat(completion, respx_mock)
         result = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
-
         assert result.content == "Hello!"
         assert result.model == "gpt-4o"
         assert result.provider == "azure-foundry"
         assert result.usage is not None
         assert result.usage.input_tokens == 10
-        assert result.usage.output_tokens == 5
-        mock_sync_client.chat.completions.create.assert_called_once()
-        mock_sync_client.embeddings.create.assert_not_called()
+        assert route.called
 
-    def test_chat_with_params(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    def test_request_url_query_and_headers(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
+        route = _ok_chat(completion, respx_mock)
+        sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        request = route.calls.last.request
+        assert request.url.params.get("api-version") == API_VERSION
+        assert request.headers.get("api-key") == "fake-api-key"
+        assert "authorization" not in request.headers
 
-        _ = sync_provider.chat(
+    def test_request_body(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_chat(completion, respx_mock)
+        sync_provider.chat(
+            "gpt-4o", [UserMessage(content="Hi")], temperature=0.5, max_tokens=100, top_p=0.9, stop=["END"]
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body == {
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "stream": False,
+            "temperature": 0.5,
+            "max_tokens": 100,
+            "top_p": 0.9,
+            "stop": ["END"],
+        }
+
+    def test_max_completion_tokens_for_newer_models(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(_chat_url("gpt-5-mini")).mock(return_value=httpx.Response(200, json=completion))
+        sync_provider.chat("gpt-5-mini", [UserMessage(content="Hi")], max_tokens=100)
+        body = json.loads(route.calls.last.request.content)
+        assert body["max_completion_tokens"] == 100
+        assert "max_tokens" not in body
+
+    def test_tools_choice_and_format(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_chat(completion, respx_mock)
+        sync_provider.chat(
             "gpt-4o",
             [UserMessage(content="Hi")],
-            temperature=0.5,
-            max_tokens=100,
-            top_p=0.9,
-            stop=["END"],
+            tools=[Tool(function=FunctionDefinition(name="get_weather"))],
+            tool_choice="required",
+            response_format=JsonObjectResponseFormat(),
         )
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"type": "function", "function": {"name": "get_weather"}}]
+        assert body["tool_choice"] == "required"
+        assert body["response_format"] == {"type": "json_object"}
 
-        mock_sync_client.chat.completions.create.assert_called_once_with(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=False,
-            temperature=0.5,
-            max_tokens=100,
-            top_p=0.9,
-            stop=["END"],
-        )
-
-    def test_chat_maps_max_tokens_to_max_completion_tokens_for_newer_models(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    def test_reasoning_effort(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
+        route = respx_mock.post(_chat_url("o3")).mock(return_value=httpx.Response(200, json=completion))
+        sync_provider.chat("o3", [UserMessage(content="Hi")], reasoning_effort="high")
+        body = json.loads(route.calls.last.request.content)
+        assert body["reasoning_effort"] == "high"
 
-        _ = sync_provider.chat("gpt-5-mini", [UserMessage(content="Hi")], max_tokens=100)
-
-        mock_sync_client.chat.completions.create.assert_called_once_with(
-            model="gpt-5-mini",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=False,
-            max_completion_tokens=100,
-        )
-
-    def test_chat_with_tools(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        tools = [Tool(function=FunctionDefinition(name="get_weather"))]
-        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], tools=tools)
-
-        mock_sync_client.chat.completions.create.assert_called_once_with(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=False,
-            tools=[{"type": "function", "function": {"name": "get_weather"}}],
-        )
-
-    def test_chat_with_tool_choice(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], tool_choice="required")
-
-        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert call_kwargs["tool_choice"] == "required"
-
-    def test_chat_with_response_format(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat())
-
-        mock_sync_client.chat.completions.create.assert_called_once_with(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=False,
-            response_format={"type": "json_object"},
-        )
-
-    def test_chat_with_provider_params(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat(
-            "gpt-4o",
-            [UserMessage(content="Hi")],
-            provider_params=AzureFoundryParams(seed=42, user="u1"),
-        )
-
-        mock_sync_client.chat.completions.create.assert_called_once_with(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=False,
-            seed=42,
-            user="u1",
-        )
-
-    def test_chat_with_reasoning_effort(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat(
-            "o3",
-            [UserMessage(content="Hi")],
-            provider_params=AzureFoundryParams(reasoning_effort="high"),
-        )
-
-        mock_sync_client.chat.completions.create.assert_called_once_with(
-            model="o3",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=False,
-            reasoning_effort="high",
-        )
-
-    def test_chat_with_top_level_reasoning_effort(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat(
-            "o3",
-            [UserMessage(content="Hi")],
-            reasoning_effort="high",
-        )
-
-        mock_sync_client.chat.completions.create.assert_called_once_with(
-            model="o3",
-            messages=[{"role": "user", "content": "Hi"}],
-            stream=False,
-            reasoning_effort="high",
-        )
-
-    def test_chat_exception_mapping(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        bad_request_error: openai.BadRequestError,
-    ) -> None:
-        mock_sync_client.chat.completions.create.side_effect = bad_request_error
-
+    def test_status_error_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(400, json={"error": {"message": "bad"}}))
         with pytest.raises(InvalidRequestError):
-            _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
+            sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
 
-    def test_chat_client_creation_error_mapped(
-        self,
-        fake_auth: FakeAuth,
-        failing_sync_create: MagicMock,
+    def test_transport_error_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_chat_url("gpt-4o")).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
+
+    def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        mocker.patch("lmux_azure_foundry.provider.create_sync_client", side_effect=RuntimeError("boom"))
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
+        with pytest.raises(ProviderError, match="boom"):
+            provider.chat("gpt-4o", [UserMessage(content="Hi")])
+
+    def test_cost_calculated(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-        with pytest.raises(AuthenticationError):
-            _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
-        failing_sync_create.assert_called_once()
-
-    def test_chat_cost_calculated(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
+        _ok_chat(completion, respx_mock)
         result = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
-
         assert result.cost is not None
         assert result.cost.total_cost > 0
 
-    def test_chat_data_zone_multiplier(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    def test_data_zone_multiplier(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
+        _ok_chat(completion, respx_mock)
         result_global = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
         result_dz = sync_provider.chat(
-            "gpt-4o",
-            [UserMessage(content="Hi")],
-            provider_params=AzureFoundryParams(deployment_type="data_zone"),
+            "gpt-4o", [UserMessage(content="Hi")], provider_params=AzureFoundryParams(deployment_type="data_zone")
         )
-
         assert result_global.cost is not None
         assert result_dz.cost is not None
         assert result_dz.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
 
-    def test_chat_regional_multiplier(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    def test_regional_multiplier(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
+        _ok_chat(completion, respx_mock)
         result_global = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
         result_regional = sync_provider.chat(
-            "gpt-4o",
-            [UserMessage(content="Hi")],
-            provider_params=AzureFoundryParams(deployment_type="regional"),
+            "gpt-4o", [UserMessage(content="Hi")], provider_params=AzureFoundryParams(deployment_type="regional")
         )
-
         assert result_global.cost is not None
         assert result_regional.cost is not None
         assert result_regional.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
 
-    def test_chat_no_multiplier_without_params(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    def test_no_multiplier_with_global(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
+        _ok_chat(completion, respx_mock)
         result1 = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
         result2 = sync_provider.chat(
-            "gpt-4o",
-            [UserMessage(content="Hi")],
-            provider_params=AzureFoundryParams(deployment_type="global"),
+            "gpt-4o", [UserMessage(content="Hi")], provider_params=AzureFoundryParams(deployment_type="global")
         )
-
         assert result1.cost is not None
         assert result2.cost is not None
         assert result1.cost.total_cost == pytest.approx(result2.cost.total_cost)
 
-    def test_chat_no_multiplier_with_none_cost(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock
+    def test_no_multiplier_with_none_cost(
+        self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
     ) -> None:
-        unknown_completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="stop",
-                    index=0,
-                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
-                )
-            ],
-            created=1234567890,
-            model="totally-unknown-model",
-            object="chat.completion",
-            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-        )
-        mock_sync_client.chat.completions.create.return_value = unknown_completion
-
+        unknown = {
+            "model": "totally-unknown-model",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "Hi"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+        respx_mock.post(_chat_url("totally-unknown-model")).mock(return_value=httpx.Response(200, json=unknown))
         result = sync_provider.chat(
             "totally-unknown-model",
             [UserMessage(content="Hi")],
             provider_params=AzureFoundryParams(deployment_type="data_zone"),
         )
-
         assert result.cost is None
 
 
@@ -497,438 +289,357 @@ class TestChat:
 
 
 class TestAchat:
-    async def test_basic_achat(
-        self, async_provider: AzureFoundryProvider, mock_async_client: MagicMock, chat_completion: ChatCompletion
+    async def test_basic(
+        self, async_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
-
+        _ok_chat(completion, respx_mock)
         result = await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
-
         assert result.content == "Hello!"
         assert result.provider == "azure-foundry"
-        mock_async_client.chat.completions.create.assert_awaited_once()
-        mock_async_client.embeddings.create.assert_not_called()
 
-    async def test_achat_client_creation_error_mapped(
-        self,
-        fake_auth: FakeAuth,
-        failing_async_create: MagicMock,
+    async def test_request_query_and_headers(
+        self, async_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-        with pytest.raises(AuthenticationError):
-            _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
-        failing_async_create.assert_called_once()
+        route = _ok_chat(completion, respx_mock)
+        await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        request = route.calls.last.request
+        assert request.url.params.get("api-version") == API_VERSION
+        assert request.headers.get("api-key") == "fake-api-key"
 
-    async def test_achat_exception_mapping(
-        self,
-        async_provider: AzureFoundryProvider,
-        mock_async_client: MagicMock,
-        auth_error: openai.AuthenticationError,
+    async def test_status_error_mapped(
+        self, async_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
     ) -> None:
-        mock_async_client.chat.completions.create.side_effect = auth_error
-
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(401, json={"error": {"message": "no"}}))
         with pytest.raises(AuthenticationError):
-            _ = await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
+            await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
+
+    async def test_transport_error_mapped(
+        self, async_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.post(_chat_url("gpt-4o")).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
+
+    async def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=RuntimeError("boom"))
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
+        with pytest.raises(ProviderError, match="boom"):
+            await provider.achat("gpt-4o", [UserMessage(content="Hi")])
 
 
 # MARK: ChatStream
 
 
 class TestChatStream:
-    def test_yields_chunks(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = iter(stream_chunks)
-
+    def test_yields_and_costs(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        route = respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=_sse_stream()))
         chunks = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
-
-        assert len(chunks) == 3
-        assert chunks[0].delta == "Hel"
-        assert chunks[1].delta == "lo!"
+        assert [c.delta for c in chunks[:2]] == ["Hel", "lo!"]
         assert chunks[2].finish_reason == "stop"
-        assert chunks[2].model == "gpt-4o"
-        assert chunks[2].provider == "azure-foundry"
-
-    def test_cost_on_final_chunk(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = iter(stream_chunks)
-
-        chunks = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
-
         assert chunks[0].cost is None
-        assert chunks[1].cost is None
         assert chunks[2].cost is not None
         assert chunks[2].cost.total_cost > 0
+        body = json.loads(route.calls.last.request.content)
+        assert body["stream"] is True
+        assert body["stream_options"] == {"include_usage": True}
 
-    def test_stream_data_zone_multiplier(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = iter(stream_chunks)
-
+    def test_data_zone_multiplier(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=_sse_stream()))
         chunks_global = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
-
-        mock_sync_client.chat.completions.create.return_value = iter(stream_chunks)
-
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=_sse_stream()))
         chunks_dz = list(
             sync_provider.chat_stream(
-                "gpt-4o",
-                [UserMessage(content="Hi")],
-                provider_params=AzureFoundryParams(deployment_type="data_zone"),
+                "gpt-4o", [UserMessage(content="Hi")], provider_params=AzureFoundryParams(deployment_type="data_zone")
             )
         )
-
         assert chunks_global[2].cost is not None
         assert chunks_dz[2].cost is not None
         assert chunks_dz[2].cost.total_cost == pytest.approx(chunks_global[2].cost.total_cost * 1.1)
 
-    def test_stream_client_creation_error_mapped(
-        self,
-        fake_auth: FakeAuth,
-        failing_sync_create_server: MagicMock,
-    ) -> None:
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+    def test_status_error_on_open(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(500, json={"error": {"message": "boom"}}))
         with pytest.raises(ProviderError):
-            _ = list(provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
-        failing_sync_create_server.assert_called_once()
+            list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
 
-    def test_stream_exception_on_create(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        server_error: openai.InternalServerError,
-    ) -> None:
-        mock_sync_client.chat.completions.create.side_effect = server_error
-
+    def test_malformed_chunk_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=b"data: {nope}\n\n"))
         with pytest.raises(ProviderError):
-            _ = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
+            list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
 
-    def test_stream_exception_during_iteration(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
-        server_error: openai.InternalServerError,
-    ) -> None:
-        def _failing_iter() -> Any:  # noqa: ANN401
-            yield stream_chunks[0]
-            raise server_error
+    def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        mocker.patch("lmux_azure_foundry.provider.create_sync_client", side_effect=RuntimeError("boom"))
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
+        with pytest.raises(ProviderError, match="boom"):
+            list(provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
 
-        mock_sync_client.chat.completions.create.return_value = _failing_iter()
-
-        with pytest.raises(ProviderError, match="test error"):
-            _ = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
+    def test_stream_without_done(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        chunk = {"model": "gpt-4o", "choices": [{"index": 0, "finish_reason": "stop", "delta": {"content": "x"}}]}
+        respx_mock.post(_chat_url("gpt-4o")).mock(
+            return_value=httpx.Response(200, content=(f"data: {json.dumps(chunk)}\n\n").encode())
+        )
+        chunks = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
+        assert [c.delta for c in chunks] == ["x"]
 
 
 # MARK: AchatStream
 
 
 class TestAchatStream:
-    async def test_yields_chunks(
-        self,
-        async_provider: AzureFoundryProvider,
-        mock_async_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
-    ) -> None:
-        async def _async_iter() -> Any:  # noqa: ANN401
-            for chunk in stream_chunks:
-                yield chunk
-
-        mock_async_client.chat.completions.create.return_value = _async_iter()
-
-        chunks = [chunk async for chunk in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")])]
-
-        assert len(chunks) == 3
-        assert chunks[0].delta == "Hel"
-        assert chunks[2].finish_reason == "stop"
+    async def test_yields_and_costs(self, async_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=_sse_stream()))
+        chunks = [c async for c in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")])]
+        assert [c.delta for c in chunks[:2]] == ["Hel", "lo!"]
         assert chunks[2].cost is not None
-        assert chunks[2].model == "gpt-4o"
-        assert chunks[2].provider == "azure-foundry"
 
-    async def test_achat_stream_data_zone_multiplier(
-        self,
-        async_provider: AzureFoundryProvider,
-        mock_async_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
+    async def test_status_error_on_open(
+        self, async_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
     ) -> None:
-        async def _async_iter_global() -> Any:  # noqa: ANN401
-            for chunk in stream_chunks:
-                yield chunk
-
-        async def _async_iter_dz() -> Any:  # noqa: ANN401
-            for chunk in stream_chunks:
-                yield chunk
-
-        mock_async_client.chat.completions.create.return_value = _async_iter_global()
-        chunks_global = [chunk async for chunk in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")])]
-
-        mock_async_client.chat.completions.create.return_value = _async_iter_dz()
-        chunks_dz = [
-            chunk
-            async for chunk in async_provider.achat_stream(
-                "gpt-4o",
-                [UserMessage(content="Hi")],
-                provider_params=AzureFoundryParams(deployment_type="data_zone"),
-            )
-        ]
-
-        assert chunks_global[2].cost is not None
-        assert chunks_dz[2].cost is not None
-        assert chunks_dz[2].cost.total_cost == pytest.approx(chunks_global[2].cost.total_cost * 1.1)
-
-    async def test_achat_stream_client_creation_error_mapped(
-        self,
-        fake_auth: FakeAuth,
-        failing_async_create_server: MagicMock,
-    ) -> None:
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(500, json={"error": {"message": "boom"}}))
         with pytest.raises(ProviderError):
+            async for _ in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")]):
+                pass  # pragma: no cover
+
+    async def test_malformed_chunk_mapped(
+        self, async_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=b"data: {nope}\n\n"))
+        with pytest.raises(ProviderError):
+            async for _ in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")]):
+                pass  # pragma: no cover
+
+    async def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=RuntimeError("boom"))
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
+        with pytest.raises(ProviderError, match="boom"):
             async for _ in provider.achat_stream("gpt-4o", [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
-        failing_async_create_server.assert_called_once()
 
-    async def test_exception_on_create(
-        self,
-        async_provider: AzureFoundryProvider,
-        mock_async_client: MagicMock,
-        server_error: openai.InternalServerError,
+    async def test_stream_without_done(
+        self, async_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
     ) -> None:
-        mock_async_client.chat.completions.create.side_effect = server_error
-
-        with pytest.raises(ProviderError):
-            async for _ in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")]):
-                pass  # pragma: no cover
-
-    async def test_exception_during_iteration(
-        self,
-        async_provider: AzureFoundryProvider,
-        mock_async_client: MagicMock,
-        stream_chunks: list[ChatCompletionChunk],
-        server_error: openai.InternalServerError,
-    ) -> None:
-        async def _failing_async_iter() -> Any:  # noqa: ANN401
-            yield stream_chunks[0]
-            raise server_error
-
-        mock_async_client.chat.completions.create.return_value = _failing_async_iter()
-
-        with pytest.raises(ProviderError, match="test error"):
-            async for _ in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")]):
-                pass
+        chunk = {"model": "gpt-4o", "choices": [{"index": 0, "finish_reason": "stop", "delta": {"content": "x"}}]}
+        respx_mock.post(_chat_url("gpt-4o")).mock(
+            return_value=httpx.Response(200, content=(f"data: {json.dumps(chunk)}\n\n").encode())
+        )
+        chunks = [c async for c in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")])]
+        assert [c.delta for c in chunks] == ["x"]
 
 
 # MARK: Embed
 
 
 class TestEmbed:
-    def test_basic_embed(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        embedding_response: CreateEmbeddingResponse,
+    def test_basic(
+        self, sync_provider: AzureFoundryProvider, embedding_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.embeddings.create.return_value = embedding_response
-
+        route = respx_mock.post(_emb_url("text-embedding-3-small")).mock(
+            return_value=httpx.Response(200, json=embedding_response)
+        )
         result = sync_provider.embed("text-embedding-3-small", "hello")
-
         assert result.embeddings == [[0.1, 0.2, 0.3]]
         assert result.provider == "azure-foundry"
-        mock_sync_client.embeddings.create.assert_called_once_with(model="text-embedding-3-small", input="hello")
-        mock_sync_client.chat.completions.create.assert_not_called()
+        body = json.loads(route.calls.last.request.content)
+        assert body == {"model": "text-embedding-3-small", "input": "hello"}
+        assert route.calls.last.request.url.params.get("api-version") == API_VERSION
 
-    def test_embed_list_input(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        embedding_response: CreateEmbeddingResponse,
+    def test_list_input_and_dimensions(
+        self, sync_provider: AzureFoundryProvider, embedding_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.embeddings.create.return_value = embedding_response
-
-        _ = sync_provider.embed("text-embedding-3-small", ["hello", "world"])
-
-        mock_sync_client.embeddings.create.assert_called_once_with(
-            model="text-embedding-3-small", input=["hello", "world"]
+        route = respx_mock.post(_emb_url("text-embedding-3-small")).mock(
+            return_value=httpx.Response(200, json=embedding_response)
         )
+        sync_provider.embed("text-embedding-3-small", ["hello", "world"], dimensions=256)
+        body = json.loads(route.calls.last.request.content)
+        assert body == {"model": "text-embedding-3-small", "input": ["hello", "world"], "dimensions": 256}
 
-    def test_embed_with_dimensions(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        embedding_response: CreateEmbeddingResponse,
+    def test_provider_params(
+        self, sync_provider: AzureFoundryProvider, embedding_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.embeddings.create.return_value = embedding_response
-
-        _ = sync_provider.embed("text-embedding-3-small", "hello", dimensions=256)
-
-        mock_sync_client.embeddings.create.assert_called_once_with(
-            model="text-embedding-3-small", input="hello", dimensions=256
+        route = respx_mock.post(_emb_url("text-embedding-3-small")).mock(
+            return_value=httpx.Response(200, json=embedding_response)
         )
+        sync_provider.embed("text-embedding-3-small", "hello", provider_params=AzureFoundryParams(user="u1"))
+        body = json.loads(route.calls.last.request.content)
+        assert body["user"] == "u1"
 
-    async def test_aembed_with_dimensions(
-        self,
-        async_provider: AzureFoundryProvider,
-        mock_async_client: MagicMock,
-        embedding_response: CreateEmbeddingResponse,
-    ) -> None:
-        mock_async_client.embeddings.create.return_value = embedding_response
-
-        _ = await async_provider.aembed("text-embedding-3-small", "hello", dimensions=256)
-
-        mock_async_client.embeddings.create.assert_awaited_once_with(
-            model="text-embedding-3-small", input="hello", dimensions=256
+    def test_status_error_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_emb_url("text-embedding-3-small")).mock(
+            return_value=httpx.Response(400, json={"error": {"message": "bad"}})
         )
-
-    def test_embed_client_creation_error_mapped(
-        self,
-        fake_auth: FakeAuth,
-        failing_sync_create_bad_request: MagicMock,
-    ) -> None:
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
         with pytest.raises(InvalidRequestError):
-            _ = provider.embed("text-embedding-3-small", "hello")
-        failing_sync_create_bad_request.assert_called_once()
+            sync_provider.embed("text-embedding-3-small", "hello")
 
-    async def test_aembed_client_creation_error_mapped(
-        self,
-        fake_auth: FakeAuth,
-        failing_async_create_bad_request: MagicMock,
+    def test_transport_error_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_emb_url("text-embedding-3-small")).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            sync_provider.embed("text-embedding-3-small", "hello")
+
+    def test_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        mocker.patch("lmux_azure_foundry.provider.create_sync_client", side_effect=RuntimeError("boom"))
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
+        with pytest.raises(ProviderError, match="boom"):
+            provider.embed("text-embedding-3-small", "hello")
+
+    def test_data_zone_multiplier(
+        self, sync_provider: AzureFoundryProvider, embedding_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-        with pytest.raises(InvalidRequestError):
-            _ = await provider.aembed("text-embedding-3-small", "hello")
-        failing_async_create_bad_request.assert_called_once()
-
-    def test_embed_exception_mapping(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        bad_request_error: openai.BadRequestError,
-    ) -> None:
-        mock_sync_client.embeddings.create.side_effect = bad_request_error
-
-        with pytest.raises(InvalidRequestError):
-            _ = sync_provider.embed("text-embedding-3-small", "hello")
-
-    async def test_aembed(
-        self,
-        async_provider: AzureFoundryProvider,
-        mock_async_client: MagicMock,
-        embedding_response: CreateEmbeddingResponse,
-    ) -> None:
-        mock_async_client.embeddings.create.return_value = embedding_response
-
-        result = await async_provider.aembed("text-embedding-3-small", "hello")
-
-        assert result.embeddings == [[0.1, 0.2, 0.3]]
-        mock_async_client.embeddings.create.assert_awaited_once_with(model="text-embedding-3-small", input="hello")
-        mock_async_client.chat.completions.create.assert_not_called()
-
-    def test_embed_with_provider_params(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        embedding_response: CreateEmbeddingResponse,
-    ) -> None:
-        mock_sync_client.embeddings.create.return_value = embedding_response
-
-        _ = sync_provider.embed("text-embedding-3-small", "hello", provider_params=AzureFoundryParams(user="u1"))
-
-        mock_sync_client.embeddings.create.assert_called_once_with(
-            model="text-embedding-3-small", input="hello", user="u1"
+        respx_mock.post(_emb_url("text-embedding-3-small")).mock(
+            return_value=httpx.Response(200, json=embedding_response)
         )
-
-    async def test_aembed_with_provider_params(
-        self,
-        async_provider: AzureFoundryProvider,
-        mock_async_client: MagicMock,
-        embedding_response: CreateEmbeddingResponse,
-    ) -> None:
-        mock_async_client.embeddings.create.return_value = embedding_response
-
-        _ = await async_provider.aembed(
-            "text-embedding-3-small", "hello", provider_params=AzureFoundryParams(user="u1")
-        )
-
-        mock_async_client.embeddings.create.assert_awaited_once_with(
-            model="text-embedding-3-small", input="hello", user="u1"
-        )
-
-    async def test_aembed_exception_mapping(
-        self,
-        async_provider: AzureFoundryProvider,
-        mock_async_client: MagicMock,
-        bad_request_error: openai.BadRequestError,
-    ) -> None:
-        mock_async_client.embeddings.create.side_effect = bad_request_error
-
-        with pytest.raises(InvalidRequestError):
-            _ = await async_provider.aembed("text-embedding-3-small", "hello")
-
-    def test_embed_data_zone_multiplier(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        embedding_response: CreateEmbeddingResponse,
-    ) -> None:
-        mock_sync_client.embeddings.create.return_value = embedding_response
-
         result_global = sync_provider.embed("text-embedding-3-small", "hello")
         result_dz = sync_provider.embed(
-            "text-embedding-3-small",
-            "hello",
-            provider_params=AzureFoundryParams(deployment_type="data_zone"),
+            "text-embedding-3-small", "hello", provider_params=AzureFoundryParams(deployment_type="data_zone")
         )
-
         assert result_global.cost is not None
         assert result_dz.cost is not None
         assert result_dz.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
 
-    async def test_aembed_data_zone_multiplier(
-        self,
-        async_provider: AzureFoundryProvider,
-        mock_async_client: MagicMock,
-        embedding_response: CreateEmbeddingResponse,
+    async def test_aembed(
+        self, async_provider: AzureFoundryProvider, embedding_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_async_client.embeddings.create.return_value = embedding_response
-
-        result_global = await async_provider.aembed("text-embedding-3-small", "hello")
-        result_dz = await async_provider.aembed(
-            "text-embedding-3-small",
-            "hello",
-            provider_params=AzureFoundryParams(deployment_type="data_zone"),
+        route = respx_mock.post(_emb_url("text-embedding-3-small")).mock(
+            return_value=httpx.Response(200, json=embedding_response)
         )
+        result = await async_provider.aembed("text-embedding-3-small", "hello", dimensions=128)
+        assert result.embeddings == [[0.1, 0.2, 0.3]]
+        body = json.loads(route.calls.last.request.content)
+        assert body["dimensions"] == 128
 
+    async def test_aembed_status_error(
+        self, async_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.post(_emb_url("text-embedding-3-small")).mock(
+            return_value=httpx.Response(400, json={"error": {"message": "bad"}})
+        )
+        with pytest.raises(InvalidRequestError):
+            await async_provider.aembed("text-embedding-3-small", "hello")
+
+    async def test_aembed_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=RuntimeError("boom"))
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
+        with pytest.raises(ProviderError, match="boom"):
+            await provider.aembed("text-embedding-3-small", "hello")
+
+
+# MARK: CreateResponse
+
+
+class TestCreateResponse:
+    def test_basic(
+        self, sync_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=responses_body))
+        result = sync_provider.create_response("gpt-5-pro", "Hello")
+        assert result.id == "resp_123"
+        assert result.output_text == "Hi!"
+        assert result.provider == "azure-foundry"
+        assert result.usage is not None
+        assert result.cost is not None
+        body = json.loads(route.calls.last.request.content)
+        assert body == {"model": "gpt-5-pro", "input": "Hello", "stream": False}
+        assert route.calls.last.request.url.params.get("api-version") == API_VERSION
+
+    def test_input_items_mapped(
+        self, sync_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=responses_body))
+        sync_provider.create_response("gpt-5-pro", [ResponseInputMessage(role="user", content="Hello")])
+        body = json.loads(route.calls.last.request.content)
+        assert body["input"] == [{"role": "user", "content": "Hello"}]
+
+    def test_provider_params(
+        self, sync_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=responses_body))
+        sync_provider.create_response(
+            "gpt-5-pro", "Hello", provider_params=AzureFoundryParams(reasoning_effort="low", seed=42, user="u1")
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["reasoning"] == {"effort": "low"}
+        assert body["seed"] == 42
+        assert body["user"] == "u1"
+
+    def test_deployment_multiplier(
+        self, sync_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=responses_body))
+        result_global = sync_provider.create_response("gpt-5-pro", "Hello")
+        result_dz = sync_provider.create_response(
+            "gpt-5-pro", "Hello", provider_params=AzureFoundryParams(deployment_type="data_zone")
+        )
         assert result_global.cost is not None
         assert result_dz.cost is not None
         assert result_dz.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
 
-    def test_embed_no_multiplier_without_params(
-        self,
-        sync_provider: AzureFoundryProvider,
-        mock_sync_client: MagicMock,
-        embedding_response: CreateEmbeddingResponse,
+    def test_status_error_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(401, json={"error": {"message": "no"}}))
+        with pytest.raises(AuthenticationError):
+            sync_provider.create_response("gpt-5-pro", "Hello")
+
+    def test_transport_error_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(RESPONSES_URL).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            sync_provider.create_response("gpt-5-pro", "Hello")
+
+    async def test_acreate_response(
+        self, async_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.embeddings.create.return_value = embedding_response
-
-        result1 = sync_provider.embed("text-embedding-3-small", "hello")
-        result2 = sync_provider.embed(
-            "text-embedding-3-small",
-            "hello",
-            provider_params=AzureFoundryParams(deployment_type="global"),
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=responses_body))
+        result = await async_provider.acreate_response(
+            "gpt-5-pro", "Hello", provider_params=AzureFoundryParams(reasoning_effort="high")
         )
+        assert result.output_text == "Hi!"
+        body = json.loads(route.calls.last.request.content)
+        assert body["reasoning"] == {"effort": "high"}
 
-        assert result1.cost is not None
-        assert result2.cost is not None
-        assert result1.cost.total_cost == pytest.approx(result2.cost.total_cost)
+    async def test_acreate_response_status_error(
+        self, async_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(401, json={"error": {"message": "no"}}))
+        with pytest.raises(AuthenticationError):
+            await async_provider.acreate_response("gpt-5-pro", "Hello")
+
+    async def test_acreate_response_client_init_failure(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=RuntimeError("boom"))
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
+        with pytest.raises(ProviderError, match="boom"):
+            await provider.acreate_response("gpt-5-pro", "Hello")
+
+
+# MARK: Auth
+
+
+class TestAuth:
+    def test_api_key_header(
+        self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_chat(completion, respx_mock)
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
+        provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers.get("api-key") == "fake-api-key"
+
+    def test_static_ad_token_header(self, completion: dict[str, Any], respx_mock: respx.MockRouter) -> None:
+        route = _ok_chat(completion, respx_mock)
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=FakeTokenAuth())
+        provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        request = route.calls.last.request
+        assert request.headers.get("authorization") == "Bearer fake-ad-token"
+        assert "api-key" not in request.headers
+
+    def test_token_provider_header(self, completion: dict[str, Any], respx_mock: respx.MockRouter) -> None:
+        route = _ok_chat(completion, respx_mock)
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=FakeTokenProviderAuth())
+        provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers.get("authorization") == "Bearer fresh-token"
+
+    def test_default_auth_used_when_none(
+        self, monkeypatch: pytest.MonkeyPatch, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        monkeypatch.setenv("AZURE_FOUNDRY_API_KEY", "env-key")
+        route = _ok_chat(completion, respx_mock)
+        provider = AzureFoundryProvider(endpoint=ENDPOINT)
+        provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers.get("api-key") == "env-key"
 
 
 # MARK: Client Management
@@ -936,218 +647,55 @@ class TestEmbed:
 
 class TestClientManagement:
     def test_sync_client_reused(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
-        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi again")])
-
-        assert mock_sync_client.chat.completions.create.call_count == 2
+        _ok_chat(completion, respx_mock)
+        sync_provider.chat("gpt-4o", [UserMessage(content="a")])
+        client = sync_provider._sync_client
+        sync_provider.chat("gpt-4o", [UserMessage(content="b")])
+        assert sync_provider._sync_client is client
 
     async def test_async_client_reused(
-        self, async_provider: AzureFoundryProvider, mock_async_client: MagicMock, chat_completion: ChatCompletion
+        self, async_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
+        _ok_chat(completion, respx_mock)
+        await async_provider.achat("gpt-4o", [UserMessage(content="a")])
+        client = async_provider._async_client
+        await async_provider.achat("gpt-4o", [UserMessage(content="b")])
+        assert async_provider._async_client is client
 
-        _ = await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
-        _ = await async_provider.achat("gpt-4o", [UserMessage(content="Hi again")])
-
-        assert mock_async_client.chat.completions.create.call_count == 2
-
-    def test_endpoint_and_api_version_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        chat_completion: ChatCompletion,
+    def test_custom_endpoint_and_api_version(
+        self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
+        url = "https://my.openai.azure.com/openai/deployments/gpt-4o/chat/completions"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=completion))
         provider = AzureFoundryProvider(
             endpoint="https://my.openai.azure.com/", auth=fake_auth, api_version="2025-01-01"
         )
-        _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        assert route.called
+        assert route.calls.last.request.url.params.get("api-version") == "2025-01-01"
 
-        mock_sync_create.assert_called_once_with(
-            credential="fake-api-key",
-            azure_endpoint="https://my.openai.azure.com/",
-            api_version="2025-01-01",
-            timeout=None,
-            max_retries=None,
-        )
-
-    def test_timeout_and_retries_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        chat_completion: ChatCompletion,
+    def test_timeout_and_retries(
+        self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-        provider = AzureFoundryProvider(
-            endpoint="https://test.openai.azure.com/", auth=fake_auth, timeout=30.0, max_retries=5
-        )
-        _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        _ok_chat(completion, respx_mock)
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth, timeout=30.0, max_retries=5)
+        provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        assert provider._sync_client is not None
+        assert provider._sync_client.timeout.read == 30.0
 
-        mock_sync_create.assert_called_once_with(
-            credential="fake-api-key",
-            azure_endpoint="https://test.openai.azure.com/",
-            api_version="2025-04-01-preview",
-            timeout=30.0,
-            max_retries=5,
-        )
-
-    def test_create_sync_client_called_once(
-        self,
-        fake_auth: FakeAuth,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        chat_completion: ChatCompletion,
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-        _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
-        _ = provider.chat("gpt-4o", [UserMessage(content="Hi again")])
-
-        mock_sync_create.assert_called_once()
-
-    async def test_create_async_client_called_once(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: MagicMock,
-        chat_completion: ChatCompletion,
-    ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
-        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi again")])
-
-        mock_async_create.assert_called_once()
-
-    async def test_async_endpoint_and_api_version_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: MagicMock,
-        chat_completion: ChatCompletion,
-    ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
-        provider = AzureFoundryProvider(
-            endpoint="https://my.openai.azure.com/", auth=fake_auth, api_version="2025-01-01"
-        )
-        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
-
-        mock_async_create.assert_called_once_with(
-            credential="fake-api-key",
-            azure_endpoint="https://my.openai.azure.com/",
-            api_version="2025-01-01",
-            timeout=None,
-            max_retries=None,
-        )
-
-    async def test_async_timeout_and_retries_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: MagicMock,
-        chat_completion: ChatCompletion,
-    ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
-        provider = AzureFoundryProvider(
-            endpoint="https://test.openai.azure.com/", auth=fake_auth, timeout=30.0, max_retries=5
-        )
-        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
-
-        mock_async_create.assert_called_once_with(
-            credential="fake-api-key",
-            azure_endpoint="https://test.openai.azure.com/",
-            api_version="2025-04-01-preview",
-            timeout=30.0,
-            max_retries=5,
-        )
-
-    def test_azure_ad_token_credential(
-        self,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        chat_completion: ChatCompletion,
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=FakeTokenAuth())
-        _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
-
-        mock_sync_create.assert_called_once_with(
-            credential=AzureAdToken(token="fake-ad-token"),  # noqa: S106
-            azure_endpoint="https://test.openai.azure.com/",
-            api_version="2025-04-01-preview",
-            timeout=None,
-            max_retries=None,
-        )
-
-    def test_token_provider_credential(
-        self,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        chat_completion: ChatCompletion,
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-        auth = FakeTokenProviderAuth()
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=auth)
-        _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
-
-        mock_sync_create.assert_called_once_with(
-            credential=FakeTokenProviderAuth._provider,
-            azure_endpoint="https://test.openai.azure.com/",
-            api_version="2025-04-01-preview",
-            timeout=None,
-            max_retries=None,
-        )
-
-    def test_default_auth_used_when_none(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        mock_sync_create: MagicMock,
-        mock_sync_client: MagicMock,
-        chat_completion: ChatCompletion,
-    ) -> None:
-        monkeypatch.setenv("AZURE_FOUNDRY_API_KEY", "env-key")
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/")
-        _ = provider.chat("gpt-4o", [UserMessage(content="Hi")])
-
-        mock_sync_create.assert_called_once_with(
-            credential="env-key",
-            azure_endpoint="https://test.openai.azure.com/",
-            api_version="2025-04-01-preview",
-            timeout=None,
-            max_retries=None,
-        )
-
-    @pytest.fixture
-    def mock_get_running_loop(self, mocker: MockerFixture) -> MagicMock:
-        return mocker.patch("lmux_azure_foundry.provider.asyncio.get_running_loop")
-
-    async def test_achat_recreates_client_on_new_event_loop(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: MagicMock,
-        chat_completion: ChatCompletion,
-        mock_get_running_loop: MagicMock,
-    ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-
-        loop1 = asyncio.new_event_loop()
-        loop2 = asyncio.new_event_loop()
-        mock_get_running_loop.side_effect = [loop1, loop2]
-
-        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
-        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi again")])
-
-        assert mock_async_create.call_count == 2
-        assert mock_get_running_loop.call_count == 2
+    async def test_async_client_recreated_on_new_loop(self, fake_auth: FakeAuth, mocker: MockerFixture) -> None:
+        c1, c2 = MagicMock(), MagicMock()
+        create = mocker.patch("lmux_azure_foundry.provider.create_async_client", side_effect=[c1, c2])
+        get_loop = mocker.patch("lmux_azure_foundry.provider.asyncio.get_running_loop")
+        loop1, loop2 = asyncio.new_event_loop(), asyncio.new_event_loop()
+        get_loop.side_effect = [loop1, loop2]
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth)
+        r1 = await provider._get_async_client()
+        r2 = await provider._get_async_client()
+        assert (r1, r2) == (c1, c2)
+        assert create.call_count == 2
         loop1.close()
         loop2.close()
 
@@ -1157,282 +705,89 @@ class TestClientManagement:
 
 class TestProviderParamsKwargs:
     def test_empty_params(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], provider_params=AzureFoundryParams())
-
-        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert "reasoning_effort" not in call_kwargs
-        assert "seed" not in call_kwargs
-        assert "user" not in call_kwargs
-        assert "deployment_type" not in call_kwargs
+        route = _ok_chat(completion, respx_mock)
+        sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], provider_params=AzureFoundryParams())
+        body = json.loads(route.calls.last.request.content)
+        assert "reasoning_effort" not in body
+        assert "seed" not in body
+        assert "user" not in body
+        assert "deployment_type" not in body
 
     def test_all_params(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-        params = AzureFoundryParams(reasoning_effort="low", seed=42, user="u1")
-
-        _ = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")], provider_params=params)
-
-        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert call_kwargs["reasoning_effort"] == "low"
-        assert call_kwargs["seed"] == 42
-        assert call_kwargs["user"] == "u1"
-        assert "deployment_type" not in call_kwargs
-
-    def test_deployment_type_not_forwarded(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
-    ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        _ = sync_provider.chat(
+        route = _ok_chat(completion, respx_mock)
+        sync_provider.chat(
             "gpt-4o",
             [UserMessage(content="Hi")],
-            provider_params=AzureFoundryParams(deployment_type="data_zone"),
+            provider_params=AzureFoundryParams(reasoning_effort="low", seed=42, user="u1"),
         )
-
-        call_kwargs = mock_sync_client.chat.completions.create.call_args.kwargs
-        assert "deployment_type" not in call_kwargs
+        body = json.loads(route.calls.last.request.content)
+        assert body["reasoning_effort"] == "low"
+        assert body["seed"] == 42
+        assert body["user"] == "u1"
+        assert "deployment_type" not in body
 
 
 # MARK: Register Pricing
 
 
 class TestRegisterPricing:
-    def test_custom_pricing_for_unknown_model(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock
-    ) -> None:
-        custom_completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="stop",
-                    index=0,
-                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
-                )
-            ],
-            created=1234567890,
-            model="ft:custom-model",
-            object="chat.completion",
-            usage=CompletionUsage(prompt_tokens=1000, completion_tokens=500, total_tokens=1500),
-        )
-        mock_sync_client.chat.completions.create.return_value = custom_completion
-
+    def test_custom_for_unknown_model(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        completion = {
+            "model": "ft:custom-model",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
+            "usage": {"prompt_tokens": 1000, "completion_tokens": 500},
+        }
+        respx_mock.post(_chat_url("ft:custom-model")).mock(return_value=httpx.Response(200, json=completion))
         sync_provider.register_pricing(
-            "ft:custom-model",
-            ModelPricing(
-                tiers=[PricingTier(input_cost_per_token=5.0 / 1_000_000, output_cost_per_token=15.0 / 1_000_000)]
-            ),
+            "ft:custom-model", ModelPricing(tiers=[PricingTier(input_cost_per_token=5e-6, output_cost_per_token=15e-6)])
         )
         result = sync_provider.chat("ft:custom-model", [UserMessage(content="Hi")])
-
         assert result.cost is not None
-        assert result.cost.input_cost == pytest.approx(1000 * 5.0 / 1_000_000)
-        assert result.cost.output_cost == pytest.approx(500 * 15.0 / 1_000_000)
+        assert result.cost.input_cost == pytest.approx(1000 * 5e-6)
 
-    def test_custom_pricing_overrides_builtin(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, chat_completion: ChatCompletion
+    def test_custom_overrides_builtin(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_sync_client.chat.completions.create.return_value = chat_completion
-
-        custom_pricing = ModelPricing(
-            tiers=[PricingTier(input_cost_per_token=99.0 / 1_000_000, output_cost_per_token=199.0 / 1_000_000)]
+        _ok_chat(completion, respx_mock)
+        sync_provider.register_pricing(
+            "gpt-4o", ModelPricing(tiers=[PricingTier(input_cost_per_token=99e-6, output_cost_per_token=199e-6)])
         )
-        sync_provider.register_pricing("gpt-4o", custom_pricing)
         result = sync_provider.chat("gpt-4o", [UserMessage(content="Hi")])
-
         assert result.cost is not None
-        assert result.cost.input_cost == pytest.approx(10 * 99.0 / 1_000_000)
-        assert result.cost.output_cost == pytest.approx(5 * 199.0 / 1_000_000)
+        assert result.cost.input_cost == pytest.approx(10 * 99e-6)
 
-    def test_unregistered_unknown_model_returns_none_cost(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock
-    ) -> None:
-        unknown_completion = ChatCompletion(
-            id="chatcmpl-123",
-            choices=[
-                Choice(
-                    finish_reason="stop",
-                    index=0,
-                    message=ChatCompletionMessage(content="Hello!", role="assistant"),
-                )
-            ],
-            created=1234567890,
-            model="totally-unknown-model",
-            object="chat.completion",
-            usage=CompletionUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-        )
-        mock_sync_client.chat.completions.create.return_value = unknown_completion
-
-        result = sync_provider.chat("totally-unknown-model", [UserMessage(content="Hi")])
-
+    def test_unknown_model_none_cost(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
+        completion = {
+            "model": "totally-unknown",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+        respx_mock.post(_chat_url("totally-unknown")).mock(return_value=httpx.Response(200, json=completion))
+        result = sync_provider.chat("totally-unknown", [UserMessage(content="Hi")])
         assert result.cost is None
 
 
-# MARK: Aclose
+# MARK: Aclose & Preload
 
 
 class TestAclose:
-    async def test_aclose_closes_client(
-        self,
-        fake_auth: FakeAuth,
-        mock_async_create: MagicMock,
-        mock_async_client: MagicMock,
-        chat_completion: ChatCompletion,
+    async def test_closes_client(
+        self, async_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_async_client.chat.completions.create.return_value = chat_completion
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
+        _ok_chat(completion, respx_mock)
+        await async_provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        assert async_provider._async_client is not None
+        await async_provider.aclose()
+        assert async_provider._async_client is None
 
-        _ = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
-        await provider.aclose()
-
-        mock_async_create.assert_called_once()
-        mock_async_client.close.assert_awaited_once()
-        assert provider._async_client is None
-
-    async def test_aclose_noop_when_no_client(self, fake_auth: FakeAuth) -> None:
-        provider = AzureFoundryProvider(endpoint="https://test.openai.azure.com/", auth=fake_auth)
-        await provider.aclose()
-
-
-# MARK: Preload
+    async def test_noop_when_no_client(self, async_provider: AzureFoundryProvider) -> None:
+        await async_provider.aclose()
 
 
 class TestPreload:
-    def test_preload_imports_openai(self) -> None:
-        preload()  # should not raise
-
-
-# MARK: CreateResponse
-
-
-class TestCreateResponse:
-    def test_basic(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
-    ) -> None:
-        mock_sync_client.responses.create.return_value = responses_mock
-
-        result = sync_provider.create_response("gpt-5-pro", "Hello")
-
-        assert result.id == "resp_123"
-        assert result.output_text == "Hi!"
-        assert result.provider == "azure-foundry"
-        assert result.usage is not None
-        assert result.usage.input_tokens == 10
-        assert result.cost is not None
-        mock_sync_client.responses.create.assert_called_once_with(model="gpt-5-pro", input="Hello", stream=False)
-        mock_sync_client.chat.completions.create.assert_not_called()
-
-    def test_input_items_mapped_to_dicts(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
-    ) -> None:
-        mock_sync_client.responses.create.return_value = responses_mock
-
-        _ = sync_provider.create_response("gpt-5-pro", [ResponseInputMessage(role="user", content="Hello")])
-
-        mock_sync_client.responses.create.assert_called_once_with(
-            model="gpt-5-pro", input=[{"role": "user", "content": "Hello"}], stream=False
-        )
-
-    def test_with_provider_params(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
-    ) -> None:
-        """The Responses API takes reasoning={"effort": ...} instead of flat reasoning_effort."""
-        mock_sync_client.responses.create.return_value = responses_mock
-        params = AzureFoundryParams(reasoning_effort="low", seed=42, user="u1")
-
-        _ = sync_provider.create_response("gpt-5-pro", "Hello", provider_params=params)
-
-        mock_sync_client.responses.create.assert_called_once_with(
-            model="gpt-5-pro", input="Hello", stream=False, reasoning={"effort": "low"}, seed=42, user="u1"
-        )
-
-    def test_deployment_multiplier_applied(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
-    ) -> None:
-        mock_sync_client.responses.create.return_value = responses_mock
-
-        result_global = sync_provider.create_response("gpt-5-pro", "Hello")
-        result_data_zone = sync_provider.create_response(
-            "gpt-5-pro", "Hello", provider_params=AzureFoundryParams(deployment_type="data_zone")
-        )
-
-        assert result_global.cost is not None
-        assert result_data_zone.cost is not None
-        assert result_data_zone.cost.total_cost == pytest.approx(result_global.cost.total_cost * 1.1)
-
-    def test_cached_tokens_mapped(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
-    ) -> None:
-        responses_mock.usage.input_tokens_details = MagicMock(cached_tokens=3)
-        mock_sync_client.responses.create.return_value = responses_mock
-
-        result = sync_provider.create_response("gpt-5-pro", "Hello")
-
-        assert result.usage is not None
-        assert result.usage.cache_read_tokens == 3
-
-    def test_reasoning_tokens_mapped(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
-    ) -> None:
-        responses_mock.usage.output_tokens_details = MagicMock(reasoning_tokens=4)
-        mock_sync_client.responses.create.return_value = responses_mock
-
-        result = sync_provider.create_response("gpt-5-pro", "Hello")
-
-        assert result.usage is not None
-        assert result.usage.reasoning_tokens == 4
-
-    def test_no_usage(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, responses_mock: MagicMock
-    ) -> None:
-        responses_mock.usage = None
-        mock_sync_client.responses.create.return_value = responses_mock
-
-        result = sync_provider.create_response("gpt-5-pro", "Hello")
-
-        assert result.usage is None
-        assert result.cost is None
-
-    def test_exception_mapping(
-        self, sync_provider: AzureFoundryProvider, mock_sync_client: MagicMock, auth_error: openai.AuthenticationError
-    ) -> None:
-        mock_sync_client.responses.create.side_effect = auth_error
-
-        with pytest.raises(AuthenticationError):
-            _ = sync_provider.create_response("gpt-5-pro", "Hello")
-
-    async def test_acreate_response(
-        self, async_provider: AzureFoundryProvider, mock_async_client: MagicMock, responses_mock: MagicMock
-    ) -> None:
-        mock_async_client.responses.create.return_value = responses_mock
-
-        result = await async_provider.acreate_response("gpt-5-pro", "Hello")
-
-        assert result.output_text == "Hi!"
-        assert result.provider == "azure-foundry"
-        mock_async_client.responses.create.assert_awaited_once_with(model="gpt-5-pro", input="Hello", stream=False)
-
-    async def test_acreate_response_with_provider_params(
-        self, async_provider: AzureFoundryProvider, mock_async_client: MagicMock, responses_mock: MagicMock
-    ) -> None:
-        mock_async_client.responses.create.return_value = responses_mock
-
-        _ = await async_provider.acreate_response(
-            "gpt-5-pro", "Hello", provider_params=AzureFoundryParams(reasoning_effort="high")
-        )
-
-        mock_async_client.responses.create.assert_awaited_once_with(
-            model="gpt-5-pro", input="Hello", stream=False, reasoning={"effort": "high"}
-        )
-
-    async def test_acreate_response_exception_mapping(
-        self, async_provider: AzureFoundryProvider, mock_async_client: MagicMock, auth_error: openai.AuthenticationError
-    ) -> None:
-        mock_async_client.responses.create.side_effect = auth_error
-
-        with pytest.raises(AuthenticationError):
-            _ = await async_provider.acreate_response("gpt-5-pro", "Hello")
+    def test_preload(self) -> None:
+        preload()

@@ -1,6 +1,6 @@
 # lmux-azure-foundry
 
-Azure AI Foundry provider for [lmux](https://github.com/cluebbehusen/lmux). Uses the [openai](https://pypi.org/project/openai/) SDK's `AzureOpenAI` client.
+Azure AI Foundry provider for [lmux](https://github.com/cluebbehusen/lmux). Talks to the Azure OpenAI REST API directly with [httpx](https://pypi.org/project/httpx/).
 
 Supports chat completions, streaming, embeddings, and the Responses API.
 

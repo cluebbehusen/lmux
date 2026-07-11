@@ -31,9 +31,9 @@ __all__ = [
 
 
 def preload() -> None:
-    """Eagerly import the OpenAI SDK.
+    """Eagerly import the HTTP client.
 
     Call this during application startup to pay the import cost upfront
     rather than on the first request.
     """
-    import openai  # noqa: F401, PLC0415
+    import httpx  # noqa: F401, PLC0415
