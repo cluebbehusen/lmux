@@ -614,6 +614,21 @@ class TestHeaders:
         assert headers["Authorization"] == "Bearer sk-fake-key"
         assert headers["OpenAI-Organization"] == "real-org"
 
+    def test_managed_override_is_case_insensitive(
+        self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        provider = OpenAIProvider(
+            auth=fake_auth,
+            organization="real-org",
+            default_headers={"authorization": "Bearer evil", "openai-organization": "evil-org"},
+        )
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        # Differently-cased duplicates are replaced, not appended — no combined "Bearer evil, Bearer ..." value.
+        assert headers.get_list("Authorization") == ["Bearer sk-fake-key"]
+        assert headers.get_list("OpenAI-Organization") == ["real-org"]
+
     async def test_headers_applied_on_async_client(
         self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
