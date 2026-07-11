@@ -17,7 +17,7 @@ from lmux_groq._exceptions import (
     error_from_response,
     error_from_stream,
     map_transport_error,
-    parse_json,
+    parse_completion,
     raise_for_status,
 )
 from lmux_groq._lazy import create_async_client, create_sync_client
@@ -29,6 +29,7 @@ from lmux_groq._mappers import (
     map_tool_choice,
     map_tools,
 )
+from lmux_groq._wire import WireChunk
 from lmux_groq.auth import GroqEnvAuthProvider
 from lmux_groq.cost import calculate_groq_cost
 from lmux_groq.params import GroqParams
@@ -129,7 +130,7 @@ class GroqProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        return map_chat_completion(parse_completion(response), PROVIDER_NAME, self._calculate_cost)
 
     @override
     async def achat(
@@ -157,7 +158,7 @@ class GroqProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_chat_completion(parse_json(response), PROVIDER_NAME, self._calculate_cost)
+        return map_chat_completion(parse_completion(response), PROVIDER_NAME, self._calculate_cost)
 
     @override
     def chat_stream(
@@ -244,9 +245,10 @@ class GroqProvider(
     # MARK: Internal Helpers
 
     def _map_stream_chunk(self, chunk: dict[str, Any], model: str) -> ChatChunk:
-        mapped = map_chat_chunk(chunk, PROVIDER_NAME)
+        wire = WireChunk.model_validate(chunk)
+        mapped = map_chat_chunk(wire, PROVIDER_NAME)
         if mapped.usage is not None:
-            mapped = mapped.model_copy(update={"cost": self._calculate_cost(chunk.get("model") or model, mapped.usage)})
+            mapped = mapped.model_copy(update={"cost": self._calculate_cost(wire.model or model, mapped.usage)})
         return mapped
 
     def _stream_body(  # noqa: PLR0913

@@ -34,6 +34,22 @@ from lmux.types import (
     Usage,
     UserMessage,
 )
+from lmux_anthropic._wire import (
+    WireCacheCreation,
+    WireContentBlockDeltaEvent,
+    WireContentBlockStartEvent,
+    WireDeltaUsage,
+    WireInputJsonDelta,
+    WireMessage,
+    WireMessageDeltaEvent,
+    WireMessageStartEvent,
+    WireTextBlock,
+    WireTextDelta,
+    WireThinkingBlock,
+    WireThinkingDelta,
+    WireToolUseBlock,
+    WireUsage,
+)
 
 type CostCalculator = Callable[[str, Usage], Cost | None]
 type Json = dict[str, Any]
@@ -262,34 +278,32 @@ def map_response_format(rf: ResponseFormat) -> Json | None:
     return {"format": {"type": "json_schema", "schema": patched}}
 
 
-# MARK: Output Mappers (Anthropic Messages API JSON -> lmux)
+# MARK: Output Mappers (Anthropic wire models -> lmux)
 
 
-def map_message_response(message: Json, provider_name: str, cost_fn: CostCalculator) -> ChatResponse:
-    """Convert an Anthropic Messages API response body to an lmux ChatResponse."""
+def map_message_response(message: WireMessage, provider_name: str, cost_fn: CostCalculator) -> ChatResponse:
+    """Convert a validated Anthropic Messages API response to an lmux ChatResponse."""
     text_parts: list[str] = []
     thinking_parts: list[str] = []
     tool_calls: list[ToolCall] = []
 
-    for block in message["content"]:
-        block_type = block["type"]
-        if block_type == "thinking":
-            thinking_parts.append(block["thinking"])
-        elif block_type == "text":
-            text_parts.append(block["text"])
-        elif block_type == "tool_use":
+    for block in message.content:
+        if isinstance(block, WireThinkingBlock):
+            thinking_parts.append(block.thinking)
+        elif isinstance(block, WireTextBlock):
+            text_parts.append(block.text)
+        elif isinstance(block, WireToolUseBlock):
             tool_calls.append(
                 ToolCall(
-                    id=block["id"],
-                    function=FunctionCallResult(name=block["name"], arguments=json.dumps(block["input"])),
+                    id=block.id,
+                    function=FunctionCallResult(name=block.name, arguments=json.dumps(block.input)),
                 )
             )
 
     content = "\n".join(text_parts) if text_parts else None
     reasoning = "\n".join(thinking_parts) if thinking_parts else None
-    model = message["model"]
-    usage = _map_usage(message["usage"])
-    cost = cost_fn(model, usage)
+    usage = _map_usage(message.usage)
+    cost = cost_fn(message.model, usage)
 
     return ChatResponse(
         content=content,
@@ -297,100 +311,96 @@ def map_message_response(message: Json, provider_name: str, cost_fn: CostCalcula
         tool_calls=tool_calls or None,
         usage=usage,
         cost=cost,
-        model=model,
+        model=message.model,
         provider=provider_name,
-        finish_reason=_map_stop_reason(message.get("stop_reason")),
+        finish_reason=_map_stop_reason(message.stop_reason),
     )
 
 
-def _map_usage(usage: Json) -> Usage:
-    cache_read: int = usage.get("cache_read_input_tokens") or 0
-    cache_creation: int = usage.get("cache_creation_input_tokens") or 0
+def _map_usage(usage: WireUsage) -> Usage:
+    cache_read = usage.cache_read_input_tokens or 0
+    cache_creation = usage.cache_creation_input_tokens or 0
     return Usage(
         # Anthropic reports input_tokens exclusive of cached tokens; lmux's
         # Usage convention is the inclusive total (see lmux.types.Usage).
-        input_tokens=usage["input_tokens"] + cache_read + cache_creation,
-        output_tokens=usage["output_tokens"],
+        input_tokens=usage.input_tokens + cache_read + cache_creation,
+        output_tokens=usage.output_tokens,
         cache_read_tokens=cache_read or None,
         cache_creation_tokens=cache_creation or None,
-        cache_creation_tokens_by_ttl=_map_cache_creation_breakdown(usage.get("cache_creation")),
+        cache_creation_tokens_by_ttl=_map_cache_creation_breakdown(usage.cache_creation),
     )
 
 
-def _map_cache_creation_breakdown(cache_creation: Json | None) -> dict[str, int] | None:
+def _map_cache_creation_breakdown(cache_creation: WireCacheCreation | None) -> dict[str, int] | None:
     """Map the per-TTL cache-write breakdown (``usage.cache_creation``) if reported."""
     if cache_creation is None:
         return None
     breakdown: dict[str, int] = {}
-    five_minute = cache_creation.get("ephemeral_5m_input_tokens")
-    one_hour = cache_creation.get("ephemeral_1h_input_tokens")
-    if five_minute:
-        breakdown["5m"] = five_minute
-    if one_hour:
-        breakdown["1h"] = one_hour
+    if cache_creation.ephemeral_5m_input_tokens:
+        breakdown["5m"] = cache_creation.ephemeral_5m_input_tokens
+    if cache_creation.ephemeral_1h_input_tokens:
+        breakdown["1h"] = cache_creation.ephemeral_1h_input_tokens
     return breakdown or None
 
 
 # MARK: Streaming Mappers
 
 
-def map_message_start(event: Json) -> tuple[str, Usage]:
+def map_message_start(event: WireMessageStartEvent) -> tuple[str, Usage]:
     """Extract the resolved model id and input token usage from the message_start event."""
-    message = event["message"]
-    return message["model"], _map_usage(message["usage"])
+    return event.message.model, _map_usage(event.message.usage)
 
 
-def map_content_block_start(event: Json) -> ChatChunk | None:
+def map_content_block_start(event: WireContentBlockStartEvent) -> ChatChunk | None:
     """Map a content_block_start event. Returns a chunk for tool_use blocks only."""
-    block = event["content_block"]
-    if block["type"] == "tool_use":
+    block = event.content_block
+    if isinstance(block, WireToolUseBlock):
         return ChatChunk(
             tool_call_deltas=[
                 ToolCallDelta(
-                    index=event["index"],
-                    id=block["id"],
+                    index=event.index,
+                    id=block.id,
                     type="function",
-                    function=FunctionCallDelta(name=block["name"]),
+                    function=FunctionCallDelta(name=block.name),
                 )
             ],
         )
     return None
 
 
-def map_content_block_delta(event: Json) -> ChatChunk | None:
+def map_content_block_delta(event: WireContentBlockDeltaEvent) -> ChatChunk | None:
     """Map a content_block_delta event to a ChatChunk."""
-    delta = event["delta"]
-    delta_type = delta["type"]
-    if delta_type == "text_delta":
-        return ChatChunk(delta=delta["text"])
-    if delta_type == "input_json_delta":
+    delta = event.delta
+    if isinstance(delta, WireTextDelta):
+        return ChatChunk(delta=delta.text)
+    if isinstance(delta, WireInputJsonDelta):
         return ChatChunk(
             tool_call_deltas=[
                 ToolCallDelta(
-                    index=event["index"],
-                    function=FunctionCallDelta(arguments=delta["partial_json"]),
+                    index=event.index,
+                    function=FunctionCallDelta(arguments=delta.partial_json),
                 )
             ],
         )
-    if delta_type == "thinking_delta":
-        return ChatChunk(reasoning_delta=delta["thinking"])
+    if isinstance(delta, WireThinkingDelta):
+        return ChatChunk(reasoning_delta=delta.thinking)
     return None
 
 
-def map_message_delta(event: Json, start_usage: Usage) -> ChatChunk:
+def map_message_delta(event: WireMessageDeltaEvent, start_usage: Usage) -> ChatChunk:
     """Map the message_delta event (final event with output usage)."""
-    usage = _map_delta_usage(event["usage"], start_usage)
+    usage = _map_delta_usage(event.usage, start_usage)
     return ChatChunk(
-        finish_reason=_map_stop_reason(event["delta"].get("stop_reason")),
+        finish_reason=_map_stop_reason(event.delta.stop_reason),
         usage=usage,
     )
 
 
-def _map_delta_usage(delta_usage: Json, start_usage: Usage) -> Usage:
+def _map_delta_usage(delta_usage: WireDeltaUsage, start_usage: Usage) -> Usage:
     """Combine input tokens from message_start with output tokens from message_delta."""
     return Usage(
         input_tokens=start_usage.input_tokens,
-        output_tokens=delta_usage["output_tokens"],
+        output_tokens=delta_usage.output_tokens,
         cache_read_tokens=start_usage.cache_read_tokens,
         cache_creation_tokens=start_usage.cache_creation_tokens,
         cache_creation_tokens_by_ttl=start_usage.cache_creation_tokens_by_ttl,
