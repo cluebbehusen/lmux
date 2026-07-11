@@ -7,6 +7,7 @@ from lmux.exceptions import (
     InvalidRequestError,
     LmuxError,
     NotFoundError,
+    PermissionDeniedError,
     ProviderError,
     RateLimitError,
     TimeoutError,  # noqa: A004
@@ -55,8 +56,10 @@ def error_from_response(response: "httpx.Response") -> LmuxError:
     """Map an HTTP error response to an lmux exception (body must be readable)."""
     code = response.status_code
     msg = _message(response)
-    if code in (_AUTH, _FORBIDDEN):
+    if code == _AUTH:
         return AuthenticationError(msg, provider=PROVIDER, status_code=code)
+    if code == _FORBIDDEN:
+        return PermissionDeniedError(msg, provider=PROVIDER, status_code=code)
     if code == _RATE_LIMIT:
         return RateLimitError(msg, provider=PROVIDER, status_code=code)
     if code == _BAD_REQUEST:

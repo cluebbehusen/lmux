@@ -8,6 +8,7 @@ from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
     NotFoundError,
+    PermissionDeniedError,
     ProviderError,
     RateLimitError,
     TimeoutError,  # noqa: A004
@@ -42,7 +43,7 @@ class TestErrorFromResponse:
         [
             (400, InvalidRequestError),
             (401, AuthenticationError),
-            (403, AuthenticationError),
+            (403, PermissionDeniedError),
             (404, NotFoundError),
             (408, TimeoutError),
             (429, RateLimitError),
