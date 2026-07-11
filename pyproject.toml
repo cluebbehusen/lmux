@@ -126,6 +126,7 @@ source = [
   "lmux_aws_bedrock",
   "lmux_google",
   "lmux_gcp_vertex",
+  "lmux_load_balancer",
 ]
 branch = true
 omit = ["**/_lazy.py"]

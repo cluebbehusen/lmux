@@ -1,0 +1,30 @@
+[project]
+name = "lmux-load-balancer"
+version = "0.1.0"
+description = "Weighted, sticky load balancing across lmux providers, with failover"
+requires-python = ">=3.13"
+license = "MIT"
+readme = "README.md"
+authors = [{ name = "Connor Luebbehusen", email = "connor@luebbehusen.dev" }]
+keywords = ["llm", "ai", "load-balancing", "language-model"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
+]
+dependencies = [
+  "lmux~=0.9",
+]
+
+[project.urls]
+Homepage = "https://github.com/cluebbehusen/lmux"
+Source = "https://github.com/cluebbehusen/lmux/tree/main/packages/lmux-load-balancer"
+Issues = "https://github.com/cluebbehusen/lmux/issues"
+
+[tool.uv.sources]
+lmux = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.11.0,<0.12.0"]
+build-backend = "uv_build"
