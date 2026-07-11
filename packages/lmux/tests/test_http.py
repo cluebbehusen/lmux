@@ -33,6 +33,7 @@ class TestCreateSyncClient:
         assert client.headers["Authorization"] == "Bearer x"
         assert client.timeout.read == 600.0
         assert client.timeout.connect == 10.0
+        assert client.follow_redirects is True  # gateways that redirect a custom base_url are followed
         client.close()
 
     def test_explicit_timeout_applies_to_connect(self) -> None:
