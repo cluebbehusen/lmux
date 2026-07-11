@@ -30,6 +30,7 @@ from lmux_groq._mappers import (
     map_tool_choice,
     map_tools,
 )
+from lmux_groq._wire import WireChunk, WireCompletion
 
 
 def _noop_cost(model: str, usage: Usage) -> Cost | None:  # noqa: ARG001
@@ -135,7 +136,7 @@ class TestMapChatCompletion:
             "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "Hi"}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5},
         }
-        r = map_chat_completion(completion, "groq", _noop_cost)
+        r = map_chat_completion(WireCompletion.model_validate(completion), "groq", _noop_cost)
         assert r.content == "Hi"
         assert r.finish_reason == "stop"
         assert r.usage is not None
@@ -157,7 +158,7 @@ class TestMapChatCompletion:
             ],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1},
         }
-        r = map_chat_completion(completion, "groq", _noop_cost)
+        r = map_chat_completion(WireCompletion.model_validate(completion), "groq", _noop_cost)
         assert r.tool_calls is not None
         assert r.tool_calls[0].id == "c1"
 
@@ -178,7 +179,7 @@ class TestMapChatCompletion:
                 "completion_tokens_details": {"reasoning_tokens": 2},
             },
         }
-        r = map_chat_completion(completion, "groq", _noop_cost)
+        r = map_chat_completion(WireCompletion.model_validate(completion), "groq", _noop_cost)
         assert r.reasoning == "because"
         assert r.usage is not None
         assert r.usage.cache_read_tokens == 3
@@ -189,7 +190,7 @@ class TestMapChatCompletion:
             "model": "m",
             "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
         }
-        r = map_chat_completion(completion, "groq", _noop_cost)
+        r = map_chat_completion(WireCompletion.model_validate(completion), "groq", _noop_cost)
         assert r.usage is None
         assert r.cost is None
 
@@ -200,11 +201,11 @@ class TestMapChatChunk:
             "model": "m",
             "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}],
         }
-        assert map_chat_chunk(chunk, "groq").delta == "Hel"
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "groq").delta == "Hel"
 
     def test_reasoning_delta(self) -> None:
         chunk: dict[str, Any] = {"model": "m", "choices": [{"index": 0, "delta": {"reasoning": "r"}}]}
-        assert map_chat_chunk(chunk, "groq").reasoning_delta == "r"
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "groq").reasoning_delta == "r"
 
     def test_tool_call_delta_with_function(self) -> None:
         chunk: dict[str, Any] = {
@@ -220,14 +221,14 @@ class TestMapChatChunk:
                 }
             ],
         }
-        c = map_chat_chunk(chunk, "groq")
+        c = map_chat_chunk(WireChunk.model_validate(chunk), "groq")
         assert c.tool_call_deltas is not None
         assert c.tool_call_deltas[0].function is not None
         assert c.tool_call_deltas[0].function.name == "f"
 
     def test_tool_call_delta_without_function(self) -> None:
         chunk: dict[str, Any] = {"model": "m", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0}]}}]}
-        c = map_chat_chunk(chunk, "groq")
+        c = map_chat_chunk(WireChunk.model_validate(chunk), "groq")
         assert c.tool_call_deltas is not None
         assert c.tool_call_deltas[0].function is None
 
@@ -237,11 +238,11 @@ class TestMapChatChunk:
             "choices": [{"index": 0, "finish_reason": "stop", "delta": {}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5},
         }
-        c = map_chat_chunk(chunk, "groq")
+        c = map_chat_chunk(WireChunk.model_validate(chunk), "groq")
         assert c.finish_reason == "stop"
         assert c.usage is not None
         assert c.usage.input_tokens == 10
 
     def test_no_choices(self) -> None:
         chunk: dict[str, Any] = {"model": "m", "choices": []}
-        assert map_chat_chunk(chunk, "groq").delta is None
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "groq").delta is None

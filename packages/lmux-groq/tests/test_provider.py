@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -81,7 +82,8 @@ def completion() -> dict[str, Any]:
     }
 
 
-def _sse_stream() -> bytes:
+@pytest.fixture
+def stream_bytes() -> bytes:
     chunks = [
         {"model": MODEL, "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}]},
         {"model": MODEL, "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "lo!"}}]},
@@ -95,16 +97,27 @@ def _sse_stream() -> bytes:
     return ("\n\n".join(lines) + "\n\n").encode()
 
 
-def _ok(completion: dict[str, Any], respx_mock: respx.MockRouter) -> respx.Route:
-    return respx_mock.post(_URL).mock(return_value=httpx.Response(200, json=completion))
+@pytest.fixture
+def mount_completion(respx_mock: respx.MockRouter) -> Callable[[dict[str, Any]], respx.Route]:
+    """Mount a chat-completion response at the Groq endpoint; returns the respx route."""
+
+    def _mount(completion: dict[str, Any]) -> respx.Route:
+        return respx_mock.post(_URL).mock(return_value=httpx.Response(200, json=completion))
+
+    return _mount
 
 
 # MARK: Chat
 
 
 class TestChat:
-    def test_basic(self, sync_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter) -> None:
-        route = _ok(completion, respx_mock)
+    def test_basic(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+    ) -> None:
+        route = mount_completion(completion)
         result = sync_provider.chat(MODEL, [UserMessage(content="Hi")])
         assert result.content == "Hello!"
         assert result.model == MODEL
@@ -114,9 +127,12 @@ class TestChat:
         assert route.called
 
     def test_request_body(
-        self, sync_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        route = _ok(completion, respx_mock)
+        route = mount_completion(completion)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], temperature=0.5, max_tokens=100, top_p=0.9, stop=["END"])
         body = json.loads(route.calls.last.request.content)
         assert body == {
@@ -130,9 +146,12 @@ class TestChat:
         }
 
     def test_tools_and_choice(
-        self, sync_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        route = _ok(completion, respx_mock)
+        route = mount_completion(completion)
         sync_provider.chat(
             MODEL,
             [UserMessage(content="Hi")],
@@ -146,9 +165,12 @@ class TestChat:
         assert body["response_format"] == {"type": "json_object"}
 
     def test_reasoning_effort(
-        self, sync_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        route = _ok(completion, respx_mock)
+        route = mount_completion(completion)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], reasoning_effort="medium")
         body = json.loads(route.calls.last.request.content)
         assert body["reasoning_effort"] == "medium"
@@ -170,9 +192,12 @@ class TestChat:
             sync_provider.chat(MODEL, [UserMessage(content="Hi")])
 
     def test_cost_calculated(
-        self, sync_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        _ok(completion, respx_mock)
+        mount_completion(completion)
         result = sync_provider.chat(MODEL, [UserMessage(content="Hi")])
         assert result.cost is not None
         assert result.cost.total_cost > 0
@@ -183,9 +208,12 @@ class TestChat:
 
 class TestAchat:
     async def test_basic(
-        self, async_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        async_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        _ok(completion, respx_mock)
+        mount_completion(completion)
         result = await async_provider.achat(MODEL, [UserMessage(content="Hi")])
         assert result.content == "Hello!"
         assert result.provider == "groq"
@@ -210,8 +238,10 @@ class TestAchat:
 
 
 class TestChatStream:
-    def test_yields_and_costs(self, sync_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
-        route = respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=_sse_stream()))
+    def test_yields_and_costs(
+        self, sync_provider: GroqProvider, respx_mock: respx.MockRouter, stream_bytes: bytes
+    ) -> None:
+        route = respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=stream_bytes))
         chunks = list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
         assert [c.delta for c in chunks[:2]] == ["Hel", "lo!"]
         assert chunks[2].finish_reason == "stop"
@@ -264,8 +294,10 @@ class TestChatStream:
 
 
 class TestAchatStream:
-    async def test_yields_and_costs(self, async_provider: GroqProvider, respx_mock: respx.MockRouter) -> None:
-        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=_sse_stream()))
+    async def test_yields_and_costs(
+        self, async_provider: GroqProvider, respx_mock: respx.MockRouter, stream_bytes: bytes
+    ) -> None:
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=stream_bytes))
         chunks = [c async for c in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")])]
         assert [c.delta for c in chunks[:2]] == ["Hel", "lo!"]
         assert chunks[2].cost is not None
@@ -315,18 +347,24 @@ class TestAchatStream:
 
 class TestClientManagement:
     def test_sync_client_reused(
-        self, sync_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        _ok(completion, respx_mock)
+        mount_completion(completion)
         sync_provider.chat(MODEL, [UserMessage(content="a")])
         client = sync_provider._sync_client
         sync_provider.chat(MODEL, [UserMessage(content="b")])
         assert sync_provider._sync_client is client
 
     async def test_async_client_reused(
-        self, async_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        async_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        _ok(completion, respx_mock)
+        mount_completion(completion)
         await async_provider.achat(MODEL, [UserMessage(content="a")])
         client = async_provider._async_client
         await async_provider.achat(MODEL, [UserMessage(content="b")])
@@ -343,9 +381,9 @@ class TestClientManagement:
         assert route.called
 
     def test_timeout_and_retries(
-        self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self, fake_auth: FakeAuth, completion: dict[str, Any], mount_completion: Callable[[dict[str, Any]], respx.Route]
     ) -> None:
-        _ok(completion, respx_mock)
+        mount_completion(completion)
         provider = GroqProvider(auth=fake_auth, timeout=30.0, max_retries=5)
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert provider._sync_client is not None
@@ -415,9 +453,12 @@ class TestRegisterPricing:
 
 class TestAclose:
     async def test_closes_client(
-        self, async_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        async_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        _ok(completion, respx_mock)
+        mount_completion(completion)
         await async_provider.achat(MODEL, [UserMessage(content="Hi")])
         assert async_provider._async_client is not None
         await async_provider.aclose()
@@ -437,9 +478,12 @@ class TestPreload:
 
 class TestProviderParams:
     def test_all_params(
-        self, sync_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        route = _ok(completion, respx_mock)
+        route = mount_completion(completion)
         sync_provider.chat(
             MODEL, [UserMessage(content="Hi")], provider_params=GroqParams(service_tier="flex", seed=42, user="u1")
         )
@@ -449,26 +493,35 @@ class TestProviderParams:
         assert body["user"] == "u1"
 
     def test_empty_params(
-        self, sync_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        route = _ok(completion, respx_mock)
+        route = mount_completion(completion)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=GroqParams())
         body = json.loads(route.calls.last.request.content)
         assert "service_tier" not in body
 
     def test_params_reasoning_effort(
-        self, sync_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        route = _ok(completion, respx_mock)
+        route = mount_completion(completion)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=GroqParams(reasoning_effort="high"))
         body = json.loads(route.calls.last.request.content)
         assert body["reasoning_effort"] == "high"
         assert body["include_reasoning"] is True
 
     def test_params_reasoning_effort_none(
-        self, sync_provider: GroqProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
     ) -> None:
-        route = _ok(completion, respx_mock)
+        route = mount_completion(completion)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=GroqParams(reasoning_effort="none"))
         body = json.loads(route.calls.last.request.content)
         assert body["reasoning_effort"] == "none"
