@@ -2,7 +2,7 @@
 
 Modular Python library for unified LLM provider access with cost reporting.
 
-Separate packages per provider. Lazy SDK loading. No global state. Install only what you use.
+Separate packages per provider. Lazy dependency loading. No global state. Install only what you use.
 
 ## Install
 
@@ -223,16 +223,16 @@ response = registry.chat("my-provider/my-model", messages)
 
 ## Design
 
-- **Lazy loading**: Provider SDKs are imported on first API call, not on `import`. To pay the import cost at startup instead, each package exports a `preload()` function:
+- **Lazy loading**: Each provider imports `httpx` (and any provider-specific dependencies, e.g. `google-auth` or `boto3`) on first API call, not on `import`. To pay the import cost at startup instead, each package exports a `preload()` function:
 
   ```python
   import lmux_openai
-  lmux_openai.preload()  # eagerly imports the openai SDK
+  lmux_openai.preload()  # eagerly imports httpx and the provider's dependencies
   ```
 - **Protocols**: Providers implement `CompletionProvider`, `EmbeddingProvider`, `ResponsesProvider`, and/or `AsyncCloseable`. Check support at runtime with `isinstance()`.
 - **Standardized inputs and outputs**: Same message types and response shapes across all providers.
 - **Cost ownership**: Each provider owns its pricing data and calculation. Core provides utilities, not a database.
-- **Serverless-friendly**: Lazy SDK loading, no global state, and automatic event loop detection keep cold starts fast and avoid stale client issues.
+- **Serverless-friendly**: Lazy dependency loading, no global state, and automatic event loop detection keep cold starts fast and avoid stale client issues.
 
 ## Development
 

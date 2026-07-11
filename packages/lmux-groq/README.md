@@ -1,6 +1,6 @@
 # lmux-groq
 
-Groq provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [groq](https://pypi.org/project/groq/) SDK.
+Groq provider for [lmux](https://github.com/cluebbehusen/lmux). Talks to the Groq Chat Completions API directly over [httpx](https://pypi.org/project/httpx/).
 
 Supports chat completions and streaming.
 
