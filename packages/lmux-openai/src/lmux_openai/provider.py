@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
@@ -76,7 +76,7 @@ class OpenAIProvider(
 ):
     """OpenAI API provider over httpx."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         auth: AuthProvider[str] | None = None,
@@ -84,12 +84,18 @@ class OpenAIProvider(
         timeout: float | None = None,
         max_retries: int | None = None,
         data_residency: bool = False,
+        organization: str | None = None,
+        project: str | None = None,
+        default_headers: Mapping[str, str] | None = None,
     ) -> None:
         self._auth: AuthProvider[str] = auth or OpenAIEnvAuthProvider()
         self._base_url: str | None = base_url
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
         self._data_residency: bool = data_residency
+        self._organization: str | None = organization
+        self._project: str | None = project
+        self._default_headers: Mapping[str, str] | None = default_headers
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -131,6 +137,9 @@ class OpenAIProvider(
                 base_url=self._base_url,
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                organization=self._organization,
+                project=self._project,
+                default_headers=self._default_headers,
             )
         return self._sync_client
 
@@ -142,6 +151,9 @@ class OpenAIProvider(
                 base_url=self._base_url,
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                organization=self._organization,
+                project=self._project,
+                default_headers=self._default_headers,
             )
             self._async_loop = loop
         return self._async_client
