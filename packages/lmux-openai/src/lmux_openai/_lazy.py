@@ -12,6 +12,14 @@ if TYPE_CHECKING:
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
 
+def _set_managed(headers: dict[str, str], name: str, value: str) -> None:
+    """Set an lmux-managed header, first removing any case-insensitive duplicate the caller supplied."""
+    lowered = name.lower()
+    for existing in [key for key in headers if key.lower() == lowered]:
+        del headers[existing]
+    headers[name] = value
+
+
 def _headers(
     api_key: str,
     organization: str | None,
@@ -19,13 +27,14 @@ def _headers(
     default_headers: Mapping[str, str] | None,
 ) -> dict[str, str]:
     # default_headers form the base layer; lmux-managed headers are applied on top and win on conflict.
+    # Overrides are case-insensitive so a differently-cased duplicate (e.g. "authorization") can't slip through.
     headers: dict[str, str] = dict(default_headers or {})
-    headers["Authorization"] = f"Bearer {api_key}"
-    headers["Content-Type"] = "application/json"
+    _set_managed(headers, "Authorization", f"Bearer {api_key}")
+    _set_managed(headers, "Content-Type", "application/json")
     if organization is not None:
-        headers["OpenAI-Organization"] = organization
+        _set_managed(headers, "OpenAI-Organization", organization)
     if project is not None:
-        headers["OpenAI-Project"] = project
+        _set_managed(headers, "OpenAI-Project", project)
     return headers
 
 
