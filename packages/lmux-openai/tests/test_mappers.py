@@ -44,6 +44,12 @@ from lmux_openai._mappers import (
     map_tool_choice,
     map_tools,
 )
+from lmux_openai._wire import (
+    WireChunk,
+    WireCompletion,
+    WireEmbeddingResponse,
+    WireResponsesResponse,
+)
 
 # MARK: Fixtures
 
@@ -232,7 +238,7 @@ class TestMapResponseInput:
 
 class TestMapChatCompletion:
     def test_basic(self, chat_completion: dict[str, Any], noop_cost_fn: Any) -> None:  # noqa: ANN401
-        result = map_chat_completion(chat_completion, "openai", noop_cost_fn)
+        result = map_chat_completion(WireCompletion.model_validate(chat_completion), "openai", noop_cost_fn)
         assert result == ChatResponse(
             content="Hello!",
             tool_calls=None,
@@ -263,7 +269,7 @@ class TestMapChatCompletion:
             ],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5},
         }
-        result = map_chat_completion(completion, "openai", noop_cost_fn)
+        result = map_chat_completion(WireCompletion.model_validate(completion), "openai", noop_cost_fn)
         assert result.content is None
         assert result.tool_calls == [ToolCall(id="tc1", function=FunctionCallResult(name="f", arguments='{"x": 1}'))]
 
@@ -280,7 +286,7 @@ class TestMapChatCompletion:
             ],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1},
         }
-        result = map_chat_completion(completion, "openai", noop_cost_fn)
+        result = map_chat_completion(WireCompletion.model_validate(completion), "openai", noop_cost_fn)
         assert result.reasoning == "thinking"
 
     def test_with_cache_read_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
@@ -290,7 +296,7 @@ class TestMapChatCompletion:
             "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5, "prompt_tokens_details": {"cached_tokens": 50}},
         }
-        result = map_chat_completion(completion, "openai", noop_cost_fn)
+        result = map_chat_completion(WireCompletion.model_validate(completion), "openai", noop_cost_fn)
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
 
@@ -305,7 +311,7 @@ class TestMapChatCompletion:
                 "prompt_tokens_details": {"cached_tokens": 2, "cache_write_tokens": 6},
             },
         }
-        result = map_chat_completion(completion, "openai", noop_cost_fn)
+        result = map_chat_completion(WireCompletion.model_validate(completion), "openai", noop_cost_fn)
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 2
         assert result.usage.cache_creation_tokens == 6
@@ -321,18 +327,18 @@ class TestMapChatCompletion:
                 "completion_tokens_details": {"reasoning_tokens": 20},
             },
         }
-        result = map_chat_completion(completion, "openai", noop_cost_fn)
+        result = map_chat_completion(WireCompletion.model_validate(completion), "openai", noop_cost_fn)
         assert result.usage is not None
         assert result.usage.reasoning_tokens == 20
 
     def test_none_usage(self, chat_completion: dict[str, Any], noop_cost_fn: Any) -> None:  # noqa: ANN401
         del chat_completion["usage"]
-        result = map_chat_completion(chat_completion, "openai", noop_cost_fn)
+        result = map_chat_completion(WireCompletion.model_validate(chat_completion), "openai", noop_cost_fn)
         assert result.usage is None
         assert result.cost is None
 
     def test_cost_none_when_unknown(self, chat_completion: dict[str, Any], none_cost_fn: Any) -> None:  # noqa: ANN401
-        result = map_chat_completion(chat_completion, "openai", none_cost_fn)
+        result = map_chat_completion(WireCompletion.model_validate(chat_completion), "openai", none_cost_fn)
         assert result.cost is None
 
 
@@ -342,14 +348,16 @@ class TestMapChatCompletion:
 class TestMapChatChunk:
     def test_content_delta(self) -> None:
         chunk = {"model": "gpt-4o", "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hello"}}]}
-        assert map_chat_chunk(chunk, "openai") == ChatChunk(delta="Hello", model="gpt-4o", provider="openai")
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "openai") == ChatChunk(
+            delta="Hello", model="gpt-4o", provider="openai"
+        )
 
     def test_reasoning_delta(self) -> None:
         chunk = {
             "model": "o3",
             "choices": [{"index": 0, "finish_reason": None, "delta": {"reasoning_content": "hmm"}}],
         }
-        assert map_chat_chunk(chunk, "openai").reasoning_delta == "hmm"
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "openai").reasoning_delta == "hmm"
 
     def test_tool_call_delta(self) -> None:
         chunk = {
@@ -371,7 +379,7 @@ class TestMapChatChunk:
                 }
             ],
         }
-        assert map_chat_chunk(chunk, "openai").tool_call_deltas == [
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "openai").tool_call_deltas == [
             ToolCallDelta(index=0, id="tc1", type="function", function=FunctionCallDelta(name="f", arguments='{"x":'))
         ]
 
@@ -380,7 +388,7 @@ class TestMapChatChunk:
             "model": "gpt-4o",
             "choices": [{"index": 0, "finish_reason": None, "delta": {"tool_calls": [{"index": 0, "id": "tc1"}]}}],
         }
-        assert map_chat_chunk(chunk, "openai").tool_call_deltas == [
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "openai").tool_call_deltas == [
             ToolCallDelta(index=0, id="tc1", type=None, function=None)
         ]
 
@@ -390,7 +398,7 @@ class TestMapChatChunk:
             "choices": [{"index": 0, "finish_reason": "stop", "delta": {}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 5},
         }
-        assert map_chat_chunk(chunk, "openai") == ChatChunk(
+        assert map_chat_chunk(WireChunk.model_validate(chunk), "openai") == ChatChunk(
             finish_reason="stop", usage=Usage(input_tokens=10, output_tokens=5), model="gpt-4o", provider="openai"
         )
 
@@ -404,18 +412,20 @@ class TestMapChatChunk:
                 "prompt_tokens_details": {"cached_tokens": 1, "cache_write_tokens": 4},
             },
         }
-        result = map_chat_chunk(chunk, "openai")
+        result = map_chat_chunk(WireChunk.model_validate(chunk), "openai")
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 1
         assert result.usage.cache_creation_tokens == 4
 
     def test_empty_choices(self) -> None:
-        assert map_chat_chunk({"model": "gpt-4o", "choices": []}, "openai") == ChatChunk(
+        assert map_chat_chunk(WireChunk.model_validate({"model": "gpt-4o", "choices": []}), "openai") == ChatChunk(
             model="gpt-4o", provider="openai"
         )
 
     def test_missing_choices(self) -> None:
-        assert map_chat_chunk({"model": "gpt-4o"}, "openai") == ChatChunk(model="gpt-4o", provider="openai")
+        assert map_chat_chunk(WireChunk.model_validate({"model": "gpt-4o"}), "openai") == ChatChunk(
+            model="gpt-4o", provider="openai"
+        )
 
 
 # MARK: map_embedding_response
@@ -429,7 +439,9 @@ class TestMapEmbeddingResponse:
             "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]}],
             "usage": {"prompt_tokens": 5, "total_tokens": 5},
         }
-        assert map_embedding_response(response, "openai", noop_cost_fn) == EmbeddingResponse(
+        assert map_embedding_response(
+            WireEmbeddingResponse.model_validate(response), "openai", noop_cost_fn
+        ) == EmbeddingResponse(
             embeddings=[[0.1, 0.2, 0.3]],
             usage=Usage(input_tokens=5, output_tokens=0),
             cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
@@ -447,7 +459,9 @@ class TestMapEmbeddingResponse:
             ],
             "usage": {"prompt_tokens": 10, "total_tokens": 10},
         }
-        assert map_embedding_response(response, "openai", noop_cost_fn).embeddings == [[0.1, 0.2], [0.3, 0.4]]
+        assert map_embedding_response(
+            WireEmbeddingResponse.model_validate(response), "openai", noop_cost_fn
+        ).embeddings == [[0.1, 0.2], [0.3, 0.4]]
 
 
 # MARK: map_responses_response
@@ -467,7 +481,9 @@ class TestMapResponsesResponse:
             ],
             "usage": {"input_tokens": 10, "output_tokens": 5},
         }
-        assert map_responses_response(response, "openai", noop_cost_fn) == ResponseResponse(
+        assert map_responses_response(
+            WireResponsesResponse.model_validate(response), "openai", noop_cost_fn
+        ) == ResponseResponse(
             id="resp_123",
             output_text="Hello!",
             usage=Usage(input_tokens=10, output_tokens=5),
@@ -493,11 +509,17 @@ class TestMapResponsesResponse:
             ],
             "usage": {"input_tokens": 1, "output_tokens": 1},
         }
-        assert map_responses_response(response, "openai", noop_cost_fn).output_text == "part-a part-b"
+        assert (
+            map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn).output_text
+            == "part-a part-b"
+        )
 
     def test_output_missing(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = {"id": "r", "model": "gpt-4o", "usage": {"input_tokens": 1, "output_tokens": 1}}
-        assert map_responses_response(response, "openai", noop_cost_fn).output_text == ""
+        assert (
+            map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn).output_text
+            == ""
+        )
 
     def test_with_cached_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = {
@@ -506,7 +528,7 @@ class TestMapResponsesResponse:
             "output": [],
             "usage": {"input_tokens": 10, "output_tokens": 5, "input_tokens_details": {"cached_tokens": 50}},
         }
-        result = map_responses_response(response, "openai", noop_cost_fn)
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn)
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
 
@@ -521,7 +543,7 @@ class TestMapResponsesResponse:
                 "input_tokens_details": {"cached_tokens": 2, "cache_write_tokens": 6},
             },
         }
-        result = map_responses_response(response, "openai", noop_cost_fn)
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn)
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 2
         assert result.usage.cache_creation_tokens == 6
@@ -533,12 +555,12 @@ class TestMapResponsesResponse:
             "output": [],
             "usage": {"input_tokens": 10, "output_tokens": 5, "output_tokens_details": {"reasoning_tokens": 4}},
         }
-        result = map_responses_response(response, "openai", noop_cost_fn)
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn)
         assert result.usage is not None
         assert result.usage.reasoning_tokens == 4
 
     def test_none_usage(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = {"id": "r", "model": "gpt-4o", "output": []}
-        result = map_responses_response(response, "openai", noop_cost_fn)
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn)
         assert result.usage is None
         assert result.cost is None

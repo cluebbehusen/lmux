@@ -44,6 +44,13 @@ from lmux_anthropic._mappers import (
     map_tools,
     model_uses_adaptive_thinking,
 )
+from lmux_anthropic._wire import (
+    WireContentBlockDeltaEvent,
+    WireContentBlockStartEvent,
+    WireMessage,
+    WireMessageDeltaEvent,
+    WireMessageStartEvent,
+)
 
 # MARK: Fixtures
 
@@ -526,7 +533,7 @@ class TestMapMessageResponse:
             "content": [{"type": "text", "text": "Hello!"}],
             "usage": self._usage(),
         }
-        result = map_message_response(message, "anthropic", cost_fn)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
         assert result == ChatResponse(
             content="Hello!",
             tool_calls=None,
@@ -544,7 +551,7 @@ class TestMapMessageResponse:
             "content": [{"type": "tool_use", "id": "call_1", "name": "get_weather", "input": {"city": "NYC"}}],
             "usage": self._usage(),
         }
-        result = map_message_response(message, "anthropic", cost_fn)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
         assert result.content is None
         assert result.tool_calls == [
             ToolCall(id="call_1", function=FunctionCallResult(name="get_weather", arguments='{"city": "NYC"}'))
@@ -561,7 +568,7 @@ class TestMapMessageResponse:
             ],
             "usage": self._usage(),
         }
-        result = map_message_response(message, "anthropic", cost_fn)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
         assert result.content == "Answer"
         assert result.reasoning == "Let me think about this..."
 
@@ -572,7 +579,7 @@ class TestMapMessageResponse:
             "content": [{"type": "thinking", "thinking": "Deep thought..."}],
             "usage": self._usage(),
         }
-        result = map_message_response(message, "anthropic", cost_fn)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
         assert result.content is None
         assert result.reasoning == "Deep thought..."
 
@@ -583,7 +590,7 @@ class TestMapMessageResponse:
             "content": [{"type": "text", "text": "Part 1"}, {"type": "text", "text": "Part 2"}],
             "usage": self._usage(),
         }
-        result = map_message_response(message, "anthropic", cost_fn)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
         assert result.content == "Part 1\nPart 2"
 
     def test_thinking_with_tool_use_and_text(self, cost_fn: CostCalculator) -> None:
@@ -598,7 +605,7 @@ class TestMapMessageResponse:
             ],
             "usage": self._usage(),
         }
-        result = map_message_response(message, "anthropic", cost_fn)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
         assert result.reasoning == "Reasoning..."
         assert result.tool_calls is not None
         assert len(result.tool_calls) == 2
@@ -611,7 +618,7 @@ class TestMapMessageResponse:
             "content": [{"type": "some_future_block"}, {"type": "text", "text": "Answer"}],
             "usage": self._usage(),
         }
-        result = map_message_response(message, "anthropic", cost_fn)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
         assert result.content == "Answer"
         assert result.reasoning is None
 
@@ -622,7 +629,7 @@ class TestMapMessageResponse:
             "content": [{"type": "text", "text": "Hello"}],
             "usage": self._usage(),
         }
-        result = map_message_response(message, "anthropic", none_cost_fn)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", none_cost_fn)
         assert result.cost is None
 
     def test_cache_tokens_mapped(self, cost_fn: CostCalculator) -> None:
@@ -634,7 +641,7 @@ class TestMapMessageResponse:
                 input_tokens=100, output_tokens=50, cache_read_input_tokens=20, cache_creation_input_tokens=10
             ),
         }
-        result = map_message_response(message, "anthropic", cost_fn)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
         assert result.usage is not None
         # input_tokens is normalized to the inclusive total (100 + 20 + 10)
         assert result.usage.input_tokens == 130
@@ -648,7 +655,7 @@ class TestMapMessageResponse:
             "content": [{"type": "text", "text": "Hello"}],
             "usage": self._usage(),
         }
-        result = map_message_response(message, "anthropic", cost_fn)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
         assert result.finish_reason is None
 
     def test_missing_stop_reason(self, cost_fn: CostCalculator) -> None:
@@ -657,7 +664,7 @@ class TestMapMessageResponse:
             "content": [{"type": "text", "text": "Hello"}],
             "usage": self._usage(),
         }
-        result = map_message_response(message, "anthropic", cost_fn)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
         assert result.finish_reason is None
 
     def test_breakdown_mapped_from_cache_creation(self) -> None:
@@ -671,7 +678,7 @@ class TestMapMessageResponse:
                 cache_creation={"ephemeral_5m_input_tokens": 500, "ephemeral_1h_input_tokens": 1500},
             ),
         }
-        result = map_message_response(message, "anthropic", lambda _m, _u: None)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", lambda _m, _u: None)
         assert result.usage is not None
         assert result.usage.input_tokens == 2100
         assert result.usage.cache_creation_tokens_by_ttl == {"5m": 500, "1h": 1500}
@@ -686,7 +693,7 @@ class TestMapMessageResponse:
                 cache_creation={"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 1500},
             ),
         }
-        result = map_message_response(message, "anthropic", lambda _m, _u: None)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", lambda _m, _u: None)
         assert result.usage is not None
         assert result.usage.cache_creation_tokens_by_ttl == {"1h": 1500}
 
@@ -697,7 +704,7 @@ class TestMapMessageResponse:
             "content": [{"type": "text", "text": "Hello"}],
             "usage": self._usage(cache_creation={"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0}),
         }
-        result = map_message_response(message, "anthropic", lambda _m, _u: None)
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", lambda _m, _u: None)
         assert result.usage is not None
         assert result.usage.cache_creation_tokens_by_ttl is None
 
@@ -716,7 +723,7 @@ class TestMapMessageStart:
                 },
             },
         }
-        model, usage = map_message_start(event)
+        model, usage = map_message_start(WireMessageStartEvent.model_validate(event))
         assert model == "claude-sonnet-4-6"
         assert usage == Usage(input_tokens=65, output_tokens=0, cache_read_tokens=10, cache_creation_tokens=5)
 
@@ -728,7 +735,7 @@ class TestMapContentBlockStart:
             "index": 0,
             "content_block": {"type": "tool_use", "id": "call_1", "name": "get_weather", "input": {}},
         }
-        result = map_content_block_start(event)
+        result = map_content_block_start(WireContentBlockStartEvent.model_validate(event))
         assert result == ChatChunk(
             tool_call_deltas=[
                 ToolCallDelta(index=0, id="call_1", type="function", function=FunctionCallDelta(name="get_weather"))
@@ -737,13 +744,13 @@ class TestMapContentBlockStart:
 
     def test_text_block_returns_none(self) -> None:
         event = {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}
-        assert map_content_block_start(event) is None
+        assert map_content_block_start(WireContentBlockStartEvent.model_validate(event)) is None
 
 
 class TestMapContentBlockDelta:
     def test_text_delta(self) -> None:
         event = {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
-        result = map_content_block_delta(event)
+        result = map_content_block_delta(WireContentBlockDeltaEvent.model_validate(event))
         assert result == ChatChunk(delta="Hello")
 
     def test_input_json_delta(self) -> None:
@@ -752,7 +759,7 @@ class TestMapContentBlockDelta:
             "index": 1,
             "delta": {"type": "input_json_delta", "partial_json": '{"city":'},
         }
-        result = map_content_block_delta(event)
+        result = map_content_block_delta(WireContentBlockDeltaEvent.model_validate(event))
         assert result == ChatChunk(
             tool_call_deltas=[ToolCallDelta(index=1, function=FunctionCallDelta(arguments='{"city":'))]
         )
@@ -763,20 +770,20 @@ class TestMapContentBlockDelta:
             "index": 0,
             "delta": {"type": "thinking_delta", "thinking": "Let me think..."},
         }
-        result = map_content_block_delta(event)
+        result = map_content_block_delta(WireContentBlockDeltaEvent.model_validate(event))
         assert result is not None
         assert result.reasoning_delta == "Let me think..."
 
     def test_unknown_delta_type_returns_none(self) -> None:
         event = {"type": "content_block_delta", "index": 0, "delta": {"type": "some_future_delta"}}
-        assert map_content_block_delta(event) is None
+        assert map_content_block_delta(WireContentBlockDeltaEvent.model_validate(event)) is None
 
 
 class TestMapMessageDelta:
     def test_final_chunk_with_usage(self) -> None:
         event = {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 50}}
         start_usage = Usage(input_tokens=100, output_tokens=0, cache_read_tokens=10, cache_creation_tokens=5)
-        result = map_message_delta(event, start_usage)
+        result = map_message_delta(WireMessageDeltaEvent.model_validate(event), start_usage)
         assert result == ChatChunk(
             finish_reason="stop",
             usage=Usage(input_tokens=100, output_tokens=50, cache_read_tokens=10, cache_creation_tokens=5),
@@ -790,7 +797,7 @@ class TestMapMessageDelta:
             cache_creation_tokens_by_ttl={"1h": 2000},
         )
         event = {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 42}}
-        chunk = map_message_delta(event, start_usage)
+        chunk = map_message_delta(WireMessageDeltaEvent.model_validate(event), start_usage)
         assert chunk.usage == Usage(
             input_tokens=2100,
             output_tokens=42,
