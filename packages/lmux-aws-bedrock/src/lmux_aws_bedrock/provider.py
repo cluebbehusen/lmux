@@ -19,14 +19,13 @@ import os
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast, override
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, override
 from urllib.parse import quote
 
 if TYPE_CHECKING:
     import boto3
     import httpx
     from aiobotocore.session import AioSession
-    from mypy_boto3_bedrock_runtime.type_defs import ConverseResponseTypeDef, ConverseStreamOutputTypeDef
 
 from lmux.cost import ModelPricing, calculate_cost
 from lmux.exceptions import LmuxError, ProviderError
@@ -43,7 +42,7 @@ from lmux.types import (
     Usage,
 )
 from lmux_aws_bedrock._eventstream import decode_messages
-from lmux_aws_bedrock._exceptions import PROVIDER, map_transport_error, parse_json, raise_for_status
+from lmux_aws_bedrock._exceptions import PROVIDER, map_transport_error, parse_body, raise_for_status
 from lmux_aws_bedrock._lazy import DEFAULT_REGION, bedrock_base_url, create_async_client, create_sync_client
 from lmux_aws_bedrock._mappers import (
     build_embedding_request_body,
@@ -56,6 +55,11 @@ from lmux_aws_bedrock._mappers import (
     model_uses_adaptive_thinking,
 )
 from lmux_aws_bedrock._sigv4 import sign
+from lmux_aws_bedrock._wire import (
+    WireConverseResponse,
+    WireEmbeddingResponse,
+    WireStreamEvent,
+)
 from lmux_aws_bedrock.auth import BedrockEnvAuthProvider
 from lmux_aws_bedrock.cost import calculate_bedrock_cost
 from lmux_aws_bedrock.params import BedrockParams
@@ -253,7 +257,7 @@ class BedrockProvider(
             raise map_transport_error(e) from e
         raise_for_status(response)
         return map_converse_response(
-            cast("ConverseResponseTypeDef", parse_json(response)),
+            parse_body(response, WireConverseResponse),
             model,
             PROVIDER_NAME,
             lambda m, u: self._calculate_cost(m, u, as_of),
@@ -288,7 +292,7 @@ class BedrockProvider(
             raise map_transport_error(e) from e
         raise_for_status(response)
         return map_converse_response(
-            cast("ConverseResponseTypeDef", parse_json(response)),
+            parse_body(response, WireConverseResponse),
             model,
             PROVIDER_NAME,
             lambda m, u: self._calculate_cost(m, u, as_of),
@@ -359,7 +363,7 @@ class BedrockProvider(
         """Decode an event-stream body into ChatChunks, stamping cost on the usage chunk."""
         try:
             for event in _decode_stream(content):
-                chunk = map_stream_event(cast("ConverseStreamOutputTypeDef", event))
+                chunk = map_stream_event(WireStreamEvent.model_validate(event))
                 if chunk is not None:
                     yield self._finalize_chunk(chunk, model, as_of)
         except LmuxError:
@@ -399,9 +403,9 @@ class BedrockProvider(
                 body = build_embedding_request_body(text, dimensions=dimensions).encode()
                 response = client.send(self._build_request(client, path, body))
                 raise_for_status(response)
-                result: dict[str, Any] = parse_json(response)
-                all_embeddings.append(result.get("embedding", []))
-                total_input_tokens += result.get("inputTextTokenCount", 0)
+                result = parse_body(response, WireEmbeddingResponse)
+                all_embeddings.append(result.embedding)
+                total_input_tokens += result.input_text_token_count
         except LmuxError:
             raise
         except Exception as e:
@@ -428,9 +432,9 @@ class BedrockProvider(
                 body = build_embedding_request_body(text, dimensions=dimensions).encode()
                 response = await client.send(self._build_request(client, path, body))
                 raise_for_status(response)
-                result: dict[str, Any] = parse_json(response)
-                all_embeddings.append(result.get("embedding", []))
-                total_input_tokens += result.get("inputTextTokenCount", 0)
+                result = parse_body(response, WireEmbeddingResponse)
+                all_embeddings.append(result.embedding)
+                total_input_tokens += result.input_text_token_count
         except LmuxError:
             raise
         except Exception as e:

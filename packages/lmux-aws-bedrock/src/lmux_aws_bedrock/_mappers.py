@@ -11,15 +11,9 @@ if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime.literals import CacheTTLType, ImageFormatType
     from mypy_boto3_bedrock_runtime.type_defs import (
         CachePointBlockTypeDef,
-        ContentBlockDeltaEventTypeDef,
-        ContentBlockStartEventTypeDef,
         ContentBlockTypeDef,
-        ConverseResponseTypeDef,
-        ConverseStreamMetadataEventTypeDef,
-        ConverseStreamOutputTypeDef,
         MessageTypeDef,
         SystemContentBlockTypeDef,
-        TokenUsageTypeDef,
         ToolConfigurationTypeDef,
         ToolSpecificationTypeDef,
         ToolTypeDef,
@@ -53,6 +47,15 @@ from lmux.types import (
     ToolMessage,
     Usage,
     UserMessage,
+)
+from lmux_aws_bedrock._wire import (
+    WireContentBlockDeltaEvent,
+    WireContentBlockStartEvent,
+    WireConverseResponse,
+    WireEmbeddingResponse,
+    WireMetadataEvent,
+    WireStreamEvent,
+    WireTokenUsage,
 )
 
 type CostCalculator = Callable[[str, Usage], Cost | None]
@@ -284,44 +287,36 @@ def map_response_format(rf: ResponseFormat) -> dict[str, object] | None:
 
 
 def map_converse_response(
-    response: "ConverseResponseTypeDef",
+    response: WireConverseResponse,
     model: str,
     provider_name: str,
     cost_fn: CostCalculator,
 ) -> ChatResponse:
-    """Convert Converse API response dict to lmux ChatResponse."""
-    output = response.get("output", {})
-    message = output.get("message", {})
-    content_blocks = message.get("content", [])
-
+    """Convert a validated Converse API response to an lmux ChatResponse."""
     text_parts: list[str] = []
     tool_calls: list[ToolCall] = []
     reasoning_parts: list[str] = []
 
-    for block in content_blocks:
-        if "reasoningContent" in block:
-            reasoning_text = block["reasoningContent"].get("reasoningText", {})
-            if text := reasoning_text.get("text"):
-                reasoning_parts.append(text)
-        elif "text" in block:
-            text_parts.append(block["text"])
-        elif "toolUse" in block:
-            tu = block["toolUse"]
+    for block in response.output.message.content:
+        if block.reasoning_content is not None:
+            reasoning_text = block.reasoning_content.reasoning_text
+            if reasoning_text.text:
+                reasoning_parts.append(reasoning_text.text)
+        elif block.text is not None:
+            text_parts.append(block.text)
+        elif block.tool_use is not None:
+            tu = block.tool_use
             tool_calls.append(
                 ToolCall(
-                    id=tu["toolUseId"],
-                    function=FunctionCallResult(
-                        name=tu["name"],
-                        arguments=json.dumps(tu["input"]),
-                    ),
+                    id=tu.tool_use_id,
+                    function=FunctionCallResult(name=tu.name, arguments=json.dumps(tu.input)),
                 )
             )
 
     content = "\n".join(text_parts) if text_parts else None
     reasoning = "\n".join(reasoning_parts) if reasoning_parts else None
-    stop_reason = response.get("stopReason")
-    finish_reason = _map_stop_reason(stop_reason)
-    usage = _map_converse_usage(response)
+    finish_reason = _map_stop_reason(response.stop_reason)
+    usage = _map_token_usage(response.usage) if response.usage else None
     cost = cost_fn(model, usage) if usage else None
 
     return ChatResponse(
@@ -342,98 +337,86 @@ def _map_stop_reason(stop_reason: str | None) -> str | None:
     return _STOP_REASON_MAP.get(stop_reason, stop_reason)
 
 
-def _map_converse_usage(response: "ConverseResponseTypeDef") -> Usage | None:
-    usage_data = response.get("usage")
-    if usage_data is None:
-        return None
-    return _map_token_usage(usage_data)
-
-
-def _map_token_usage(usage_data: "TokenUsageTypeDef") -> Usage:
-    cache_read: int = usage_data.get("cacheReadInputTokens") or 0
-    cache_write: int = usage_data.get("cacheWriteInputTokens") or 0
+def _map_token_usage(usage_data: WireTokenUsage) -> Usage:
+    cache_read = usage_data.cache_read_input_tokens or 0
+    cache_write = usage_data.cache_write_input_tokens or 0
     return Usage(
         # Converse reports inputTokens exclusive of cached tokens; lmux's
         # Usage convention is the inclusive total (see lmux.types.Usage).
-        input_tokens=usage_data.get("inputTokens", 0) + cache_read + cache_write,
-        output_tokens=usage_data.get("outputTokens", 0),
+        input_tokens=usage_data.input_tokens + cache_read + cache_write,
+        output_tokens=usage_data.output_tokens,
         cache_read_tokens=cache_read or None,
         cache_creation_tokens=cache_write or None,
         cache_creation_tokens_by_ttl=_map_cache_details(usage_data),
     )
 
 
-def _map_cache_details(usage_data: "TokenUsageTypeDef") -> dict[str, int] | None:
+def _map_cache_details(usage_data: WireTokenUsage) -> dict[str, int] | None:
     """Aggregate the per-TTL cache-write breakdown (``cacheDetails``) if reported."""
     breakdown: dict[str, int] = {}
-    for detail in usage_data.get("cacheDetails") or []:
-        tokens = detail["inputTokens"]
-        if tokens:
-            ttl = detail["ttl"]
-            breakdown[ttl] = breakdown.get(ttl, 0) + tokens
+    for detail in usage_data.cache_details or []:
+        if detail.input_tokens:
+            breakdown[detail.ttl] = breakdown.get(detail.ttl, 0) + detail.input_tokens
     return breakdown or None
 
 
 # MARK: Stream Event Mappers
 
 
-def map_stream_event(event: "ConverseStreamOutputTypeDef") -> ChatChunk | None:
+def map_stream_event(event: WireStreamEvent) -> ChatChunk | None:
     """Map a single ConverseStream event to a ChatChunk, or None to skip."""
-    if "contentBlockDelta" in event:
-        return _map_content_block_delta(event["contentBlockDelta"])
-    if "contentBlockStart" in event:
-        return _map_content_block_start(event["contentBlockStart"])
-    if "messageStop" in event:
-        return ChatChunk(finish_reason=_map_stop_reason(event["messageStop"].get("stopReason")))
-    if "metadata" in event:
-        return _map_metadata_event(event["metadata"])
+    if event.content_block_delta is not None:
+        return _map_content_block_delta(event.content_block_delta)
+    if event.content_block_start is not None:
+        return _map_content_block_start(event.content_block_start)
+    if event.message_stop is not None:
+        return ChatChunk(finish_reason=_map_stop_reason(event.message_stop.stop_reason))
+    if event.metadata is not None:
+        return _map_metadata_event(event.metadata)
     # messageStart, contentBlockStop — not interesting
     return None
 
 
-def _map_content_block_delta(data: "ContentBlockDeltaEventTypeDef") -> ChatChunk | None:
-    delta = data.get("delta", {})
-    if "reasoningContent" in delta:
-        text = delta["reasoningContent"].get("text")
-        if text:
-            return ChatChunk(reasoning_delta=text)
+def _map_content_block_delta(data: WireContentBlockDeltaEvent) -> ChatChunk | None:
+    delta = data.delta
+    if delta.reasoning_content is not None:
+        if delta.reasoning_content.text:
+            return ChatChunk(reasoning_delta=delta.reasoning_content.text)
         return None
-    if "text" in delta:
-        return ChatChunk(delta=delta["text"])
-    if "toolUse" in delta:
+    if delta.text is not None:
+        return ChatChunk(delta=delta.text)
+    if delta.tool_use is not None:
         return ChatChunk(
             tool_call_deltas=[
                 ToolCallDelta(
-                    index=data.get("contentBlockIndex", 0),
-                    function=FunctionCallDelta(arguments=delta["toolUse"].get("input", "")),
+                    index=data.content_block_index,
+                    function=FunctionCallDelta(arguments=delta.tool_use.input),
                 )
             ]
         )
     return None
 
 
-def _map_content_block_start(data: "ContentBlockStartEventTypeDef") -> ChatChunk | None:
-    start = data.get("start", {})
-    if "toolUse" in start:
-        tu = start["toolUse"]
+def _map_content_block_start(data: WireContentBlockStartEvent) -> ChatChunk | None:
+    if data.start.tool_use is not None:
+        tu = data.start.tool_use
         return ChatChunk(
             tool_call_deltas=[
                 ToolCallDelta(
-                    index=data.get("contentBlockIndex", 0),
-                    id=tu.get("toolUseId"),
+                    index=data.content_block_index,
+                    id=tu.tool_use_id,
                     type="function",
-                    function=FunctionCallDelta(name=tu.get("name")),
+                    function=FunctionCallDelta(name=tu.name),
                 )
             ]
         )
     return None
 
 
-def _map_metadata_event(metadata: "ConverseStreamMetadataEventTypeDef") -> ChatChunk | None:
-    usage_data = metadata.get("usage")
-    if usage_data is None:
+def _map_metadata_event(metadata: WireMetadataEvent) -> ChatChunk | None:
+    if metadata.usage is None:
         return None
-    return ChatChunk(usage=_map_token_usage(usage_data))
+    return ChatChunk(usage=_map_token_usage(metadata.usage))
 
 
 # MARK: Embedding Mappers
@@ -448,20 +431,17 @@ def build_embedding_request_body(text: str, *, dimensions: int | None = None) ->
 
 
 def map_embedding_response(
-    response_body: dict[str, Any],
+    response_body: WireEmbeddingResponse,
     model: str,
     provider_name: str,
     cost_fn: CostCalculator,
 ) -> EmbeddingResponse:
-    """Convert a single InvokeModel embedding response to lmux EmbeddingResponse."""
-    embedding: list[float] = response_body.get("embedding", [])
-    input_token_count: int = response_body.get("inputTextTokenCount", 0)
-
-    usage = Usage(input_tokens=input_token_count, output_tokens=0)
+    """Convert a validated single InvokeModel embedding response to an lmux EmbeddingResponse."""
+    usage = Usage(input_tokens=response_body.input_text_token_count, output_tokens=0)
     cost = cost_fn(model, usage)
 
     return EmbeddingResponse(
-        embeddings=[embedding],
+        embeddings=[response_body.embedding],
         usage=usage,
         cost=cost,
         model=model,

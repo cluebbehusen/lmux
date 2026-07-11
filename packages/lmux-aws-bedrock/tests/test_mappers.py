@@ -46,6 +46,11 @@ from lmux_aws_bedrock._mappers import (
     map_tools,
     model_uses_adaptive_thinking,
 )
+from lmux_aws_bedrock._wire import (
+    WireConverseResponse,
+    WireEmbeddingResponse,
+    WireStreamEvent,
+)
 
 # MARK: Fixtures
 
@@ -425,7 +430,9 @@ class TestMapConverseResponse:
             "stopReason": "end_turn",
             "usage": {"inputTokens": 10, "outputTokens": 5},
         }
-        result = map_converse_response(response, "anthropic.claude-3", "aws-bedrock", noop_cost_fn)
+        result = map_converse_response(
+            WireConverseResponse.model_validate(response), "anthropic.claude-3", "aws-bedrock", noop_cost_fn
+        )
         assert result == ChatResponse(
             content="Hello!",
             tool_calls=None,
@@ -454,7 +461,9 @@ class TestMapConverseResponse:
             "stopReason": "tool_use",
             "usage": {"inputTokens": 15, "outputTokens": 8},
         }
-        result = map_converse_response(response, "anthropic.claude-3", "aws-bedrock", noop_cost_fn)
+        result = map_converse_response(
+            WireConverseResponse.model_validate(response), "anthropic.claude-3", "aws-bedrock", noop_cost_fn
+        )
         assert result == ChatResponse(
             content=None,
             tool_calls=[
@@ -475,7 +484,9 @@ class TestMapConverseResponse:
             "output": {"message": {"content": [{"text": "Hi"}]}},
             "stopReason": "end_turn",
         }
-        result = map_converse_response(response, "anthropic.claude-3", "aws-bedrock", noop_cost_fn)
+        result = map_converse_response(
+            WireConverseResponse.model_validate(response), "anthropic.claude-3", "aws-bedrock", noop_cost_fn
+        )
         assert result.usage is None
         assert result.cost is None
 
@@ -490,7 +501,9 @@ class TestMapConverseResponse:
                 "cacheWriteInputTokens": 20,
             },
         }
-        result = map_converse_response(response, "anthropic.claude-3", "aws-bedrock", noop_cost_fn)
+        result = map_converse_response(
+            WireConverseResponse.model_validate(response), "anthropic.claude-3", "aws-bedrock", noop_cost_fn
+        )
         assert result.usage is not None
         # inputTokens is normalized to the inclusive total (10 + 50 + 20)
         assert result.usage.input_tokens == 80
@@ -514,7 +527,9 @@ class TestMapConverseResponse:
                 ],
             },
         }
-        result = map_converse_response(response, "anthropic.claude-3", "aws-bedrock", lambda _m, _u: None)
+        result = map_converse_response(
+            WireConverseResponse.model_validate(response), "anthropic.claude-3", "aws-bedrock", lambda _m, _u: None
+        )
         assert result.usage is not None
         assert result.usage.input_tokens == 2010
         assert result.usage.cache_creation_tokens_by_ttl == {"5m": 500, "1h": 1500}
@@ -525,7 +540,9 @@ class TestMapConverseResponse:
             "stopReason": "end_turn",
             "usage": {"inputTokens": 10, "outputTokens": 5},
         }
-        result = map_converse_response(response, "m", "aws-bedrock", lambda _m, _u: None)
+        result = map_converse_response(
+            WireConverseResponse.model_validate(response), "m", "aws-bedrock", lambda _m, _u: None
+        )
         assert result.usage is not None
         assert result.usage.cache_creation_tokens_by_ttl is None
         assert result.usage.input_tokens == 10
@@ -536,7 +553,7 @@ class TestMapConverseResponse:
             "stopReason": "end_turn",
             "usage": {"inputTokens": 1, "outputTokens": 0},
         }
-        result = map_converse_response(response, "m", "aws-bedrock", noop_cost_fn)
+        result = map_converse_response(WireConverseResponse.model_validate(response), "m", "aws-bedrock", noop_cost_fn)
         assert result.content is None
         assert result.tool_calls is None
 
@@ -546,7 +563,7 @@ class TestMapConverseResponse:
             "stopReason": "end_turn",
             "usage": {"inputTokens": 1, "outputTokens": 0},
         }
-        result = map_converse_response(response, "m", "aws-bedrock", noop_cost_fn)
+        result = map_converse_response(WireConverseResponse.model_validate(response), "m", "aws-bedrock", noop_cost_fn)
         assert result.content is None
         assert result.tool_calls is None
 
@@ -563,7 +580,9 @@ class TestMapConverseResponse:
             "stopReason": "end_turn",
             "usage": {"inputTokens": 10, "outputTokens": 5},
         }
-        result = map_converse_response(response, "anthropic.claude-3", "aws-bedrock", noop_cost_fn)
+        result = map_converse_response(
+            WireConverseResponse.model_validate(response), "anthropic.claude-3", "aws-bedrock", noop_cost_fn
+        )
         assert result.content == "Answer"
         assert result.reasoning == "Let me think..."
 
@@ -580,7 +599,9 @@ class TestMapConverseResponse:
             "stopReason": "end_turn",
             "usage": {"inputTokens": 10, "outputTokens": 5},
         }
-        result = map_converse_response(response, "anthropic.claude-3", "aws-bedrock", noop_cost_fn)
+        result = map_converse_response(
+            WireConverseResponse.model_validate(response), "anthropic.claude-3", "aws-bedrock", noop_cost_fn
+        )
         assert result.content == "Answer"
         assert result.reasoning is None
 
@@ -590,7 +611,9 @@ class TestMapConverseResponse:
             "stopReason": "end_turn",
             "usage": {"inputTokens": 10, "outputTokens": 5},
         }
-        result = map_converse_response(response, "unknown-model", "aws-bedrock", none_cost_fn)
+        result = map_converse_response(
+            WireConverseResponse.model_validate(response), "unknown-model", "aws-bedrock", none_cost_fn
+        )
         assert result.cost is None
 
 
@@ -598,14 +621,14 @@ class TestMapConverseResponse:
 
 
 class TestMapStopReason:
-    def _make_response(self, stop_reason: str | None) -> Any:  # noqa: ANN401
+    def _make_response(self, stop_reason: str | None) -> WireConverseResponse:
         response: Any = {
             "output": {"message": {"content": [{"text": "x"}]}},
             "usage": {"inputTokens": 1, "outputTokens": 1},
         }
         if stop_reason is not None:
             response["stopReason"] = stop_reason
-        return response
+        return WireConverseResponse.model_validate(response)
 
     def test_end_turn(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         result = map_converse_response(self._make_response("end_turn"), "m", "p", noop_cost_fn)
@@ -639,7 +662,7 @@ class TestMapStreamEvent:
                 "delta": {"text": "Hello"},
             }
         }
-        result = map_stream_event(event)
+        result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result == ChatChunk(delta="Hello")
 
     def test_content_block_delta_tool_use(self) -> None:
@@ -649,7 +672,7 @@ class TestMapStreamEvent:
                 "delta": {"toolUse": {"input": '{"city":'}},
             }
         }
-        result = map_stream_event(event)
+        result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result == ChatChunk(
             tool_call_deltas=[
                 ToolCallDelta(
@@ -671,7 +694,7 @@ class TestMapStreamEvent:
                 },
             }
         }
-        result = map_stream_event(event)
+        result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result == ChatChunk(
             tool_call_deltas=[
                 ToolCallDelta(
@@ -685,7 +708,7 @@ class TestMapStreamEvent:
 
     def test_message_stop(self) -> None:
         event: Any = {"messageStop": {"stopReason": "end_turn"}}
-        result = map_stream_event(event)
+        result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result == ChatChunk(finish_reason="stop")
 
     def test_metadata_with_usage(self) -> None:
@@ -694,17 +717,17 @@ class TestMapStreamEvent:
                 "usage": {"inputTokens": 10, "outputTokens": 5},
             }
         }
-        result = map_stream_event(event)
+        result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result == ChatChunk(usage=Usage(input_tokens=10, output_tokens=5))
 
     def test_metadata_without_usage(self) -> None:
         event: Any = {"metadata": {"requestId": "abc"}}
-        result = map_stream_event(event)
+        result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result is None
 
     def test_unknown_event_returns_none(self) -> None:
         event: Any = {"messageStart": {"role": "assistant"}}
-        result = map_stream_event(event)
+        result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result is None
 
     def test_content_block_start_text_returns_none(self) -> None:
@@ -714,7 +737,7 @@ class TestMapStreamEvent:
                 "start": {"text": ""},
             }
         }
-        result = map_stream_event(event)
+        result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result is None
 
     def test_content_block_delta_reasoning(self) -> None:
@@ -724,7 +747,7 @@ class TestMapStreamEvent:
                 "delta": {"reasoningContent": {"text": "thinking..."}},
             }
         }
-        result = map_stream_event(event)
+        result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result is not None
         assert result.reasoning_delta == "thinking..."
 
@@ -735,7 +758,7 @@ class TestMapStreamEvent:
                 "delta": {"reasoningContent": {}},
             }
         }
-        result = map_stream_event(event)
+        result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result is None
 
     def test_content_block_delta_unknown_returns_none(self) -> None:
@@ -745,7 +768,7 @@ class TestMapStreamEvent:
                 "delta": {"unknownType": "data"},
             }
         }
-        result = map_stream_event(event)
+        result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result is None
 
 
@@ -758,7 +781,12 @@ class TestMapEmbeddingResponse:
             "embedding": [0.1, 0.2, 0.3],
             "inputTextTokenCount": 5,
         }
-        result = map_embedding_response(response_body, "amazon.titan-embed-text-v1", "aws-bedrock", noop_cost_fn)
+        result = map_embedding_response(
+            WireEmbeddingResponse.model_validate(response_body),
+            "amazon.titan-embed-text-v1",
+            "aws-bedrock",
+            noop_cost_fn,
+        )
         assert result == EmbeddingResponse(
             embeddings=[[0.1, 0.2, 0.3]],
             usage=Usage(input_tokens=5, output_tokens=0),
@@ -772,7 +800,9 @@ class TestMapEmbeddingResponse:
             "embedding": [0.5],
             "inputTextTokenCount": 3,
         }
-        result = map_embedding_response(response_body, "unknown-model", "aws-bedrock", none_cost_fn)
+        result = map_embedding_response(
+            WireEmbeddingResponse.model_validate(response_body), "unknown-model", "aws-bedrock", none_cost_fn
+        )
         assert result.cost is None
         assert result.usage == Usage(input_tokens=3, output_tokens=0)
 
