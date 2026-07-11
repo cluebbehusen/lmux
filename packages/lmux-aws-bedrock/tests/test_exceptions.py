@@ -9,6 +9,7 @@ from lmux.exceptions import (
     InvalidRequestError,
     LmuxError,
     NotFoundError,
+    PermissionDeniedError,
     ProviderError,
     RateLimitError,
     TimeoutError,  # noqa: A004
@@ -51,15 +52,20 @@ class TestRaiseForStatus:
 
 class TestErrorFromResponse:
     def test_auth_by_error_type(self) -> None:
-        result = error_from_response(_response(400, error_type="AccessDeniedException", json={"message": "denied"}))
+        result = error_from_response(_response(400, error_type="ExpiredTokenException", json={"message": "expired"}))
         assert isinstance(result, AuthenticationError)
         assert result.status_code == 400
 
     def test_auth_by_status_401(self) -> None:
         assert isinstance(error_from_response(_response(401, json={"message": "no"})), AuthenticationError)
 
-    def test_auth_by_status_403(self) -> None:
-        assert isinstance(error_from_response(_response(403, json={"message": "no"})), AuthenticationError)
+    def test_permission_by_error_type(self) -> None:
+        result = error_from_response(_response(400, error_type="AccessDeniedException", json={"message": "denied"}))
+        assert isinstance(result, PermissionDeniedError)
+        assert result.status_code == 400
+
+    def test_permission_by_status_403(self) -> None:
+        assert isinstance(error_from_response(_response(403, json={"message": "no"})), PermissionDeniedError)
 
     def test_throttling_by_error_type_with_retry_after(self) -> None:
         result = error_from_response(
@@ -99,7 +105,7 @@ class TestErrorFromResponse:
 class TestErrorTypeParsing:
     def test_type_with_colon_suffix(self) -> None:
         result = error_from_response(_response(400, error_type="AccessDeniedException:http://internal", json={}))
-        assert isinstance(result, AuthenticationError)
+        assert isinstance(result, PermissionDeniedError)
 
     def test_type_with_hash_prefix(self) -> None:
         result = error_from_response(_response(500, error_type="coral#ValidationException", json={}))

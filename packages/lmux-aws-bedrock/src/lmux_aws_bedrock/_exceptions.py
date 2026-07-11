@@ -13,6 +13,7 @@ from lmux.exceptions import (
     InvalidRequestError,
     LmuxError,
     NotFoundError,
+    PermissionDeniedError,
     ProviderError,
     RateLimitError,
     TimeoutError,  # noqa: A004
@@ -29,16 +30,18 @@ _FORBIDDEN = 403
 _NOT_FOUND = 404
 _RATE_LIMIT = 429
 
-# AWS ``x-amzn-errortype`` values that map to authentication failures regardless of the
-# HTTP status code (some arrive as 403, some as 400).
+# AWS ``x-amzn-errortype`` values that map to authentication failures (bad/expired
+# credentials) regardless of the HTTP status code (some arrive as 403, some as 400).
 _AUTH_ERROR_TYPES = frozenset(
     {
         "UnrecognizedClientException",
         "InvalidSignatureException",
         "ExpiredTokenException",
-        "AccessDeniedException",
     }
 )
+# AccessDenied means valid credentials lacking access — a permission failure, not an
+# authentication one.
+_PERMISSION_ERROR_TYPES = frozenset({"AccessDeniedException"})
 
 
 def raise_for_status(response: "httpx.Response") -> None:
@@ -66,8 +69,10 @@ def error_from_response(response: "httpx.Response") -> LmuxError:
     error_type = _error_type(response)
     message = _message(response)
 
-    if error_type in _AUTH_ERROR_TYPES or code in (_AUTH, _FORBIDDEN):
+    if error_type in _AUTH_ERROR_TYPES or code == _AUTH:
         return AuthenticationError(message, provider=PROVIDER, status_code=code)
+    if error_type in _PERMISSION_ERROR_TYPES or code == _FORBIDDEN:
+        return PermissionDeniedError(message, provider=PROVIDER, status_code=code)
     if error_type == "ThrottlingException" or code == _RATE_LIMIT:
         return RateLimitError(message, provider=PROVIDER, status_code=code, retry_after=_retry_after(response))
     if error_type == "ValidationException" or code == _BAD_REQUEST:
