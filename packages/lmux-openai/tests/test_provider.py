@@ -567,6 +567,64 @@ class TestClientManagement:
         loop2.close()
 
 
+# MARK: Headers
+
+
+class TestHeaders:
+    def test_no_org_or_project_headers_by_default(
+        self, sync_provider: OpenAIProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert "OpenAI-Organization" not in headers
+        assert "OpenAI-Project" not in headers
+
+    def test_organization_and_project_headers(
+        self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        provider = OpenAIProvider(auth=fake_auth, organization="org-123", project="proj-abc")
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert headers["OpenAI-Organization"] == "org-123"
+        assert headers["OpenAI-Project"] == "proj-abc"
+
+    def test_default_headers_added(
+        self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        provider = OpenAIProvider(auth=fake_auth, default_headers={"X-Gateway-Token": "gw-1"})
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert headers["X-Gateway-Token"] == "gw-1"
+        assert headers["Authorization"] == "Bearer sk-fake-key"
+
+    def test_default_headers_cannot_override_managed(
+        self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        provider = OpenAIProvider(
+            auth=fake_auth,
+            organization="real-org",
+            default_headers={"Authorization": "Bearer evil", "OpenAI-Organization": "evil-org"},
+        )
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert headers["Authorization"] == "Bearer sk-fake-key"
+        assert headers["OpenAI-Organization"] == "real-org"
+
+    async def test_headers_applied_on_async_client(
+        self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        provider = OpenAIProvider(auth=fake_auth, organization="org-123", default_headers={"X-Gateway-Token": "gw-1"})
+        await provider.achat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert headers["OpenAI-Organization"] == "org-123"
+        assert headers["X-Gateway-Token"] == "gw-1"
+
+
 # MARK: Register Pricing
 
 
