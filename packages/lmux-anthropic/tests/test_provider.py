@@ -92,7 +92,10 @@ class FakeFoundryAuth:
 
 class FakeFoundryTokenAuth:
     def __init__(self) -> None:
+        self.invocations = 0
+
         def _token_provider() -> str:
+            self.invocations += 1
             return "entra-token"
 
         self.token_provider: Callable[[], str] = _token_provider
@@ -774,7 +777,12 @@ class TestPreload:
 
 
 def _vertex_url(model: str, *, region: str = "us-east5", project: str = "my-proj", stream: bool = False) -> str:
-    host = "aiplatform.googleapis.com" if region == "global" else f"{region}-aiplatform.googleapis.com"
+    if region == "global":
+        host = "aiplatform.googleapis.com"
+    elif region in ("us", "eu"):
+        host = f"aiplatform.{region}.rep.googleapis.com"
+    else:
+        host = f"{region}-aiplatform.googleapis.com"
     specifier = "streamRawPredict" if stream else "rawPredict"
     return f"https://{host}/v1/projects/{project}/locations/{region}/publishers/anthropic/models/{model}:{specifier}"
 
@@ -803,10 +811,30 @@ class TestVertexChat:
         assert body["anthropic_version"] == "vertex-2023-10-16"
 
     async def test_basic_achat(self, vertex_auth: FakeVertexAuth, respx_mock: respx.MockRouter) -> None:
-        respx_mock.post(_vertex_url(MODEL)).mock(return_value=httpx.Response(200, json=_message()))
+        route = respx_mock.post(_vertex_url(MODEL)).mock(return_value=httpx.Response(200, json=_message()))
         provider = AnthropicVertexProvider(auth=vertex_auth, project_id="my-proj", region="us-east5")
         result = await provider.achat(MODEL, [UserMessage(content="Hi")])
         assert result.provider == "anthropic-vertex"
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+
+    def test_multi_region_us_routes_to_rep_endpoint(
+        self, vertex_auth: FakeVertexAuth, respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(_vertex_url(MODEL, region="us")).mock(return_value=httpx.Response(200, json=_message()))
+        provider = AnthropicVertexProvider(auth=vertex_auth, project_id="my-proj", region="us")
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.called  # https://aiplatform.us.rep.googleapis.com/... not us-aiplatform.googleapis.com
+
+    def test_token_refreshed_per_request(self, vertex_auth: FakeVertexAuth, respx_mock: respx.MockRouter) -> None:
+        route = respx_mock.post(_vertex_url(MODEL)).mock(return_value=httpx.Response(200, json=_message()))
+        provider = AnthropicVertexProvider(auth=vertex_auth, project_id="my-proj", region="us-east5")
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls[-1].request.headers["authorization"] == "Bearer vertex-token"
+        # The token expires between requests; the next call must refresh rather than reuse a frozen client header.
+        vertex_auth.credentials.expired = True
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert vertex_auth.credentials.refreshed is True
+        assert route.calls[-1].request.headers["authorization"] == "Bearer refreshed-token"
 
     def test_model_prefix_pricing(
         self, vertex_sync_provider: AnthropicVertexProvider, respx_mock: respx.MockRouter
@@ -977,7 +1005,7 @@ class TestVertexChatStream:
     def test_stream_stamps_vertex_identity(
         self, vertex_sync_provider: AnthropicVertexProvider, respx_mock: respx.MockRouter
     ) -> None:
-        respx_mock.post(_vertex_url(MODEL, stream=True)).mock(
+        route = respx_mock.post(_vertex_url(MODEL, stream=True)).mock(
             return_value=httpx.Response(200, content=_default_stream())
         )
         chunks = list(vertex_sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
@@ -985,14 +1013,16 @@ class TestVertexChatStream:
         assert chunks[-1].model == MODEL
         assert chunks[-1].provider == "anthropic-vertex"
         assert chunks[-1].cost is not None
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
 
     async def test_async_stream(self, vertex_auth: FakeVertexAuth, respx_mock: respx.MockRouter) -> None:
-        respx_mock.post(_vertex_url(MODEL, stream=True)).mock(
+        route = respx_mock.post(_vertex_url(MODEL, stream=True)).mock(
             return_value=httpx.Response(200, content=_default_stream())
         )
         provider = AnthropicVertexProvider(auth=vertex_auth, project_id="my-proj", region="us-east5")
         chunks = [c async for c in provider.achat_stream(MODEL, [UserMessage(content="Hi")])]
         assert chunks[-1].provider == "anthropic-vertex"
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
 
 
 # MARK: Foundry
@@ -1024,11 +1054,29 @@ class TestFoundryChat:
         result = await provider.achat(MODEL, [UserMessage(content="Hi")])
         assert result.provider == "anthropic-foundry"
 
+    def test_api_key_sends_both_headers(
+        self, foundry_sync_provider: AnthropicFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(_foundry_url()).mock(return_value=httpx.Response(200, json=_message()))
+        foundry_sync_provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        # The Anthropic-on-Foundry endpoint authenticates with x-api-key; api-key is kept for compatibility.
+        assert headers["x-api-key"] == "foundry-key"
+        assert headers["api-key"] == "foundry-key"
+
     def test_token_auth_uses_bearer(self, respx_mock: respx.MockRouter) -> None:
         route = respx_mock.post(_foundry_url()).mock(return_value=httpx.Response(200, json=_message()))
         provider = AnthropicFoundryProvider(auth=FakeFoundryTokenAuth(), resource="my-resource")
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert route.calls.last.request.headers["authorization"] == "Bearer entra-token"
+
+    def test_token_provider_invoked_per_request(self, respx_mock: respx.MockRouter) -> None:
+        auth = FakeFoundryTokenAuth()
+        respx_mock.post(_foundry_url()).mock(return_value=httpx.Response(200, json=_message()))
+        provider = AnthropicFoundryProvider(auth=auth, resource="my-resource")
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert auth.invocations == 2  # invoked per request, not frozen at client creation
 
     def test_api_only_params_dropped(
         self, foundry_sync_provider: AnthropicFoundryProvider, respx_mock: respx.MockRouter

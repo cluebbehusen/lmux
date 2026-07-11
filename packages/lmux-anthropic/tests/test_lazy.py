@@ -1,4 +1,4 @@
-"""Tests for the Anthropic HTTP client factories and Vertex refresh glue."""
+"""Tests for the Anthropic HTTP client factories and Vertex/Foundry auth glue."""
 
 from typing import TYPE_CHECKING, cast
 
@@ -8,12 +8,13 @@ import respx
 
 from lmux_anthropic._lazy import (
     HttpxTransportRequest,
-    _foundry_headers,
     _resolve_foundry_base_url,
     create_sync_foundry_client,
     create_sync_vertex_client,
+    foundry_auth_headers,
     foundry_base_url,
     resolve_vertex_token,
+    vertex_auth_headers,
     vertex_base_url,
 )
 
@@ -57,6 +58,17 @@ class TestResolveVertexToken:
             resolve_vertex_token(cast("Credentials", creds))
 
 
+class TestVertexAuthHeaders:
+    def test_builds_bearer(self) -> None:
+        creds = _Credentials(access="live-token")
+        assert vertex_auth_headers(cast("Credentials", creds)) == {"Authorization": "Bearer live-token"}
+
+    def test_refreshes_expired_token(self) -> None:
+        creds = _Credentials(access="stale", expired=True)
+        assert vertex_auth_headers(cast("Credentials", creds)) == {"Authorization": "Bearer refreshed"}
+        assert creds.refreshed is True
+
+
 class TestHttpxTransportRequest:
     def test_performs_http_request(self, respx_mock: respx.MockRouter) -> None:
         route = respx_mock.post("https://oauth2.example/token").mock(
@@ -83,28 +95,37 @@ class TestVertexBaseUrl:
     def test_global(self) -> None:
         assert vertex_base_url("global") == "https://aiplatform.googleapis.com/v1"
 
+    def test_multi_region_us(self) -> None:
+        assert vertex_base_url("us") == "https://aiplatform.us.rep.googleapis.com/v1"
+
+    def test_multi_region_eu(self) -> None:
+        assert vertex_base_url("eu") == "https://aiplatform.eu.rep.googleapis.com/v1"
+
     def test_factory_uses_base_url_override(self, respx_mock: respx.MockRouter) -> None:
         respx_mock.post("https://vx.test/v1/messages").mock(return_value=httpx.Response(200, json={}))
-        client = create_sync_vertex_client(
-            credentials=cast("Credentials", _Credentials(access="t")), region="us-east5", base_url="https://vx.test"
-        )
+        client = create_sync_vertex_client(region="us-east5", base_url="https://vx.test")
         response = client.post("v1/messages", json={})
         assert response.status_code == 200
 
 
-class TestFoundryHeaders:
-    def test_api_key(self) -> None:
-        assert _foundry_headers("k", None)["api-key"] == "k"
+class TestFoundryAuthHeaders:
+    def test_api_key_sends_both(self) -> None:
+        assert foundry_auth_headers("k", None) == {"x-api-key": "k", "api-key": "k"}
 
     def test_token_provider(self) -> None:
-        assert _foundry_headers(None, lambda: "tok")["Authorization"] == "Bearer tok"
+        assert foundry_auth_headers(None, lambda: "tok") == {"Authorization": "Bearer tok"}
 
     def test_neither_raises(self) -> None:
         with pytest.raises(ValueError, match="api_key"):
-            _foundry_headers(None, None)
+            foundry_auth_headers(None, None)
 
 
 class TestFoundryBaseUrl:
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
+        monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
+
     def test_from_resource(self) -> None:
         assert foundry_base_url("res") == "https://res.services.ai.azure.com/anthropic"
 
@@ -114,12 +135,20 @@ class TestFoundryBaseUrl:
     def test_from_resource_when_no_base_url(self) -> None:
         assert _resolve_foundry_base_url(None, "res") == "https://res.services.ai.azure.com/anthropic"
 
+    def test_base_url_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANTHROPIC_FOUNDRY_BASE_URL", "https://env.foundry")
+        assert _resolve_foundry_base_url(None, None) == "https://env.foundry"
+
+    def test_resource_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANTHROPIC_FOUNDRY_RESOURCE", "env-res")
+        assert _resolve_foundry_base_url(None, None) == "https://env-res.services.ai.azure.com/anthropic"
+
     def test_neither_raises(self) -> None:
-        with pytest.raises(ValueError, match="base_url"):
+        with pytest.raises(ValueError, match="base_url or resource"):
             _resolve_foundry_base_url(None, None)
 
     def test_factory_with_base_url(self, respx_mock: respx.MockRouter) -> None:
         route = respx_mock.post("https://custom.foundry/v1/messages").mock(return_value=httpx.Response(200, json={}))
-        client = create_sync_foundry_client(api_key="k", base_url="https://custom.foundry")
+        client = create_sync_foundry_client(base_url="https://custom.foundry")
         client.post("v1/messages", json={})
         assert route.called
