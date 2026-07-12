@@ -344,7 +344,7 @@ class GoogleProvider(
         input_tokens = 0
         try:
             client = self._get_sync_client()
-            for chunk in _embed_batches(texts, _max_embed_batch(model)):
+            for chunk in _embed_batches(texts, self._max_embed_batch(model)):
                 path, body = self._embed_path_and_body(model, chunk, dimensions, provider_params)
                 response = client.post(path, json=body, headers=self._request_headers())
                 raise_for_status(response)
@@ -373,7 +373,7 @@ class GoogleProvider(
         input_tokens = 0
         try:
             client = await self._get_async_client()
-            for chunk in _embed_batches(texts, _max_embed_batch(model)):
+            for chunk in _embed_batches(texts, self._max_embed_batch(model)):
                 path, body = self._embed_path_and_body(model, chunk, dimensions, provider_params)
                 response = await client.post(path, json=body, headers=await self._arequest_headers())
                 raise_for_status(response)
@@ -437,6 +437,19 @@ class GoogleProvider(
             model=model,
             provider=PROVIDER_NAME,
         )
+
+    def _max_embed_batch(self, model: str) -> int | None:
+        """Max inputs per embedding request, or None to send the whole list in one request.
+
+        Vertex's :predict endpoint serves gemini-embedding-001 one input at a time, so a list is split
+        into single-input requests there. The Developer API's :batchEmbedContents accepts the whole
+        list and returns one embedding per request (its single-aggregated-embedding behavior only
+        applies to multiple inputs within one Content, which is never how these requests are built),
+        and the text-embedding-* models batch normally — so every other path sends one request.
+        """
+        if self._vertexai and model.startswith("gemini-embedding-001"):
+            return 1
+        return None
 
     # MARK: Internal Helpers
 
@@ -617,19 +630,6 @@ class GoogleProvider(
 def _uses_embed_content(model: str) -> bool:
     """Gemini Embedding 2 models are served on Vertex only through :embedContent (not :predict)."""
     return model.startswith("gemini-embedding-2")
-
-
-def _max_embed_batch(model: str) -> int | None:
-    """Max inputs per embedding request, or None for no limit (send the whole batch at once).
-
-    The Gemini Embedding family (gemini-embedding-001, gemini-embedding-2, ...) accepts exactly one
-    input per request; a multi-input request is not batched — on the Developer API it silently returns
-    a single aggregated embedding, and on Vertex :predict it is rejected. So a list is split into
-    single-input requests. (On Vertex the gemini-embedding-2 models take the :embedContent path and
-    never reach here; this covers gemini-embedding-001 on both transports and gemini-embedding-2 on
-    the Developer API.) The text-embedding-* / text-multilingual-embedding-* models batch normally.
-    """
-    return 1 if model.startswith("gemini-embedding-") else None
 
 
 def _embed_batches(texts: list[str], limit: int | None) -> Iterator[list[str]]:
