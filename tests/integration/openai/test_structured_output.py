@@ -1,13 +1,13 @@
-"""OpenAI structured output: a json_schema response_format returns content that
-parses to the expected answer, and cost matches the published rate.
+"""OpenAI structured output: a json_schema response_format built from a Pydantic model
+returns content that validates back into that model, and cost matches the published rate.
 """
 
-import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import BaseModel, ConfigDict
 
 from lmux.types import ChatResponse, JsonSchemaResponseFormat, UserMessage
 from lmux_openai.provider import OpenAIProvider
@@ -15,13 +15,15 @@ from lmux_openai.provider import OpenAIProvider
 _MODEL = "gpt-4o-mini"
 _MAX_TOKENS = 64
 _PROMPT = "What is 17 times 23?"
-_SCHEMA = {
-    "type": "object",
-    "properties": {"answer": {"type": "integer"}},
-    "required": ["answer"],
-    "additionalProperties": False,
-}
-_RESPONSE_FORMAT = JsonSchemaResponseFormat(name="math_answer", json_schema=_SCHEMA, strict=True)
+
+
+class MathAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # emits additionalProperties: false, required by OpenAI strict mode
+
+    answer: int
+
+
+_RESPONSE_FORMAT = JsonSchemaResponseFormat(name="math_answer", json_schema=MathAnswer.model_json_schema(), strict=True)
 
 _CASSETTE = Path(__file__).parent.parent / "cassettes" / "openai" / "structured_output.json"
 
@@ -42,5 +44,5 @@ def test_structured_output(
     resp = scenario(_CASSETTE, _chat, requires="OPENAI_API_KEY")
     assert_chat(resp, provider="openai")
     assert resp.content is not None
-    assert json.loads(resp.content)["answer"] == 391
+    assert MathAnswer.model_validate_json(resp.content).answer == 391
     assert_cost(resp, **_RATES)
