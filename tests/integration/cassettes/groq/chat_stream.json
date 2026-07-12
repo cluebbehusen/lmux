@@ -1,0 +1,18 @@
+{
+  "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+  "request": {
+    "model": "llama-3.1-8b-instant",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Reply with exactly the word: pong"
+      }
+    ],
+    "max_tokens": 16,
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    }
+  },
+  "response_sse": "data: {\"id\":\"chatcmpl-fe9ea133-b8a4-4000-bd53-bd76f7cfa658\",\"object\":\"chat.completion.chunk\",\"created\":1783873677,\"model\":\"llama-3.1-8b-instant\",\"system_fingerprint\":\"fp_e2c608b1d6\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null}],\"x_groq\":{\"id\":\"req_01kxbjg9pce8hr28aa7hj3ahky\",\"seed\":5915709}}\n\ndata: {\"id\":\"chatcmpl-fe9ea133-b8a4-4000-bd53-bd76f7cfa658\",\"object\":\"chat.completion.chunk\",\"created\":1783873677,\"model\":\"llama-3.1-8b-instant\",\"system_fingerprint\":\"fp_e2c608b1d6\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"pong\"},\"logprobs\":null,\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-fe9ea133-b8a4-4000-bd53-bd76f7cfa658\",\"object\":\"chat.completion.chunk\",\"created\":1783873677,\"model\":\"llama-3.1-8b-instant\",\"system_fingerprint\":\"fp_e2c608b1d6\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"stop\"}],\"x_groq\":{\"id\":\"req_01kxbjg9pce8hr28aa7hj3ahky\",\"usage\":{\"queue_time\":0.038402552,\"prompt_tokens\":42,\"prompt_time\":0.003406827,\"completion_tokens\":2,\"completion_time\":0.008219629,\"total_tokens\":44,\"total_time\":0.011626456}},\"usage\":{\"queue_time\":0.038402552,\"prompt_tokens\":42,\"prompt_time\":0.003406827,\"completion_tokens\":2,\"completion_time\":0.008219629,\"total_tokens\":44,\"total_time\":0.011626456}}\n\ndata: {\"id\":\"chatcmpl-fe9ea133-b8a4-4000-bd53-bd76f7cfa658\",\"object\":\"chat.completion.chunk\",\"created\":1783873677,\"model\":\"llama-3.1-8b-instant\",\"system_fingerprint\":\"fp_e2c608b1d6\",\"choices\":[],\"usage\":{\"queue_time\":0.038402552,\"prompt_tokens\":42,\"prompt_time\":0.003406827,\"completion_tokens\":2,\"completion_time\":0.008219629,\"total_tokens\":44,\"total_time\":0.011626456},\"service_tier\":\"on_demand\"}\n\ndata: [DONE]\n\n"
+}

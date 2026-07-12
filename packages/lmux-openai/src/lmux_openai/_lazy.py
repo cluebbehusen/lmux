@@ -47,6 +47,7 @@ def create_sync_client(  # noqa: PLR0913
     organization: str | None = None,
     project: str | None = None,
     default_headers: Mapping[str, str] | None = None,
+    transport: "httpx.BaseTransport | None" = None,
 ) -> "httpx.Client":
     """Create an httpx client for the OpenAI API."""
     return _create_sync(
@@ -54,6 +55,7 @@ def create_sync_client(  # noqa: PLR0913
         headers=_headers(api_key, organization, project, default_headers),
         timeout=timeout,
         max_retries=max_retries,
+        transport=transport,
     )
 
 

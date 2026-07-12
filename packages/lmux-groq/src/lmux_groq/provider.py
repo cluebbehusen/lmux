@@ -245,6 +245,10 @@ class GroqProvider(
     # MARK: Internal Helpers
 
     def _map_stream_chunk(self, chunk: dict[str, Any], model: str) -> ChatChunk:
+        # Groq reports usage on more than one streaming chunk — both the finish chunk
+        # and a trailing chunk (unlike OpenAI's single trailing usage chunk) — so cost
+        # is attached to each; the values agree and the terminal chunk is authoritative
+        # (consumers should read the last usage, not sum across chunks).
         wire = WireChunk.model_validate(chunk)
         mapped = map_chat_chunk(wire, PROVIDER_NAME)
         if mapped.usage is not None:

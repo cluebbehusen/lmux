@@ -89,6 +89,7 @@ class OpenAIProvider(
         organization: str | None = None,
         project: str | None = None,
         default_headers: Mapping[str, str] | None = None,
+        transport: "httpx.BaseTransport | None" = None,
     ) -> None:
         self._auth: AuthProvider[str] = auth or OpenAIEnvAuthProvider()
         self._base_url: str | None = base_url
@@ -98,6 +99,7 @@ class OpenAIProvider(
         self._organization: str | None = organization
         self._project: str | None = project
         self._default_headers: Mapping[str, str] | None = default_headers
+        self._transport: httpx.BaseTransport | None = transport
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -142,6 +144,7 @@ class OpenAIProvider(
                 organization=self._organization,
                 project=self._project,
                 default_headers=self._default_headers,
+                transport=self._transport,
             )
         return self._sync_client
 
