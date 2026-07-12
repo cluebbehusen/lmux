@@ -1,0 +1,47 @@
+{
+  "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+  "request": {
+    "model": "llama-3.1-8b-instant",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Reply with exactly the word: pong"
+      }
+    ],
+    "max_tokens": 16,
+    "stream": false
+  },
+  "response": {
+    "id": "chatcmpl-cbfded27-d18f-4d6f-bb5d-444f52792039",
+    "object": "chat.completion",
+    "created": 1783885490,
+    "model": "llama-3.1-8b-instant",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "pong"
+        },
+        "logprobs": null,
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "queue_time": 0.033684225,
+      "prompt_tokens": 42,
+      "prompt_time": 0.002829142,
+      "completion_tokens": 2,
+      "completion_time": 0.009052967,
+      "total_tokens": 44,
+      "total_time": 0.011882109
+    },
+    "usage_breakdown": null,
+    "system_fingerprint": "fp_020e283281",
+    "x_groq": {
+      "id": "req_01kxbxrt55fkva290kp18jk5n7",
+      "seed": 790581321
+    },
+    "service_tier": "on_demand"
+  }
+}

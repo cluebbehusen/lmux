@@ -322,6 +322,29 @@ class TestChat:
         body = json.loads(route.calls.last.request.content)
         assert body["output_config"]["format"]["type"] == "json_schema"
 
+    def test_json_schema_response_format_full_body(
+        self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock)
+        schema = {"type": "object", "properties": {"answer": {"type": "integer"}}, "required": ["answer"]}
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            response_format=JsonSchemaResponseFormat(name="ans", json_schema=schema),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["output_config"] == {
+            "format": {
+                "type": "json_schema",
+                "schema": {
+                    "type": "object",
+                    "properties": {"answer": {"type": "integer"}},
+                    "required": ["answer"],
+                    "additionalProperties": False,
+                },
+            }
+        }
+
     def test_text_response_format_noop(self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
         route = _ok(respx_mock)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], response_format=TextResponseFormat())
@@ -686,6 +709,32 @@ class TestClientManagement:
         provider = AnthropicProvider(auth=fake_auth, base_url="https://custom.api")
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert route.called
+
+    def test_custom_transport_used(self, fake_auth: FakeAuth) -> None:
+        # No respx here: the injected transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=_message())
+
+        provider = AnthropicProvider(auth=fake_auth, transport=httpx.MockTransport(handler))
+        resp = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "anthropic"
+
+    async def test_custom_async_transport_used(self, fake_auth: FakeAuth) -> None:
+        # The injected async transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=_message())
+
+        provider = AnthropicProvider(auth=fake_auth, async_transport=httpx.MockTransport(handler))
+        resp = await provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "anthropic"
 
     def test_timeout_and_retries(self, fake_auth: FakeAuth, respx_mock: respx.MockRouter) -> None:
         _ok(respx_mock)

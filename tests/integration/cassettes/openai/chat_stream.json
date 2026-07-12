@@ -1,0 +1,18 @@
+{
+  "endpoint": "https://api.openai.com/v1/chat/completions",
+  "request": {
+    "model": "gpt-4o-mini",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Reply with exactly the word: pong"
+      }
+    ],
+    "max_tokens": 32,
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    }
+  },
+  "response_sse": "data: {\"id\":\"chatcmpl-E0uOgSOsmv6m1rb2BrvxkKWZlx2LQ\",\"object\":\"chat.completion.chunk\",\"created\":1783885498,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_07be26b212\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"refusal\":null},\"logprobs\":null,\"finish_reason\":null}],\"usage\":null,\"obfuscation\":\"mLZ82cGsE\"}\n\ndata: {\"id\":\"chatcmpl-E0uOgSOsmv6m1rb2BrvxkKWZlx2LQ\",\"object\":\"chat.completion.chunk\",\"created\":1783885498,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_07be26b212\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"pong\"},\"logprobs\":null,\"finish_reason\":null}],\"usage\":null,\"obfuscation\":\"vCAQOZy\"}\n\ndata: {\"id\":\"chatcmpl-E0uOgSOsmv6m1rb2BrvxkKWZlx2LQ\",\"object\":\"chat.completion.chunk\",\"created\":1783885498,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_07be26b212\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"stop\"}],\"usage\":null,\"obfuscation\":\"53Vhs\"}\n\ndata: {\"id\":\"chatcmpl-E0uOgSOsmv6m1rb2BrvxkKWZlx2LQ\",\"object\":\"chat.completion.chunk\",\"created\":1783885498,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_07be26b212\",\"choices\":[],\"usage\":{\"prompt_tokens\":14,\"completion_tokens\":1,\"total_tokens\":15,\"prompt_tokens_details\":{\"cached_tokens\":0,\"audio_tokens\":0},\"completion_tokens_details\":{\"reasoning_tokens\":0,\"audio_tokens\":0,\"accepted_prediction_tokens\":0,\"rejected_prediction_tokens\":0}},\"obfuscation\":\"JDX0xRZHCMq\"}\n\ndata: [DONE]\n\n"
+}

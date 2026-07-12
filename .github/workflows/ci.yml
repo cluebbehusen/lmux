@@ -50,3 +50,6 @@ jobs:
       - run: uv sync --all-packages --all-extras --locked --python ${{ matrix.python-version }}
 
       - run: uv run --python ${{ matrix.python-version }} pytest
+
+      - name: Integration tests (offline)
+        run: uv run --python ${{ matrix.python-version }} pytest --no-cov tests/integration

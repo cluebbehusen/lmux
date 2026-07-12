@@ -66,7 +66,12 @@ def _retry_after(response: "httpx.Response") -> float | None:
 
 
 def _sync_retry_client(
-    *, max_retries: int, base_url: str, headers: dict[str, str], timeout: "httpx.Timeout"
+    *,
+    max_retries: int,
+    base_url: str,
+    headers: dict[str, str],
+    timeout: "httpx.Timeout",
+    transport: "httpx.BaseTransport | None" = None,
 ) -> "httpx.Client":
     """A retrying ``httpx.Client`` instance.
 
@@ -79,7 +84,9 @@ def _sync_retry_client(
 
     class _RetryClient(httpx.Client):
         def __init__(self) -> None:
-            super().__init__(base_url=base_url, headers=headers, timeout=timeout, follow_redirects=True)
+            super().__init__(
+                base_url=base_url, headers=headers, timeout=timeout, follow_redirects=True, transport=transport
+            )
 
         def send(self, request: "httpx.Request", **kwargs: object) -> "httpx.Response":
             attempt = 0
@@ -106,14 +113,21 @@ def _sync_retry_client(
 
 
 def _async_retry_client(
-    *, max_retries: int, base_url: str, headers: dict[str, str], timeout: "httpx.Timeout"
+    *,
+    max_retries: int,
+    base_url: str,
+    headers: dict[str, str],
+    timeout: "httpx.Timeout",
+    transport: "httpx.AsyncBaseTransport | None" = None,
 ) -> "httpx.AsyncClient":
     """Async counterpart of :func:`_sync_retry_client`."""
     import httpx  # noqa: PLC0415
 
     class _RetryAsyncClient(httpx.AsyncClient):
         def __init__(self) -> None:
-            super().__init__(base_url=base_url, headers=headers, timeout=timeout, follow_redirects=True)
+            super().__init__(
+                base_url=base_url, headers=headers, timeout=timeout, follow_redirects=True, transport=transport
+            )
 
         async def send(self, request: "httpx.Request", **kwargs: object) -> "httpx.Response":
             attempt = 0
@@ -145,20 +159,29 @@ def create_sync_client(
     headers: Mapping[str, str],
     timeout: float | None = None,
     max_retries: int | None = None,
+    transport: "httpx.BaseTransport | None" = None,
 ) -> "httpx.Client":
     """Create an ``httpx.Client`` for a provider, lazily importing httpx.
 
     A positive ``max_retries`` opts into status-aware retries (see the module
     docstring); otherwise a plain client is returned, so env-proxy discovery and
-    default behavior are untouched.
+    default behavior are untouched. ``transport`` overrides the underlying httpx
+    transport (used by the integration harness to replay/record through the
+    provider, but also usable for proxies or instrumentation).
     """
     import httpx  # noqa: PLC0415
 
     if max_retries:
         return _sync_retry_client(
-            max_retries=max_retries, base_url=base_url, headers=dict(headers), timeout=_timeout(timeout)
+            max_retries=max_retries,
+            base_url=base_url,
+            headers=dict(headers),
+            timeout=_timeout(timeout),
+            transport=transport,
         )
-    return httpx.Client(base_url=base_url, headers=dict(headers), timeout=_timeout(timeout), follow_redirects=True)
+    return httpx.Client(
+        base_url=base_url, headers=dict(headers), timeout=_timeout(timeout), follow_redirects=True, transport=transport
+    )
 
 
 def create_async_client(
@@ -167,15 +190,25 @@ def create_async_client(
     headers: Mapping[str, str],
     timeout: float | None = None,
     max_retries: int | None = None,
+    transport: "httpx.AsyncBaseTransport | None" = None,
 ) -> "httpx.AsyncClient":
-    """Create an ``httpx.AsyncClient`` for a provider, lazily importing httpx."""
+    """Create an ``httpx.AsyncClient`` for a provider, lazily importing httpx.
+
+    ``transport`` mirrors :func:`create_sync_client` for the async client.
+    """
     import httpx  # noqa: PLC0415
 
     if max_retries:
         return _async_retry_client(
-            max_retries=max_retries, base_url=base_url, headers=dict(headers), timeout=_timeout(timeout)
+            max_retries=max_retries,
+            base_url=base_url,
+            headers=dict(headers),
+            timeout=_timeout(timeout),
+            transport=transport,
         )
-    return httpx.AsyncClient(base_url=base_url, headers=dict(headers), timeout=_timeout(timeout), follow_redirects=True)
+    return httpx.AsyncClient(
+        base_url=base_url, headers=dict(headers), timeout=_timeout(timeout), follow_redirects=True, transport=transport
+    )
 
 
 class _SSEAccumulator:

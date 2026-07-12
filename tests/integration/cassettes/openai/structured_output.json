@@ -1,0 +1,71 @@
+{
+  "endpoint": "https://api.openai.com/v1/chat/completions",
+  "request": {
+    "model": "gpt-4o-mini",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is 17 times 23?"
+      }
+    ],
+    "max_tokens": 64,
+    "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "math_answer",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "answer": {
+              "title": "Answer",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "answer"
+          ],
+          "title": "MathAnswer",
+          "type": "object"
+        },
+        "strict": true
+      }
+    },
+    "stream": false
+  },
+  "response": {
+    "id": "chatcmpl-E0vaSRzgmuvedC8bf1ovPoWs82Vih",
+    "object": "chat.completion",
+    "created": 1783890072,
+    "model": "gpt-4o-mini-2024-07-18",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\"answer\":391}",
+          "refusal": null,
+          "annotations": []
+        },
+        "logprobs": null,
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 54,
+      "completion_tokens": 5,
+      "total_tokens": 59,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "service_tier": "default",
+    "system_fingerprint": "fp_50fe65a81f"
+  }
+}

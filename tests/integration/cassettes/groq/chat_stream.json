@@ -1,0 +1,18 @@
+{
+  "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+  "request": {
+    "model": "llama-3.1-8b-instant",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Reply with exactly the word: pong"
+      }
+    ],
+    "max_tokens": 16,
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    }
+  },
+  "response_sse": "data: {\"id\":\"chatcmpl-2a710354-6022-415d-a2d7-a01f47d81977\",\"object\":\"chat.completion.chunk\",\"created\":1783885490,\"model\":\"llama-3.1-8b-instant\",\"system_fingerprint\":\"fp_020e283281\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null}],\"x_groq\":{\"id\":\"req_01kxbxrt9ffkvra5p37wan25c0\",\"seed\":2017817303}}\n\ndata: {\"id\":\"chatcmpl-2a710354-6022-415d-a2d7-a01f47d81977\",\"object\":\"chat.completion.chunk\",\"created\":1783885490,\"model\":\"llama-3.1-8b-instant\",\"system_fingerprint\":\"fp_020e283281\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"pong\"},\"logprobs\":null,\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-2a710354-6022-415d-a2d7-a01f47d81977\",\"object\":\"chat.completion.chunk\",\"created\":1783885490,\"model\":\"llama-3.1-8b-instant\",\"system_fingerprint\":\"fp_020e283281\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"stop\"}],\"x_groq\":{\"id\":\"req_01kxbxrt9ffkvra5p37wan25c0\",\"usage\":{\"queue_time\":0.051565716,\"prompt_tokens\":42,\"prompt_time\":0.002761193,\"completion_tokens\":2,\"completion_time\":0.008734363,\"total_tokens\":44,\"total_time\":0.011495556}},\"usage\":{\"queue_time\":0.051565716,\"prompt_tokens\":42,\"prompt_time\":0.002761193,\"completion_tokens\":2,\"completion_time\":0.008734363,\"total_tokens\":44,\"total_time\":0.011495556}}\n\ndata: {\"id\":\"chatcmpl-2a710354-6022-415d-a2d7-a01f47d81977\",\"object\":\"chat.completion.chunk\",\"created\":1783885490,\"model\":\"llama-3.1-8b-instant\",\"system_fingerprint\":\"fp_020e283281\",\"choices\":[],\"usage\":{\"queue_time\":0.051565716,\"prompt_tokens\":42,\"prompt_time\":0.002761193,\"completion_tokens\":2,\"completion_time\":0.008734363,\"total_tokens\":44,\"total_time\":0.011495556},\"service_tier\":\"on_demand\"}\n\ndata: [DONE]\n\n"
+}

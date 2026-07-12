@@ -16,6 +16,7 @@ from lmux.types import (
     CachePointContent,
     FunctionDefinition,
     JsonObjectResponseFormat,
+    JsonSchemaResponseFormat,
     ResponseInputMessage,
     TextContent,
     Tool,
@@ -189,6 +190,56 @@ class TestChat:
         assert body["tools"] == [{"type": "function", "function": {"name": "get_weather"}}]
         assert body["tool_choice"] == "required"
         assert body["response_format"] == {"type": "json_object"}
+
+    def test_json_schema_response_format(
+        self, sync_provider: OpenAIProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        schema = {
+            "type": "object",
+            "properties": {"answer": {"type": "integer"}},
+            "required": ["answer"],
+            "additionalProperties": False,
+        }
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            response_format=JsonSchemaResponseFormat(name="ans", json_schema=schema, strict=True),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": "ans", "schema": schema, "strict": True},
+        }
+
+    def test_tools_full_function_definition(
+        self, sync_provider: OpenAIProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        params = {"type": "object", "properties": {"location": {"type": "string"}}, "required": ["location"]}
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            tools=[
+                Tool(
+                    function=FunctionDefinition(
+                        name="get_weather", description="Get the weather.", parameters=params, strict=True
+                    )
+                )
+            ],
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get the weather.",
+                    "parameters": params,
+                    "strict": True,
+                },
+            }
+        ]
 
     def test_reasoning_effort(
         self, sync_provider: OpenAIProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
@@ -575,6 +626,32 @@ class TestClientManagement:
         provider = OpenAIProvider(auth=fake_auth, base_url="https://custom.api/v1")
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert route.called
+
+    def test_custom_transport_used(self, fake_auth: FakeAuth, completion: dict[str, Any]) -> None:
+        # No respx here: the injected transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=completion)
+
+        provider = OpenAIProvider(auth=fake_auth, transport=httpx.MockTransport(handler))
+        resp = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1  # the request was served by the injected transport
+        assert resp.provider == "openai"
+
+    async def test_custom_async_transport_used(self, fake_auth: FakeAuth, completion: dict[str, Any]) -> None:
+        # The injected async transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=completion)
+
+        provider = OpenAIProvider(auth=fake_auth, async_transport=httpx.MockTransport(handler))
+        resp = await provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "openai"
 
     def test_timeout_and_retries(
         self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter

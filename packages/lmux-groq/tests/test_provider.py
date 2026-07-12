@@ -13,7 +13,7 @@ from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError
-from lmux.types import FunctionDefinition, JsonObjectResponseFormat, Tool, UserMessage
+from lmux.types import FunctionDefinition, JsonObjectResponseFormat, JsonSchemaResponseFormat, Tool, UserMessage
 from lmux_groq import preload
 from lmux_groq.params import GroqParams
 from lmux_groq.provider import GroqProvider
@@ -163,6 +163,34 @@ class TestChat:
         assert body["tools"] == [{"type": "function", "function": {"name": "get_weather"}}]
         assert body["tool_choice"] == "required"
         assert body["response_format"] == {"type": "json_object"}
+
+    def test_json_schema_response_format(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+    ) -> None:
+        route = mount_completion(completion)
+        schema = {"type": "object", "properties": {"answer": {"type": "integer"}}, "required": ["answer"]}
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            response_format=JsonSchemaResponseFormat(name="ans", json_schema=schema, strict=True),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "ans",
+                "schema": {
+                    "type": "object",
+                    "properties": {"answer": {"type": "integer"}},
+                    "required": ["answer"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+            },
+        }
 
     def test_reasoning_effort(
         self,
@@ -379,6 +407,32 @@ class TestClientManagement:
         provider = GroqProvider(auth=fake_auth, base_url="https://custom.api/v1")
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert route.called
+
+    def test_custom_transport_used(self, fake_auth: FakeAuth, completion: dict[str, Any]) -> None:
+        # No respx here: the injected transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=completion)
+
+        provider = GroqProvider(auth=fake_auth, transport=httpx.MockTransport(handler))
+        resp = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "groq"
+
+    async def test_custom_async_transport_used(self, fake_auth: FakeAuth, completion: dict[str, Any]) -> None:
+        # The injected async transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=completion)
+
+        provider = GroqProvider(auth=fake_auth, async_transport=httpx.MockTransport(handler))
+        resp = await provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "groq"
 
     def test_timeout_and_retries(
         self, fake_auth: FakeAuth, completion: dict[str, Any], mount_completion: Callable[[dict[str, Any]], respx.Route]
