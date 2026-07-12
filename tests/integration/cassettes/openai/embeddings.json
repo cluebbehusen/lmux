@@ -1,0 +1,40 @@
+{
+  "endpoint": "https://api.openai.com/v1/embeddings",
+  "request": {
+    "model": "text-embedding-3-small",
+    "input": "The quick brown fox jumps over the lazy dog.",
+    "dimensions": 16
+  },
+  "response": {
+    "object": "list",
+    "data": [
+      {
+        "object": "embedding",
+        "embedding": [
+          -0.188232421875,
+          -0.0736083984375,
+          0.03753662109375,
+          -0.55419921875,
+          -0.232177734375,
+          0.3779296875,
+          0.296630859375,
+          0.244140625,
+          0.11492919921875,
+          -0.2108154296875,
+          -0.13720703125,
+          0.09295654296875,
+          -0.231201171875,
+          0.3623046875,
+          -0.165283203125,
+          0.09332275390625
+        ],
+        "index": 0
+      }
+    ],
+    "model": "text-embedding-3-small",
+    "usage": {
+      "prompt_tokens": 10,
+      "total_tokens": 10
+    }
+  }
+}
