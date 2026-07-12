@@ -1,169 +1,127 @@
-"""Tests for Google exception mapping."""
+"""Tests for Google HTTP error mapping."""
 
+import httpx
 import pytest
 from google.auth.exceptions import DefaultCredentialsError, RefreshError
-from google.genai.errors import APIError, ClientError, ServerError
 
 from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
-    LmuxError,
     NotFoundError,
+    PermissionDeniedError,
     ProviderError,
     RateLimitError,
     TimeoutError,  # noqa: A004
 )
-from lmux_google._exceptions import map_google_error
-
-# MARK: Fixtures
-
-
-@pytest.fixture
-def client_error_400() -> ClientError:
-    return ClientError(code=400, response_json={"error": {"message": "bad request"}})
-
-
-@pytest.fixture
-def client_error_401() -> ClientError:
-    return ClientError(code=401, response_json={"error": {"message": "unauthenticated"}})
+from lmux_google._exceptions import (
+    error_from_response,
+    error_from_stream,
+    map_transport_error,
+    parse_body,
+    raise_for_status,
+)
+from lmux_google._wire import WireGenerateContentResponse
 
 
-@pytest.fixture
-def client_error_403() -> ClientError:
-    return ClientError(code=403, response_json={"error": {"message": "permission denied"}})
+def _resp(status: int, *, json: object = None, text: str = "", headers: dict[str, str] | None = None) -> httpx.Response:
+    if json is not None:
+        return httpx.Response(status, json=json, headers=headers or {})
+    return httpx.Response(status, text=text, headers=headers or {})
 
 
-@pytest.fixture
-def client_error_404() -> ClientError:
-    return ClientError(code=404, response_json={"error": {"message": "not found"}})
+class TestRaiseForStatus:
+    def test_ok_does_not_raise(self) -> None:
+        raise_for_status(_resp(200, json={}))
+
+    def test_error_raises(self) -> None:
+        with pytest.raises(InvalidRequestError):
+            raise_for_status(_resp(400, json={"error": {"message": "bad"}}))
 
 
-@pytest.fixture
-def client_error_408() -> ClientError:
-    return ClientError(code=408, response_json={"error": {"message": "timeout"}})
-
-
-@pytest.fixture
-def client_error_429() -> ClientError:
-    return ClientError(code=429, response_json={"error": {"message": "rate limited"}})
-
-
-@pytest.fixture
-def client_error_unknown() -> ClientError:
-    return ClientError(code=418, response_json={"error": {"message": "teapot"}})
-
-
-@pytest.fixture
-def server_error_500() -> ServerError:
-    return ServerError(code=500, response_json={"error": {"message": "internal error"}})
-
-
-@pytest.fixture
-def api_error_502() -> APIError:
-    return APIError(code=502, response_json={"error": {"message": "bad gateway"}})
-
-
-@pytest.fixture
-def default_credentials_error() -> DefaultCredentialsError:
-    return DefaultCredentialsError("Could not find default credentials")
-
-
-@pytest.fixture
-def refresh_error() -> RefreshError:
-    return RefreshError("Token refresh failed")
-
-
-# MARK: Tests
-
-
-class TestMapGoogleError:
-    def test_client_error_400(self, client_error_400: ClientError) -> None:
-        result = map_google_error(client_error_400)
-        assert isinstance(result, InvalidRequestError)
-        assert result.provider == "google"
-        assert result.status_code == 400
-
-    def test_client_error_401(self, client_error_401: ClientError) -> None:
-        result = map_google_error(client_error_401)
-        assert isinstance(result, AuthenticationError)
-        assert result.provider == "google"
-        assert result.status_code == 401
-
-    def test_client_error_403(self, client_error_403: ClientError) -> None:
-        result = map_google_error(client_error_403)
-        assert isinstance(result, AuthenticationError)
-        assert result.provider == "google"
-        assert result.status_code == 403
-
-    def test_client_error_404(self, client_error_404: ClientError) -> None:
-        result = map_google_error(client_error_404)
-        assert isinstance(result, NotFoundError)
-        assert result.provider == "google"
-        assert result.status_code == 404
-
-    def test_client_error_408(self, client_error_408: ClientError) -> None:
-        result = map_google_error(client_error_408)
-        assert isinstance(result, TimeoutError)
-        assert result.provider == "google"
-        assert result.status_code == 408
-
-    def test_client_error_429(self, client_error_429: ClientError) -> None:
-        result = map_google_error(client_error_429)
-        assert isinstance(result, RateLimitError)
-        assert result.provider == "google"
-        assert result.status_code == 429
-
-    def test_client_error_unknown_code(self, client_error_unknown: ClientError) -> None:
-        result = map_google_error(client_error_unknown)
-        assert isinstance(result, ProviderError)
-        assert result.provider == "google"
-        assert result.status_code == 418
-
-    def test_server_error(self, server_error_500: ServerError) -> None:
-        result = map_google_error(server_error_500)
-        assert isinstance(result, ProviderError)
-        assert result.provider == "google"
-        assert result.status_code == 500
-
-    def test_api_error(self, api_error_502: APIError) -> None:
-        result = map_google_error(api_error_502)
-        assert isinstance(result, ProviderError)
-        assert result.provider == "google"
-        assert result.status_code == 502
-
-    def test_default_credentials_error(self, default_credentials_error: DefaultCredentialsError) -> None:
-        result = map_google_error(default_credentials_error)
-        assert isinstance(result, AuthenticationError)
-        assert result.provider == "google"
-
-    def test_refresh_error(self, refresh_error: RefreshError) -> None:
-        result = map_google_error(refresh_error)
-        assert isinstance(result, AuthenticationError)
-        assert result.provider == "google"
-
-    def test_generic_exception(self) -> None:
-        error = RuntimeError("something broke")
-        result = map_google_error(error)
-        assert isinstance(result, ProviderError)
-        assert result.provider == "google"
-
+class TestErrorFromResponse:
     @pytest.mark.parametrize(
-        "error",
+        ("status", "exc"),
         [
-            pytest.param(ClientError(code=400, response_json={}), id="bad_request"),
-            pytest.param(ClientError(code=401, response_json={}), id="unauthenticated"),
-            pytest.param(ClientError(code=403, response_json={}), id="permission_denied"),
-            pytest.param(ClientError(code=404, response_json={}), id="not_found"),
-            pytest.param(ClientError(code=408, response_json={}), id="timeout"),
-            pytest.param(ClientError(code=429, response_json={}), id="rate_limited"),
-            pytest.param(ClientError(code=418, response_json={}), id="unknown_client"),
-            pytest.param(ServerError(code=500, response_json={}), id="server"),
-            pytest.param(DefaultCredentialsError(""), id="no_credentials"),
-            pytest.param(RefreshError(""), id="refresh"),
-            pytest.param(RuntimeError("fallback"), id="runtime"),
+            (400, InvalidRequestError),
+            (401, AuthenticationError),
+            (403, PermissionDeniedError),
+            (404, NotFoundError),
+            (408, TimeoutError),
+            (429, RateLimitError),
+            (500, ProviderError),
+            (418, ProviderError),
         ],
     )
-    def test_all_errors_are_lmux_errors(self, error: Exception) -> None:
-        result = map_google_error(error)
-        assert isinstance(result, LmuxError)
-        assert result.provider == "google"
+    def test_status_mapping(self, status: int, exc: type[Exception]) -> None:
+        err = error_from_response(_resp(status, json={"error": {"message": "m"}}))
+        assert isinstance(err, exc)
+        assert getattr(err, "status_code", None) == status
+        assert getattr(err, "provider", None) == "google"
+
+
+class TestErrorMessage:
+    def test_error_dict_with_message(self) -> None:
+        assert "the message" in str(error_from_response(_resp(400, json={"error": {"message": "the message"}})))
+
+    def test_error_dict_without_message_falls_back(self) -> None:
+        assert isinstance(error_from_response(_resp(400, json={"error": {"code": "x"}})), InvalidRequestError)
+
+    def test_json_but_not_error_dict(self) -> None:
+        assert isinstance(error_from_response(_resp(400, json=["not", "a", "dict"])), InvalidRequestError)
+
+    def test_non_json_body(self) -> None:
+        assert "plain text error" in str(error_from_response(_resp(400, text="plain text error")))
+
+
+class TestMapTransportError:
+    def test_timeout(self) -> None:
+        assert isinstance(map_transport_error(httpx.ReadTimeout("timed out")), TimeoutError)
+
+    def test_connect_error(self) -> None:
+        assert isinstance(map_transport_error(httpx.ConnectError("refused")), ProviderError)
+
+    def test_default_credentials_error(self) -> None:
+        err = map_transport_error(DefaultCredentialsError("no creds"))
+        assert isinstance(err, AuthenticationError)
+        assert err.provider == "google"
+
+    def test_refresh_error(self) -> None:
+        err = map_transport_error(RefreshError("refresh failed"))
+        assert isinstance(err, AuthenticationError)
+
+    def test_generic_exception(self) -> None:
+        assert isinstance(map_transport_error(Exception("boom")), ProviderError)
+
+
+class TestParseBody:
+    def test_valid_body(self) -> None:
+        body = {"candidates": [{"content": {"parts": [{"text": "hi"}]}, "finishReason": "STOP"}]}
+        result = parse_body(_resp(200, json=body), WireGenerateContentResponse)
+        assert result == WireGenerateContentResponse.model_validate(body)
+
+    def test_malformed_body_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_body(_resp(200, text="not json"), WireGenerateContentResponse)
+
+    def test_non_object_body_maps_to_provider_error(self) -> None:
+        with pytest.raises(ProviderError):
+            parse_body(_resp(200, json=["not", "an", "object"]), WireGenerateContentResponse)
+
+
+class TestErrorFromStream:
+    def test_error_object_with_message(self) -> None:
+        err = error_from_stream({"error": {"message": "stream boom"}})
+        assert isinstance(err, ProviderError)
+        assert "stream boom" in str(err)
+
+    def test_error_not_a_dict(self) -> None:
+        err = error_from_stream({"error": "raw string error"})
+        assert isinstance(err, ProviderError)
+        assert "raw string error" in str(err)
+
+    def test_embedded_code_maps_to_typed_error(self) -> None:
+        # A mid-stream 429 must stay catchable as RateLimitError, not collapse to a bare ProviderError.
+        err = error_from_stream({"error": {"code": 429, "message": "slow down"}})
+        assert isinstance(err, RateLimitError)
+        assert err.status_code == 429
+        assert "slow down" in str(err)

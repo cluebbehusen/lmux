@@ -1,24 +1,27 @@
-"""Tests for the Google provider."""
+"""Tests for the Google provider (SDK-lite, respx)."""
 
 import asyncio
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+import json
+from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import MagicMock
 
+import httpx
 import pytest
+import respx
 from pytest_mock import MockerFixture
 
+if TYPE_CHECKING:
+    from google.auth.credentials import Credentials
+
 from lmux.cost import ModelPricing, PricingTier
-from lmux.exceptions import ProviderError
+from lmux.exceptions import AuthenticationError, InvalidRequestError, NotFoundError, ProviderError
 from lmux.types import (
-    ChatResponse,
-    EmbeddingResponse,
     FunctionDefinition,
     JsonObjectResponseFormat,
     JsonSchemaResponseFormat,
     SystemMessage,
     TextResponseFormat,
     Tool,
-    Usage,
     UserMessage,
 )
 from lmux_google import preload
@@ -32,22 +35,21 @@ from lmux_google.params import (
 )
 from lmux_google.provider import GoogleProvider
 
+_GEMINI = "https://generativelanguage.googleapis.com/v1beta/models"
+_VERTEX_MODELS = (
+    "https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models"
+)
+MODEL = "gemini-2.0-flash"
+EMBED_MODEL = "text-embedding-005"
+_CHAT_URL = f"{_GEMINI}/{MODEL}:generateContent"
+_STREAM_URL = f"{_GEMINI}/{MODEL}:streamGenerateContent"
+_EMBED_URL = f"{_GEMINI}/{EMBED_MODEL}:batchEmbedContents"
+
+
 # MARK: Shared Fixtures
 
 
-class FakeAuth:
-    """Fake auth provider for testing — returns mock Credentials."""
-
-    def get_credentials(self) -> MagicMock:
-        return MagicMock()
-
-    async def aget_credentials(self) -> MagicMock:
-        return MagicMock()
-
-
 class FakeAPIKeyAuth:
-    """Fake auth provider for testing — returns an API key string."""
-
     def get_credentials(self) -> str:
         return "test-api-key"
 
@@ -55,573 +57,639 @@ class FakeAPIKeyAuth:
         return "test-api-key"
 
 
-@pytest.fixture
-def fake_auth() -> FakeAuth:
-    return FakeAuth()
+class FakeCredentials:
+    def __init__(self, *, valid: bool = True, token: str = "vertex-token", quota_project_id: str | None = None) -> None:  # noqa: S107
+        self.valid = valid
+        self.token = token
+        self.quota_project_id = quota_project_id
+        self.refreshed = False
+
+    def refresh(self, _request: Any) -> None:  # noqa: ANN401
+        self.refreshed = True
+        self.valid = True
+        self.token = "refreshed-token"  # noqa: S105
+
+
+class FakeCredentialsAuth:
+    def __init__(self, credentials: FakeCredentials) -> None:
+        self._credentials = credentials
+
+    def get_credentials(self) -> "Credentials":
+        return cast("Credentials", self._credentials)
+
+    async def aget_credentials(self) -> "Credentials":
+        return cast("Credentials", self._credentials)
 
 
 @pytest.fixture
-def fake_api_key_auth() -> FakeAPIKeyAuth:
+def api_auth() -> FakeAPIKeyAuth:
     return FakeAPIKeyAuth()
 
 
-def _make_response_mock(
-    text: str = "Hello!",
-    prompt_tokens: int = 10,
-    output_tokens: int = 5,
-    cached_tokens: int | None = None,
-    finish_reason: str = "STOP",
-) -> MagicMock:
-    """Create a mock GenerateContentResponse."""
-    response = MagicMock()
-    part = MagicMock()
-    part.thought = False
-    part.text = text
-    part.function_call = None
-    part.executable_code = None
-    part.code_execution_result = None
-
-    content = MagicMock()
-    content.parts = [part]
-    candidate = MagicMock()
-    candidate.content = content
-    candidate.finish_reason = MagicMock(value=finish_reason)
-
-    response.candidates = [candidate]
-
-    usage = MagicMock()
-    usage.prompt_token_count = prompt_tokens
-    usage.candidates_token_count = output_tokens
-    usage.cached_content_token_count = cached_tokens
-    usage.thoughts_token_count = None
-    response.usage_metadata = usage
-
-    return response
-
-
-def _make_embed_response_mock(embeddings: list[list[float]], billable_character_count: int | None = None) -> MagicMock:
-    """Create a mock EmbedContentResponse."""
-    response = MagicMock()
-    emb_mocks = []
-    for values in embeddings:
-        emb = MagicMock()
-        emb.values = values
-        emb_mocks.append(emb)
-    response.embeddings = emb_mocks
-    metadata = MagicMock()
-    metadata.billable_character_count = billable_character_count
-    response.metadata = metadata
-    return response
+@pytest.fixture
+def provider(api_auth: FakeAPIKeyAuth) -> GoogleProvider:
+    return GoogleProvider(auth=api_auth, vertexai=False)
 
 
 @pytest.fixture
-def generate_response() -> MagicMock:
-    return _make_response_mock()
+def sync_create_raises(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_google.provider.create_sync_client", side_effect=RuntimeError("client init failed"))
 
 
 @pytest.fixture
-def embed_response() -> MagicMock:
-    return _make_embed_response_mock([[0.1, 0.2, 0.3]])
+def async_create_raises(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_google.provider.create_async_client", side_effect=RuntimeError("client init failed"))
 
 
 @pytest.fixture
-def mock_client() -> MagicMock:
-    mock = MagicMock()
-    mock.aio.aclose = AsyncMock()
-    return mock
+def async_create_two_clients(mocker: MockerFixture) -> tuple[MagicMock, MagicMock, MagicMock]:
+    c1, c2 = MagicMock(), MagicMock()
+    create = mocker.patch("lmux_google.provider.create_async_client", side_effect=[c1, c2])
+    return create, c1, c2
 
 
 @pytest.fixture
-def mock_create(mock_client: MagicMock, mocker: MockerFixture) -> MagicMock:
-    return mocker.patch("lmux_google.provider.create_client", return_value=mock_client)
+def mock_get_running_loop(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_google.provider.asyncio.get_running_loop")
+
+
+def _gen_response(
+    text: str = "Hello!", prompt_tokens: int = 10, output_tokens: int = 5, *, finish_reason: str = "STOP"
+) -> dict[str, Any]:
+    return {
+        "candidates": [{"content": {"role": "model", "parts": [{"text": text}]}, "finishReason": finish_reason}],
+        "usageMetadata": {"promptTokenCount": prompt_tokens, "candidatesTokenCount": output_tokens},
+    }
 
 
 @pytest.fixture
-def sync_provider(fake_auth: FakeAuth, mock_create: MagicMock) -> GoogleProvider:
-    mock_create.assert_not_called()
-    return GoogleProvider(auth=fake_auth)
+def gen_response() -> dict[str, Any]:
+    return _gen_response()
 
 
-@pytest.fixture
-def async_provider(fake_auth: FakeAuth, mock_create: MagicMock) -> GoogleProvider:
-    mock_create.assert_not_called()
-    return GoogleProvider(auth=fake_auth)
+def _sse_stream() -> bytes:
+    chunks = [
+        {"candidates": [{"content": {"parts": [{"text": "Hel"}]}}]},
+        {
+            "candidates": [{"content": {"parts": [{"text": "lo!"}]}, "finishReason": "STOP"}],
+            "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5},
+        },
+    ]
+    lines = [f"data: {json.dumps(c)}" for c in chunks]
+    return ("\n\n".join(lines) + "\n\n").encode()
 
 
-@pytest.fixture
-def server_error() -> Exception:
-    return Exception("test error")
+def _ok(respx_mock: respx.MockRouter, response: dict[str, Any], url: str = _CHAT_URL) -> respx.Route:
+    return respx_mock.post(url).mock(return_value=httpx.Response(200, json=response))
 
 
 # MARK: Chat
 
 
 class TestChat:
-    def test_basic_chat(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        result = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
-
-        assert result == ChatResponse(
-            content="Hello!",
-            tool_calls=None,
-            usage=Usage(input_tokens=10, output_tokens=5),
-            cost=result.cost,
-            model="gemini-2.0-flash",
-            provider="google",
-            finish_reason="stop",
-        )
+    def test_basic(self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter) -> None:
+        route = _ok(respx_mock, gen_response)
+        result = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert result.content == "Hello!"
+        assert result.model == MODEL
+        assert result.provider == "google"
+        assert result.usage is not None
+        assert result.usage.input_tokens == 10
         assert result.cost is not None
         assert result.cost.total_cost > 0
-        mock_client.models.generate_content.assert_called_once()
-        mock_client.models.embed_content.assert_not_called()
+        assert route.called
+        assert route.calls.last.request.headers["x-goog-api-key"] == "test-api-key"
 
-    def test_chat_with_params(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+    def test_request_body(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [UserMessage(content="Hi")],
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
+            [SystemMessage(content="Be helpful."), UserMessage(content="Hi")],
             temperature=0.5,
             max_tokens=100,
             top_p=0.9,
             stop=["END"],
         )
+        body = json.loads(route.calls.last.request.content)
+        assert body == {
+            "contents": [{"role": "user", "parts": [{"text": "Hi"}]}],
+            "systemInstruction": {"parts": [{"text": "Be helpful."}]},
+            "generationConfig": {
+                "temperature": 0.5,
+                "maxOutputTokens": 100,
+                "topP": 0.9,
+                "stopSequences": ["END"],
+            },
+        }
 
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        config = call_kwargs["config"]
-        assert config["temperature"] == 0.5
-        assert config["max_output_tokens"] == 100
-        assert config["top_p"] == 0.9
-        assert config["stop_sequences"] == ["END"]
-
-    def test_chat_with_stop_string(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+    def test_stop_string(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
+        route = _ok(respx_mock, gen_response)
+        provider.chat(MODEL, [UserMessage(content="Hi")], stop="STOP")
+        body = json.loads(route.calls.last.request.content)
+        assert body["generationConfig"]["stopSequences"] == ["STOP"]
 
-        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], stop="STOP")
-
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        assert call_kwargs["config"]["stop_sequences"] == ["STOP"]
-
-    def test_chat_with_tools(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+    def test_tools_and_choice(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        tools = [Tool(function=FunctionDefinition(name="get_weather"))]
-        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], tools=tools)
-
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        assert call_kwargs["config"]["tools"] == [{"function_declarations": [{"name": "get_weather"}]}]
-
-    def test_chat_with_tool_choice(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], tool_choice="required")
-
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        assert call_kwargs["config"]["tool_config"] == {"function_calling_config": {"mode": "ANY"}}
-
-    def test_chat_with_text_response_format(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        result = sync_provider.chat(
-            "gemini-2.0-flash", [UserMessage(content="Hi")], response_format=TextResponseFormat()
-        )
-
-        assert result.content == "Hello!"
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        assert "response_mime_type" not in call_kwargs["config"]
-
-    def test_chat_with_json_response_format(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash", [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat()
-        )
-
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        assert call_kwargs["config"]["response_mime_type"] == "application/json"
-
-    def test_chat_with_json_schema_response_format(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        rf = JsonSchemaResponseFormat(name="test", json_schema={"type": "object"})
-        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], response_format=rf)
-
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        assert call_kwargs["config"]["response_mime_type"] == "application/json"
-        assert call_kwargs["config"]["response_schema"] == {"type": "object"}
-
-    def test_chat_with_provider_params(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
-            provider_params=GoogleParams(
-                safety_settings=[SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE")],
-                presence_penalty=0.5,
-            ),
+            tools=[Tool(function=FunctionDefinition(name="get_weather"))],
+            tool_choice="required",
         )
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"functionDeclarations": [{"name": "get_weather"}]}]
+        assert body["toolConfig"] == {"functionCallingConfig": {"mode": "ANY"}}
 
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        config = call_kwargs["config"]
-        assert config["safety_settings"] == [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        ]
-        assert config["presence_penalty"] == 0.5
-
-    def test_chat_with_reasoning_effort(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+    def test_text_response_format_no_mime(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
+        route = _ok(respx_mock, gen_response)
+        provider.chat(MODEL, [UserMessage(content="Hi")], response_format=TextResponseFormat())
+        body = json.loads(route.calls.last.request.content)
+        assert "generationConfig" not in body
 
-        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], reasoning_effort="medium")
-
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        assert call_kwargs["config"]["thinking_config"] == {"thinking_budget": 8192, "include_thoughts": True}
-
-    def test_chat_exception_mapping(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, server_error: Exception
+    def test_json_object_response_format(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.side_effect = server_error
+        route = _ok(respx_mock, gen_response)
+        provider.chat(MODEL, [UserMessage(content="Hi")], response_format=JsonObjectResponseFormat())
+        body = json.loads(route.calls.last.request.content)
+        assert body["generationConfig"]["responseMimeType"] == "application/json"
+        assert "responseSchema" not in body["generationConfig"]
 
+    def test_json_schema_response_format(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock, gen_response)
+        rf = JsonSchemaResponseFormat(name="test", json_schema={"type": "object"})
+        provider.chat(MODEL, [UserMessage(content="Hi")], response_format=rf)
+        body = json.loads(route.calls.last.request.content)
+        assert body["generationConfig"]["responseMimeType"] == "application/json"
+        assert body["generationConfig"]["responseJsonSchema"] == {"type": "object"}
+
+    def test_reasoning_effort(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock, gen_response)
+        provider.chat(MODEL, [UserMessage(content="Hi")], reasoning_effort="medium")
+        body = json.loads(route.calls.last.request.content)
+        assert body["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 8192, "includeThoughts": True}
+
+    def test_status_error_mapped(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_CHAT_URL).mock(return_value=httpx.Response(400, json={"error": {"message": "bad"}}))
+        with pytest.raises(InvalidRequestError):
+            provider.chat(MODEL, [UserMessage(content="Hi")])
+
+    def test_non_json_body_mapped(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_CHAT_URL).mock(return_value=httpx.Response(200, content=b"not json"))
         with pytest.raises(ProviderError):
-            _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
+            provider.chat(MODEL, [UserMessage(content="Hi")])
 
-    def test_chat_with_system_message(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [SystemMessage(content="Be helpful."), UserMessage(content="Hi")],
-        )
-
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        assert call_kwargs["config"]["system_instruction"] == "Be helpful."
-        assert call_kwargs["contents"] == [{"role": "user", "parts": [{"text": "Hi"}]}]
+    def test_transport_error_mapped(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_CHAT_URL).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            provider.chat(MODEL, [UserMessage(content="Hi")])
 
 
 # MARK: Achat
 
 
 class TestAchat:
-    async def test_basic_achat(
-        self, async_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+    async def test_basic(
+        self, api_auth: FakeAPIKeyAuth, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
-
-        result = await async_provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
-
+        _ok(respx_mock, gen_response)
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        result = await provider.achat(MODEL, [UserMessage(content="Hi")])
         assert result.content == "Hello!"
         assert result.provider == "google"
-        mock_client.aio.models.generate_content.assert_awaited_once()
-        mock_client.aio.models.embed_content.assert_not_called()
 
-    async def test_achat_exception_mapping(
-        self, async_provider: GoogleProvider, mock_client: MagicMock, server_error: Exception
-    ) -> None:
-        mock_client.aio.models.generate_content = AsyncMock(side_effect=server_error)
+    async def test_status_error_mapped(self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_CHAT_URL).mock(return_value=httpx.Response(401, json={"error": {"message": "no"}}))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        with pytest.raises(AuthenticationError):
+            await provider.achat(MODEL, [UserMessage(content="Hi")])
 
+    async def test_transport_error_mapped(self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_CHAT_URL).mock(side_effect=httpx.ConnectError("refused"))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        with pytest.raises(ProviderError, match="refused"):
+            await provider.achat(MODEL, [UserMessage(content="Hi")])
+
+    async def test_non_json_body_mapped(self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_CHAT_URL).mock(return_value=httpx.Response(200, content=b"not json"))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
         with pytest.raises(ProviderError):
-            _ = await async_provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
+            await provider.achat(MODEL, [UserMessage(content="Hi")])
 
 
 # MARK: ChatStream
 
 
 class TestChatStream:
-    def test_yields_chunks(
-        self,
-        sync_provider: GoogleProvider,
-        mock_client: MagicMock,
-    ) -> None:
-        chunk1 = _make_response_mock(text="Hello")
-        chunk1.usage_metadata = None
-        chunk1.candidates[0].finish_reason = None
-
-        chunk2 = _make_response_mock(text="")
-        chunk2.candidates[0].content = None
-        chunk2.candidates[0].finish_reason = MagicMock(value="STOP")
-        chunk2.usage_metadata = None
-
-        chunk3 = _make_response_mock()
-        chunk3.candidates = None
-
-        mock_client.models.generate_content_stream.return_value = iter([chunk1, chunk2, chunk3])
-
-        chunks = list(sync_provider.chat_stream("gemini-2.0-flash", [UserMessage(content="Hi")]))
-
-        assert len(chunks) == 3
-        assert chunks[0].delta == "Hello"
+    def test_yields_and_costs(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        route = respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=_sse_stream()))
+        chunks = list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+        assert [c.delta for c in chunks[:2]] == ["Hel", "lo!"]
         assert chunks[1].finish_reason == "stop"
-        assert chunks[2].usage is not None
-        assert chunks[2].usage.input_tokens == 10
-        # The terminal (usage-carrying) chunk reports the serving endpoint identity,
-        # matching what the non-streaming path sets on ChatResponse.
-        assert chunks[2].provider == "google"
-        assert chunks[2].model == "gemini-2.0-flash"
-
-    def test_cost_on_usage_chunk(
-        self,
-        sync_provider: GoogleProvider,
-        mock_client: MagicMock,
-    ) -> None:
-        chunk1 = _make_response_mock(text="Hello")
-        chunk1.usage_metadata = None
-        chunk1.candidates[0].finish_reason = None
-
-        chunk2 = _make_response_mock()
-        chunk2.candidates = None
-
-        mock_client.models.generate_content_stream.return_value = iter([chunk1, chunk2])
-
-        chunks = list(sync_provider.chat_stream("gemini-2.0-flash", [UserMessage(content="Hi")]))
-
+        assert chunks[1].usage is not None
         assert chunks[0].cost is None
         assert chunks[1].cost is not None
         assert chunks[1].cost.total_cost > 0
+        assert chunks[1].provider == "google"
+        assert chunks[1].model == MODEL
+        assert route.calls.last.request.url.params["alt"] == "sse"
 
-    def test_stream_exception_on_create(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, server_error: Exception
-    ) -> None:
-        mock_client.models.generate_content_stream.side_effect = server_error
-
+    def test_status_error_on_open(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(500, json={"error": {"message": "boom"}}))
         with pytest.raises(ProviderError):
-            _ = list(sync_provider.chat_stream("gemini-2.0-flash", [UserMessage(content="Hi")]))
+            list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
 
-    def test_stream_exception_during_iteration(
-        self,
-        sync_provider: GoogleProvider,
-        mock_client: MagicMock,
-        server_error: Exception,
+    def test_malformed_chunk_mapped(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=b"data: {not json}\n\n"))
+        with pytest.raises(ProviderError):
+            list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+    def test_mid_stream_error_raises_after_partial(
+        self, provider: GoogleProvider, respx_mock: respx.MockRouter
     ) -> None:
-        def _failing_iter() -> Any:  # noqa: ANN401
-            yield _make_response_mock(text="Hi")
-            raise server_error
+        first = {"candidates": [{"content": {"parts": [{"text": "Hel"}]}}]}
+        error = {"error": {"message": "mid-stream boom"}}
+        sse = (f"data: {json.dumps(first)}\n\ndata: {json.dumps(error)}\n\n").encode()
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=sse))
+        stream = provider.chat_stream(MODEL, [UserMessage(content="Hi")])
+        assert next(stream).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            next(stream)
 
-        mock_client.models.generate_content_stream.return_value = _failing_iter()
-
-        with pytest.raises(ProviderError, match="test error"):
-            _ = list(sync_provider.chat_stream("gemini-2.0-flash", [UserMessage(content="Hi")]))
+    def test_client_init_failure(self, api_auth: FakeAPIKeyAuth, sync_create_raises: MagicMock) -> None:
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        with pytest.raises(ProviderError, match="client init failed"):
+            list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+        sync_create_raises.assert_called_once()
 
 
 # MARK: AchatStream
 
 
 class TestAchatStream:
-    async def test_yields_chunks(
-        self,
-        async_provider: GoogleProvider,
-        mock_client: MagicMock,
-    ) -> None:
-        chunk1 = _make_response_mock(text="Hello")
-        chunk1.usage_metadata = None
-        chunk1.candidates[0].finish_reason = None
-
-        chunk2 = _make_response_mock()
-        chunk2.candidates = None
-
-        async def _async_iter() -> Any:  # noqa: ANN401
-            yield chunk1
-            yield chunk2
-
-        async def _coro() -> Any:  # noqa: ANN401
-            return _async_iter()
-
-        mock_client.aio.models.generate_content_stream.return_value = _coro()
-
-        chunks = [chunk async for chunk in async_provider.achat_stream("gemini-2.0-flash", [UserMessage(content="Hi")])]
-
-        assert len(chunks) == 2
-        assert chunks[0].delta == "Hello"
+    async def test_yields_and_costs(self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=_sse_stream()))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        chunks = [c async for c in provider.achat_stream(MODEL, [UserMessage(content="Hi")])]
+        assert [c.delta for c in chunks[:2]] == ["Hel", "lo!"]
         assert chunks[1].cost is not None
-        # The terminal (usage-carrying) chunk reports the serving endpoint identity,
-        # matching what the non-streaming path sets on ChatResponse.
         assert chunks[1].provider == "google"
-        assert chunks[1].model == "gemini-2.0-flash"
+        assert chunks[1].model == MODEL
 
-    async def test_exception_during_stream(
-        self,
-        async_provider: GoogleProvider,
-        mock_client: MagicMock,
-        server_error: Exception,
+    async def test_status_error_on_open(self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(500, json={"error": {"message": "boom"}}))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        with pytest.raises(ProviderError):
+            async for _ in provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
+                pass  # pragma: no cover
+
+    async def test_malformed_chunk_mapped(self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=b"data: {nope}\n\n"))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        with pytest.raises(ProviderError):
+            async for _ in provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
+                pass  # pragma: no cover
+
+    async def test_mid_stream_error_raises_after_partial(
+        self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter
     ) -> None:
-        async def _failing_iter() -> Any:  # noqa: ANN401
-            yield _make_response_mock(text="Hi")
-            raise server_error
+        first = {"candidates": [{"content": {"parts": [{"text": "Hel"}]}}]}
+        error = {"error": {"message": "mid-stream boom"}}
+        sse = (f"data: {json.dumps(first)}\n\ndata: {json.dumps(error)}\n\n").encode()
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=sse))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        stream = provider.achat_stream(MODEL, [UserMessage(content="Hi")])
+        assert (await anext(stream)).delta == "Hel"  # partial output arrives first
+        with pytest.raises(ProviderError, match="mid-stream boom"):
+            await anext(stream)
 
-        async def _coro() -> Any:  # noqa: ANN401
-            return _failing_iter()
-
-        mock_client.aio.models.generate_content_stream.return_value = _coro()
-
-        with pytest.raises(ProviderError, match="test error"):
-            async for _ in async_provider.achat_stream("gemini-2.0-flash", [UserMessage(content="Hi")]):
-                pass
+    async def test_client_init_failure(self, api_auth: FakeAPIKeyAuth, async_create_raises: MagicMock) -> None:
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        with pytest.raises(ProviderError, match="client init failed"):
+            async for _ in provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
+                pass  # pragma: no cover
+        async_create_raises.assert_called_once()
 
 
 # MARK: Embed
 
 
 class TestEmbed:
-    def test_basic_embed(
-        self,
-        sync_provider: GoogleProvider,
-        mock_client: MagicMock,
-        embed_response: MagicMock,
-    ) -> None:
-        mock_client.models.embed_content.return_value = embed_response
-
-        result = sync_provider.embed("text-embedding-005", "hello")
-
-        assert result == EmbeddingResponse(
-            embeddings=[[0.1, 0.2, 0.3]],
-            usage=Usage(input_tokens=0, output_tokens=0),
-            cost=result.cost,
-            model="text-embedding-005",
-            provider="google",
+    def test_basic(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        route = respx_mock.post(_EMBED_URL).mock(
+            return_value=httpx.Response(200, json={"embeddings": [{"values": [0.1, 0.2, 0.3]}]})
         )
-        mock_client.models.embed_content.assert_called_once_with(
-            model="text-embedding-005", contents=["hello"], config=None
+        result = provider.embed(EMBED_MODEL, "hello")
+        assert result.embeddings == [[0.1, 0.2, 0.3]]
+        assert result.provider == "google"
+        body = json.loads(route.calls.last.request.content)
+        assert body == {"requests": [{"model": f"models/{EMBED_MODEL}", "content": {"parts": [{"text": "hello"}]}}]}
+
+    def test_list_input(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        route = respx_mock.post(_EMBED_URL).mock(
+            return_value=httpx.Response(200, json={"embeddings": [{"values": [0.1]}, {"values": [0.2]}]})
         )
-        mock_client.models.generate_content.assert_not_called()
+        result = provider.embed(EMBED_MODEL, ["hello", "world"])
+        assert result.embeddings == [[0.1], [0.2]]
+        body = json.loads(route.calls.last.request.content)
+        assert [r["content"]["parts"][0]["text"] for r in body["requests"]] == ["hello", "world"]
 
-    def test_embed_list_input(
-        self,
-        sync_provider: GoogleProvider,
-        mock_client: MagicMock,
-    ) -> None:
-        mock_client.models.embed_content.return_value = _make_embed_response_mock([[0.1, 0.2], [0.3, 0.4]])
-
-        result = sync_provider.embed("text-embedding-005", ["hello", "world"])
-
-        assert result.embeddings == [[0.1, 0.2], [0.3, 0.4]]
-        mock_client.models.embed_content.assert_called_once_with(
-            model="text-embedding-005", contents=["hello", "world"], config=None
+    def test_dimensions_and_task_type(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        route = respx_mock.post(_EMBED_URL).mock(
+            return_value=httpx.Response(200, json={"embeddings": [{"values": [0.1]}]})
         )
+        provider.embed(EMBED_MODEL, "hello", dimensions=256, provider_params=GoogleParams(task_type="RETRIEVAL_QUERY"))
+        req = json.loads(route.calls.last.request.content)["requests"][0]
+        assert req["outputDimensionality"] == 256
+        assert req["taskType"] == "RETRIEVAL_QUERY"
 
-    def test_embed_with_dimensions(
-        self,
-        sync_provider: GoogleProvider,
-        mock_client: MagicMock,
-        embed_response: MagicMock,
-    ) -> None:
-        mock_client.models.embed_content.return_value = embed_response
+    def test_exception_mapped(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_EMBED_URL).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            provider.embed(EMBED_MODEL, "hello")
 
-        _ = sync_provider.embed("text-embedding-005", "hello", dimensions=256)
-
-        mock_client.models.embed_content.assert_called_once_with(
-            model="text-embedding-005", contents=["hello"], config={"output_dimensionality": 256}
-        )
-
-    def test_embed_with_task_type(
-        self,
-        sync_provider: GoogleProvider,
-        mock_client: MagicMock,
-        embed_response: MagicMock,
-    ) -> None:
-        mock_client.models.embed_content.return_value = embed_response
-
-        _ = sync_provider.embed(
-            "text-embedding-005", "hello", provider_params=GoogleParams(task_type="RETRIEVAL_QUERY")
-        )
-
-        mock_client.models.embed_content.assert_called_once_with(
-            model="text-embedding-005", contents=["hello"], config={"task_type": "RETRIEVAL_QUERY"}
-        )
-
-    def test_embed_with_dimensions_and_task_type(
-        self,
-        sync_provider: GoogleProvider,
-        mock_client: MagicMock,
-        embed_response: MagicMock,
-    ) -> None:
-        mock_client.models.embed_content.return_value = embed_response
-
-        _ = sync_provider.embed(
-            "text-embedding-005",
-            "hello",
-            dimensions=256,
-            provider_params=GoogleParams(task_type="RETRIEVAL_DOCUMENT"),
-        )
-
-        mock_client.models.embed_content.assert_called_once_with(
-            model="text-embedding-005",
-            contents=["hello"],
-            config={"output_dimensionality": 256, "task_type": "RETRIEVAL_DOCUMENT"},
-        )
-
-    def test_embed_exception_mapping(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, server_error: Exception
-    ) -> None:
-        mock_client.models.embed_content.side_effect = server_error
-
-        with pytest.raises(ProviderError):
-            _ = sync_provider.embed("text-embedding-005", "hello")
+    def test_status_error_mapped(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_EMBED_URL).mock(return_value=httpx.Response(404, json={"error": {"message": "no"}}))
+        with pytest.raises(NotFoundError):
+            provider.embed(EMBED_MODEL, "hello")
 
 
 # MARK: Aembed
 
 
 class TestAembed:
-    async def test_basic_aembed(
-        self,
-        async_provider: GoogleProvider,
-        mock_client: MagicMock,
-        embed_response: MagicMock,
-    ) -> None:
-        mock_client.aio.models.embed_content = AsyncMock(return_value=embed_response)
-
-        result = await async_provider.aembed("text-embedding-005", "hello")
-
-        assert result.embeddings == [[0.1, 0.2, 0.3]]
-        assert result.provider == "google"
-        mock_client.aio.models.embed_content.assert_awaited_once_with(
-            model="text-embedding-005", contents=["hello"], config=None
+    async def test_basic(self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_EMBED_URL).mock(
+            return_value=httpx.Response(200, json={"embeddings": [{"values": [0.1, 0.2]}]})
         )
-        mock_client.aio.models.generate_content.assert_not_called()
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        result = await provider.aembed(EMBED_MODEL, "hello")
+        assert result.embeddings == [[0.1, 0.2]]
 
-    async def test_aembed_list_input(
-        self,
-        async_provider: GoogleProvider,
-        mock_client: MagicMock,
+    async def test_status_error_mapped(self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_EMBED_URL).mock(return_value=httpx.Response(404, json={"error": {"message": "no"}}))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        with pytest.raises(NotFoundError):
+            await provider.aembed(EMBED_MODEL, "hello")
+
+    async def test_transport_error_mapped(self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_EMBED_URL).mock(side_effect=httpx.ConnectError("refused"))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        with pytest.raises(ProviderError, match="refused"):
+            await provider.aembed(EMBED_MODEL, "hello")
+
+
+# MARK: Vertex Transport
+
+
+class TestVertexTransport:
+    def test_vertex_url_and_bearer(self, gen_response: dict[str, Any], respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        result = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert result.content == "Hello!"
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+
+    def test_vertex_global_location(self, gen_response: dict[str, Any], respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj")
+        url = f"https://aiplatform.googleapis.com/v1/projects/my-proj/locations/global/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.called
+
+    def test_vertex_refreshes_invalid_credentials(
+        self, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.aio.models.embed_content = AsyncMock(return_value=_make_embed_response_mock([[0.1], [0.2]]))
+        creds = FakeCredentials(valid=False)
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert creds.refreshed is True
+        assert route.calls.last.request.headers["authorization"] == "Bearer refreshed-token"
 
-        result = await async_provider.aembed("text-embedding-005", ["hello", "world"])
+    def test_vertex_requires_project(self) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds))
+        with pytest.raises(ProviderError, match="requires a project"):
+            provider.chat(MODEL, [UserMessage(content="Hi")])
 
+    def test_vertex_reresolves_token_per_request(
+        self, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls[0].request.headers["authorization"] == "Bearer vertex-token"
+        # Credentials expire between requests — the second call must resolve a fresh token, not reuse baked headers.
+        creds.valid = False
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls[1].request.headers["authorization"] == "Bearer refreshed-token"
+
+    async def test_vertex_async_bearer(self, gen_response: dict[str, Any], respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        await provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+
+    def test_vertex_quota_project_header(self, gen_response: dict[str, Any], respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials(quota_project_id="quota-proj")
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers["x-goog-user-project"] == "quota-proj"
+
+
+# MARK: Vertex Embeddings
+
+
+class TestVertexEmbed:
+    def test_predict_endpoint_and_shape(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{EMBED_MODEL}:predict"
+        predictions = {"predictions": [{"embeddings": {"values": [0.1, 0.2], "statistics": {"token_count": 3}}}]}
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=predictions))
+        result = provider.embed(EMBED_MODEL, "hello")
+        assert result.embeddings == [[0.1, 0.2]]
+        assert result.usage.input_tokens == 3
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+        body = json.loads(route.calls.last.request.content)
+        assert body == {"instances": [{"content": "hello"}]}
+
+    def test_dimensions_and_task_type(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{EMBED_MODEL}:predict"
+        predictions = {"predictions": [{"embeddings": {"values": [0.1]}}, {"embeddings": {"values": [0.2]}}]}
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=predictions))
+        result = provider.embed(
+            EMBED_MODEL, ["a", "b"], dimensions=256, provider_params=GoogleParams(task_type="RETRIEVAL_QUERY")
+        )
         assert result.embeddings == [[0.1], [0.2]]
-        mock_client.aio.models.embed_content.assert_awaited_once_with(
-            model="text-embedding-005", contents=["hello", "world"], config=None
-        )
+        body = json.loads(route.calls.last.request.content)
+        assert body == {
+            "instances": [
+                {"content": "a", "task_type": "RETRIEVAL_QUERY"},
+                {"content": "b", "task_type": "RETRIEVAL_QUERY"},
+            ],
+            "parameters": {"outputDimensionality": 256},
+        }
 
-    async def test_aembed_exception_mapping(
-        self, async_provider: GoogleProvider, mock_client: MagicMock, server_error: Exception
+    async def test_aembed_predict(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{EMBED_MODEL}:predict"
+        predictions = {"predictions": [{"embeddings": {"values": [0.3]}}]}
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=predictions))
+        result = await provider.aembed(EMBED_MODEL, "hello")
+        assert result.embeddings == [[0.3]]
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+
+    def test_gemini_embedding_001_splits_into_one_request_per_input(self, respx_mock: respx.MockRouter) -> None:
+        # Vertex :predict serves gemini-embedding-001 one input at a time, so a list becomes N requests.
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"{_VERTEX_MODELS}/gemini-embedding-001:predict"
+        responses = [
+            httpx.Response(200, json={"predictions": [{"embeddings": {"values": [0.1]}}]}),
+            httpx.Response(200, json={"predictions": [{"embeddings": {"values": [0.2]}}]}),
+        ]
+        route = respx_mock.post(url).mock(side_effect=responses)
+        result = provider.embed("gemini-embedding-001", ["a", "b"])
+        assert result.embeddings == [[0.1], [0.2]]
+        assert len(route.calls) == 2
+        assert json.loads(route.calls[0].request.content) == {"instances": [{"content": "a"}]}
+
+    async def test_aembed_gemini_embedding_001_splits_into_one_request_per_input(
+        self, respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.aio.models.embed_content = AsyncMock(side_effect=server_error)
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"{_VERTEX_MODELS}/gemini-embedding-001:predict"
+        responses = [
+            httpx.Response(200, json={"predictions": [{"embeddings": {"values": [0.1]}}]}),
+            httpx.Response(200, json={"predictions": [{"embeddings": {"values": [0.2]}}]}),
+        ]
+        route = respx_mock.post(url).mock(side_effect=responses)
+        result = await provider.aembed("gemini-embedding-001", ["a", "b"])
+        assert result.embeddings == [[0.1], [0.2]]
+        assert len(route.calls) == 2
 
-        with pytest.raises(ProviderError):
-            _ = await async_provider.aembed("text-embedding-005", "hello")
+    def test_gemini_embedding_001_empty_input_makes_no_request(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        result = provider.embed("gemini-embedding-001", [])
+        assert result.embeddings == []
+        assert result.usage.input_tokens == 0
+        assert not respx_mock.calls
+
+
+# MARK: Vertex embedContent (Gemini Embedding 2)
+
+
+_EMBED2_MODEL = "gemini-embedding-2-preview"
+
+
+def _embed_content_url(model: str = _EMBED2_MODEL) -> str:
+    base = "https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models"
+    return f"{base}/{model}:embedContent"
+
+
+def _vertex_embed2_provider() -> GoogleProvider:
+    return GoogleProvider(auth=FakeCredentialsAuth(FakeCredentials()), project="my-proj", location="us-central1")
+
+
+class TestVertexEmbedContent:
+    def test_single_input_endpoint_and_shape(self, respx_mock: respx.MockRouter) -> None:
+        body = {"embedding": {"values": [0.1, 0.2]}, "usageMetadata": {"promptTokenCount": 4}}
+        route = respx_mock.post(_embed_content_url()).mock(return_value=httpx.Response(200, json=body))
+        result = _vertex_embed2_provider().embed(_EMBED2_MODEL, "hello")
+        assert result.embeddings == [[0.1, 0.2]]
+        assert result.usage.input_tokens == 4
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+        # embedContent is single-content and rejects task_type — the body carries neither instances nor task_type.
+        assert json.loads(route.calls.last.request.content) == {"content": {"parts": [{"text": "hello"}]}}
+
+    def test_list_issues_one_request_per_item(self, respx_mock: respx.MockRouter) -> None:
+        responses = [
+            httpx.Response(200, json={"embedding": {"values": [0.1]}, "usageMetadata": {"promptTokenCount": 2}}),
+            httpx.Response(200, json={"embedding": {"values": [0.2]}, "usageMetadata": {"promptTokenCount": 3}}),
+        ]
+        route = respx_mock.post(_embed_content_url()).mock(side_effect=responses)
+        result = _vertex_embed2_provider().embed(_EMBED2_MODEL, ["a", "b"])
+        assert result.embeddings == [[0.1], [0.2]]
+        assert result.usage.input_tokens == 5
+        assert len(route.calls) == 2
+        assert json.loads(route.calls[0].request.content) == {"content": {"parts": [{"text": "a"}]}}
+
+    def test_dimensions_forwarded(self, respx_mock: respx.MockRouter) -> None:
+        body = {"embedding": {"values": [0.1]}}
+        route = respx_mock.post(_embed_content_url()).mock(return_value=httpx.Response(200, json=body))
+        _vertex_embed2_provider().embed(_EMBED2_MODEL, "hi", dimensions=128)
+        assert json.loads(route.calls.last.request.content) == {
+            "content": {"parts": [{"text": "hi"}]},
+            "outputDimensionality": 128,
+        }
+
+    async def test_aembed_content(self, respx_mock: respx.MockRouter) -> None:
+        body = {"embedding": {"values": [0.5]}, "usageMetadata": {"promptTokenCount": 1}}
+        route = respx_mock.post(_embed_content_url()).mock(return_value=httpx.Response(200, json=body))
+        result = await _vertex_embed2_provider().aembed(_EMBED2_MODEL, "hi")
+        assert result.embeddings == [[0.5]]
+        assert result.usage.input_tokens == 1
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+
+    def test_status_error_mapped(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_embed_content_url()).mock(return_value=httpx.Response(404, json={"error": {"message": "no"}}))
+        with pytest.raises(NotFoundError):
+            _vertex_embed2_provider().embed(_EMBED2_MODEL, "hi")
+
+    def test_transport_error_mapped(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_embed_content_url()).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            _vertex_embed2_provider().embed(_EMBED2_MODEL, "hi")
+
+    async def test_aembed_transport_error_mapped(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_embed_content_url()).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            await _vertex_embed2_provider().aembed(_EMBED2_MODEL, "hi")
+
+    async def test_aembed_status_error_mapped(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_embed_content_url()).mock(return_value=httpx.Response(404, json={"error": {"message": "no"}}))
+        with pytest.raises(NotFoundError):
+            await _vertex_embed2_provider().aembed(_EMBED2_MODEL, "hi")
+
+    async def test_aembed_list_issues_one_request_per_item(self, respx_mock: respx.MockRouter) -> None:
+        responses = [
+            httpx.Response(200, json={"embedding": {"values": [0.1]}, "usageMetadata": {"promptTokenCount": 2}}),
+            httpx.Response(200, json={"embedding": {"values": [0.2]}, "usageMetadata": {"promptTokenCount": 3}}),
+        ]
+        route = respx_mock.post(_embed_content_url()).mock(side_effect=responses)
+        result = await _vertex_embed2_provider().aembed(_EMBED2_MODEL, ["a", "b"])
+        assert result.embeddings == [[0.1], [0.2]]
+        assert result.usage.input_tokens == 5
+        assert len(route.calls) == 2
 
 
 # MARK: Client Management
@@ -629,148 +697,59 @@ class TestAembed:
 
 class TestClientManagement:
     def test_sync_client_reused(
-        self,
-        sync_provider: GoogleProvider,
-        mock_client: MagicMock,
-        generate_response: MagicMock,
-        mock_create: MagicMock,
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
-        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi again")])
-
-        mock_create.assert_called_once()
-
-    def test_project_and_location_passed(
-        self,
-        fake_auth: FakeAuth,
-        mock_create: MagicMock,
-        mock_client: MagicMock,
-        generate_response: MagicMock,
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-        provider = GoogleProvider(auth=fake_auth, project="my-project", location="us-central1")
-        _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
-
-        mock_create.assert_called_once()
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["project"] == "my-project"
-        assert call_kwargs["location"] == "us-central1"
-        assert call_kwargs["vertexai"] is True
-
-    def test_api_key_auth_passes_api_key(
-        self,
-        fake_api_key_auth: FakeAPIKeyAuth,
-        mock_create: MagicMock,
-        mock_client: MagicMock,
-        generate_response: MagicMock,
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-        provider = GoogleProvider(auth=fake_api_key_auth, vertexai=False)
-        _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
-
-        mock_create.assert_called_once()
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["api_key"] == "test-api-key"
-        assert call_kwargs["credentials"] is None
-        assert call_kwargs["vertexai"] is False
-
-    async def test_api_key_auth_passes_api_key_async(
-        self,
-        fake_api_key_auth: FakeAPIKeyAuth,
-        mock_create: MagicMock,
-        mock_client: MagicMock,
-        generate_response: MagicMock,
-    ) -> None:
-        mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
-        provider = GoogleProvider(auth=fake_api_key_auth, vertexai=False)
-        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
-
-        mock_create.assert_called_once()
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["api_key"] == "test-api-key"
-        assert call_kwargs["credentials"] is None
+        _ok(respx_mock, gen_response)
+        provider.chat(MODEL, [UserMessage(content="a")])
+        client = provider._sync_client
+        provider.chat(MODEL, [UserMessage(content="b")])
+        assert provider._sync_client is client
 
     async def test_async_client_reused(
-        self,
-        fake_auth: FakeAuth,
-        mock_create: MagicMock,
-        mock_client: MagicMock,
-        generate_response: MagicMock,
+        self, api_auth: FakeAPIKeyAuth, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
-        provider = GoogleProvider(auth=fake_auth)
-        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
-        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi again")])
+        _ok(respx_mock, gen_response)
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        await provider.achat(MODEL, [UserMessage(content="a")])
+        client = provider._async_client
+        await provider.achat(MODEL, [UserMessage(content="b")])
+        assert provider._async_client is client
 
-        mock_create.assert_called_once()
-
-    def test_default_options(
-        self,
-        fake_auth: FakeAuth,
-        mock_create: MagicMock,
-        mock_client: MagicMock,
-        generate_response: MagicMock,
+    def test_timeout_passed(
+        self, api_auth: FakeAPIKeyAuth, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-        provider = GoogleProvider(auth=fake_auth)
-        _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        _ok(respx_mock, gen_response)
+        provider = GoogleProvider(auth=api_auth, vertexai=False, timeout=30.0, max_retries=5)
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert provider._sync_client is not None
+        assert provider._sync_client.timeout.read == 30.0
 
-        mock_create.assert_called_once()
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs["vertexai"] is True
-        assert call_kwargs["project"] is None
-        assert call_kwargs["location"] is None
-        assert call_kwargs["credentials"] is not None
-        assert call_kwargs["api_key"] is None
+    def test_sync_init_failure_mapped(self, api_auth: FakeAPIKeyAuth, sync_create_raises: MagicMock) -> None:
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        with pytest.raises(ProviderError, match="client init failed"):
+            provider.chat(MODEL, [UserMessage(content="Hi")])
+        sync_create_raises.assert_called_once()
 
-    def test_client_init_failure_mapped(
+    async def test_async_init_failure_mapped(self, api_auth: FakeAPIKeyAuth, async_create_raises: MagicMock) -> None:
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        with pytest.raises(ProviderError, match="client init failed"):
+            await provider.achat(MODEL, [UserMessage(content="Hi")])
+        async_create_raises.assert_called_once()
+
+    async def test_async_client_recreated_on_new_loop(
         self,
-        fake_auth: FakeAuth,
-        mock_create: MagicMock,
-    ) -> None:
-        mock_create.side_effect = Exception("connection refused")
-        provider = GoogleProvider(auth=fake_auth)
-
-        with pytest.raises(ProviderError, match="connection refused"):
-            _ = provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
-
-    async def test_async_client_init_failure_mapped(
-        self,
-        fake_auth: FakeAuth,
-        mock_create: MagicMock,
-    ) -> None:
-        mock_create.side_effect = Exception("connection refused")
-        provider = GoogleProvider(auth=fake_auth)
-
-        with pytest.raises(ProviderError, match="connection refused"):
-            _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
-
-    @pytest.fixture
-    def mock_get_running_loop(self, mocker: MockerFixture) -> MagicMock:
-        return mocker.patch("lmux_google.provider.asyncio.get_running_loop")
-
-    async def test_achat_recreates_client_on_new_event_loop(
-        self,
-        fake_auth: FakeAuth,
-        mock_create: MagicMock,
-        mock_client: MagicMock,
-        generate_response: MagicMock,
+        api_auth: FakeAPIKeyAuth,
+        async_create_two_clients: tuple[MagicMock, MagicMock, MagicMock],
         mock_get_running_loop: MagicMock,
     ) -> None:
-        mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
-        provider = GoogleProvider(auth=fake_auth)
-
-        loop1 = asyncio.new_event_loop()
-        loop2 = asyncio.new_event_loop()
+        create, c1, c2 = async_create_two_clients
+        loop1, loop2 = asyncio.new_event_loop(), asyncio.new_event_loop()
         mock_get_running_loop.side_effect = [loop1, loop2]
-
-        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
-        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi again")])
-
-        assert mock_create.call_count == 2
-        assert mock_get_running_loop.call_count == 2
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        r1 = await provider._get_async_client()
+        r2 = await provider._get_async_client()
+        assert (r1, r2) == (c1, c2)
+        assert create.call_count == 2
         loop1.close()
         loop2.close()
 
@@ -779,371 +758,265 @@ class TestClientManagement:
 
 
 class TestRegisterPricing:
-    def test_custom_pricing_for_unknown_model(self, sync_provider: GoogleProvider, mock_client: MagicMock) -> None:
-        custom_response = _make_response_mock(prompt_tokens=1000, output_tokens=500)
-        mock_client.models.generate_content.return_value = custom_response
-
-        sync_provider.register_pricing(
-            "custom.my-model-v1",
-            ModelPricing(
-                tiers=[PricingTier(input_cost_per_token=5.0 / 1_000_000, output_cost_per_token=15.0 / 1_000_000)]
-            ),
+    def test_custom_for_unknown_model(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        model = "custom.my-model-v1"
+        _ok(respx_mock, _gen_response(prompt_tokens=1000, output_tokens=500), url=f"{_GEMINI}/{model}:generateContent")
+        provider.register_pricing(
+            model, ModelPricing(tiers=[PricingTier(input_cost_per_token=5e-6, output_cost_per_token=15e-6)])
         )
-        result = sync_provider.chat("custom.my-model-v1", [UserMessage(content="Hi")])
-
+        result = provider.chat(model, [UserMessage(content="Hi")])
         assert result.cost is not None
-        assert result.cost.input_cost == pytest.approx(1000 * 5.0 / 1_000_000)
-        assert result.cost.output_cost == pytest.approx(500 * 15.0 / 1_000_000)
+        assert result.cost.input_cost == pytest.approx(1000 * 5e-6)
 
-    def test_custom_pricing_overrides_builtin(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+    def test_custom_overrides_builtin(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        custom_pricing = ModelPricing(
-            tiers=[PricingTier(input_cost_per_token=99.0 / 1_000_000, output_cost_per_token=199.0 / 1_000_000)]
+        _ok(respx_mock, gen_response)
+        provider.register_pricing(
+            MODEL, ModelPricing(tiers=[PricingTier(input_cost_per_token=99e-6, output_cost_per_token=199e-6)])
         )
-        sync_provider.register_pricing("gemini-2.0-flash", custom_pricing)
-        result = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")])
-
+        result = provider.chat(MODEL, [UserMessage(content="Hi")])
         assert result.cost is not None
-        assert result.cost.input_cost == pytest.approx(10 * 99.0 / 1_000_000)
-        assert result.cost.output_cost == pytest.approx(5 * 199.0 / 1_000_000)
+        assert result.cost.input_cost == pytest.approx(10 * 99e-6)
 
-    def test_unregistered_unknown_model_returns_none_cost(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock
-    ) -> None:
-        unknown_response = _make_response_mock()
-        mock_client.models.generate_content.return_value = unknown_response
-
-        result = sync_provider.chat("totally-unknown-model", [UserMessage(content="Hi")])
-
+    def test_unknown_model_none_cost(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        model = "totally-unknown-model"
+        _ok(respx_mock, _gen_response(), url=f"{_GEMINI}/{model}:generateContent")
+        result = provider.chat(model, [UserMessage(content="Hi")])
         assert result.cost is None
 
 
-# MARK: Provider Params Kwargs
+# MARK: Provider Params
 
 
-class TestProviderParamsKwargs:
+class TestProviderParams:
     def test_empty_params(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
+        route = _ok(respx_mock, gen_response)
+        provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=GoogleParams())
+        body = json.loads(route.calls.last.request.content)
+        assert "safetySettings" not in body
+        assert "generationConfig" not in body
+        assert "tools" not in body
 
-        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], provider_params=GoogleParams())
-
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        config = call_kwargs["config"]
-        assert "safety_settings" not in config
-        assert "presence_penalty" not in config
-        assert "frequency_penalty" not in config
-        assert "seed" not in config
-        assert "labels" not in config
-        assert "thinking_config" not in config
-
-    def test_all_params(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+    def test_all_generation_params(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        params = GoogleParams(
-            safety_settings=[SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE")],
-            presence_penalty=0.5,
-            frequency_penalty=0.3,
-            seed=42,
-            labels={"env": "test"},
-            thinking_config={"thinking_budget": 1024},
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            provider_params=GoogleParams(
+                safety_settings=[SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE")],
+                presence_penalty=0.5,
+                frequency_penalty=0.3,
+                seed=42,
+                labels={"env": "test"},
+                thinking_config={"thinkingBudget": 1024},
+            ),
         )
-        _ = sync_provider.chat("gemini-2.0-flash", [UserMessage(content="Hi")], provider_params=params)
-
-        call_kwargs = mock_client.models.generate_content.call_args.kwargs
-        config = call_kwargs["config"]
-        assert config["safety_settings"] == [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}]
-        assert config["presence_penalty"] == 0.5
-        assert config["frequency_penalty"] == 0.3
-        assert config["seed"] == 42
-        assert config["labels"] == {"env": "test"}
-        assert config["thinking_config"] == {"thinking_budget": 1024}
+        body = json.loads(route.calls.last.request.content)
+        assert body["safetySettings"] == [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}]
+        assert body["labels"] == {"env": "test"}
+        assert body["generationConfig"] == {
+            "presencePenalty": 0.5,
+            "frequencyPenalty": 0.3,
+            "seed": 42,
+            "thinkingConfig": {"thinkingBudget": 1024},
+        }
 
     def test_google_search_bool(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
+        route = _ok(respx_mock, gen_response)
+        provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=GoogleParams(google_search=True))
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"googleSearch": {}}]
 
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [UserMessage(content="Hi")],
-            provider_params=GoogleParams(google_search=True),
-        )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [{"google_search": {}}]
-
-    def test_google_search_config_with_search_types(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+    def test_google_search_false_is_noop(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
+        route = _ok(respx_mock, gen_response)
+        provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=GoogleParams(google_search=False))
+        body = json.loads(route.calls.last.request.content)
+        assert "tools" not in body
 
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
+    def test_google_search_config_full(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
             provider_params=GoogleParams(
                 google_search=GoogleSearchConfig(
-                    search_types=GoogleSearchTypes(web_search=True),
-                    exclude_domains=["example.com"],
-                ),
+                    search_types=GoogleSearchTypes(web_search=True), exclude_domains=["example.com"]
+                )
             ),
         )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [
-            {"google_search": {"search_types": {"web_search": {}}, "exclude_domains": ["example.com"]}},
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [
+            {"googleSearch": {"searchTypes": {"webSearch": {}}, "excludeDomains": ["example.com"]}}
         ]
 
-    def test_google_search_config_empty(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [UserMessage(content="Hi")],
-            provider_params=GoogleParams(google_search=GoogleSearchConfig()),
-        )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [{"google_search": {}}]
-
     def test_google_search_config_image_search(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
             provider_params=GoogleParams(
-                google_search=GoogleSearchConfig(search_types=GoogleSearchTypes(image_search=True)),
+                google_search=GoogleSearchConfig(search_types=GoogleSearchTypes(image_search=True))
             ),
         )
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"googleSearch": {"searchTypes": {"imageSearch": {}}}}]
 
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [{"google_search": {"search_types": {"image_search": {}}}}]
+    def test_google_search_config_empty(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL, [UserMessage(content="Hi")], provider_params=GoogleParams(google_search=GoogleSearchConfig())
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"googleSearch": {}}]
+
+    def test_google_search_config_empty_search_types(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            provider_params=GoogleParams(google_search=GoogleSearchConfig(search_types=GoogleSearchTypes())),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"googleSearch": {}}]
 
     def test_code_execution(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
+        route = _ok(respx_mock, gen_response)
+        provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=GoogleParams(code_execution=True))
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"codeExecution": {}}]
 
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [UserMessage(content="Hi")],
-            provider_params=GoogleParams(code_execution=True),
-        )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [{"code_execution": {}}]
-
-    def test_google_search_retrieval(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+    def test_google_search_retrieval_full(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
             provider_params=GoogleParams(
                 google_search_retrieval=GoogleSearchRetrievalConfig(
-                    dynamic_retrieval_config=DynamicRetrievalConfig(mode="MODE_DYNAMIC", dynamic_threshold=0.5),
-                ),
+                    dynamic_retrieval_config=DynamicRetrievalConfig(mode="MODE_DYNAMIC", dynamic_threshold=0.5)
+                )
             ),
         )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        expected_drc = {"mode": "MODE_DYNAMIC", "dynamic_threshold": 0.5}
-        assert config["tools"] == [
-            {"google_search_retrieval": {"dynamic_retrieval_config": expected_drc}},
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [
+            {"googleSearchRetrieval": {"dynamicRetrievalConfig": {"mode": "MODE_DYNAMIC", "dynamicThreshold": 0.5}}}
         ]
 
-    def test_google_search_retrieval_empty(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+    def test_google_search_retrieval_mode_only(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            provider_params=GoogleParams(
+                google_search_retrieval=GoogleSearchRetrievalConfig(
+                    dynamic_retrieval_config=DynamicRetrievalConfig(mode="MODE_DYNAMIC")
+                )
+            ),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"googleSearchRetrieval": {"dynamicRetrievalConfig": {"mode": "MODE_DYNAMIC"}}}]
 
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
+    def test_google_search_retrieval_threshold_only(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            provider_params=GoogleParams(
+                google_search_retrieval=GoogleSearchRetrievalConfig(
+                    dynamic_retrieval_config=DynamicRetrievalConfig(dynamic_threshold=0.7)
+                )
+            ),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"googleSearchRetrieval": {"dynamicRetrievalConfig": {"dynamicThreshold": 0.7}}}]
+
+    def test_google_search_retrieval_empty_drc(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            provider_params=GoogleParams(
+                google_search_retrieval=GoogleSearchRetrievalConfig(dynamic_retrieval_config=DynamicRetrievalConfig())
+            ),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"googleSearchRetrieval": {}}]
+
+    def test_google_search_retrieval_no_drc(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
             provider_params=GoogleParams(google_search_retrieval=GoogleSearchRetrievalConfig()),
         )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [{"google_search_retrieval": {}}]
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [{"googleSearchRetrieval": {}}]
 
     def test_special_tools_merge_with_function_tools(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
+        route = _ok(respx_mock, gen_response)
+        provider.chat(
+            MODEL,
             [UserMessage(content="Hi")],
             tools=[Tool(function=FunctionDefinition(name="get_weather"))],
             provider_params=GoogleParams(google_search=True, code_execution=True),
         )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [
-            {"function_declarations": [{"name": "get_weather"}]},
-            {"google_search": {}},
-            {"code_execution": {}},
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [
+            {"functionDeclarations": [{"name": "get_weather"}]},
+            {"googleSearch": {}},
+            {"codeExecution": {}},
         ]
 
-    def test_multiple_special_tools(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
 
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [UserMessage(content="Hi")],
-            provider_params=GoogleParams(google_search=True, code_execution=True),
-        )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [{"google_search": {}}, {"code_execution": {}}]
-
-    def test_google_search_retrieval_mode_only(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [UserMessage(content="Hi")],
-            provider_params=GoogleParams(
-                google_search_retrieval=GoogleSearchRetrievalConfig(
-                    dynamic_retrieval_config=DynamicRetrievalConfig(mode="MODE_DYNAMIC"),
-                ),
-            ),
-        )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [
-            {"google_search_retrieval": {"dynamic_retrieval_config": {"mode": "MODE_DYNAMIC"}}},
-        ]
-
-    def test_google_search_retrieval_threshold_only(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [UserMessage(content="Hi")],
-            provider_params=GoogleParams(
-                google_search_retrieval=GoogleSearchRetrievalConfig(
-                    dynamic_retrieval_config=DynamicRetrievalConfig(dynamic_threshold=0.7),
-                ),
-            ),
-        )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [
-            {"google_search_retrieval": {"dynamic_retrieval_config": {"dynamic_threshold": 0.7}}},
-        ]
-
-    def test_google_search_retrieval_empty_drc(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [UserMessage(content="Hi")],
-            provider_params=GoogleParams(
-                google_search_retrieval=GoogleSearchRetrievalConfig(
-                    dynamic_retrieval_config=DynamicRetrievalConfig(),
-                ),
-            ),
-        )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [{"google_search_retrieval": {}}]
-
-    def test_google_search_config_empty_search_types(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [UserMessage(content="Hi")],
-            provider_params=GoogleParams(
-                google_search=GoogleSearchConfig(search_types=GoogleSearchTypes()),
-            ),
-        )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert config["tools"] == [{"google_search": {}}]
-
-    def test_google_search_false_is_noop(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [UserMessage(content="Hi")],
-            provider_params=GoogleParams(google_search=False),
-        )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert "tools" not in config
-
-    def test_no_special_tools_no_tools_key(
-        self, sync_provider: GoogleProvider, mock_client: MagicMock, generate_response: MagicMock
-    ) -> None:
-        mock_client.models.generate_content.return_value = generate_response
-
-        _ = sync_provider.chat(
-            "gemini-2.0-flash",
-            [UserMessage(content="Hi")],
-            provider_params=GoogleParams(presence_penalty=0.5),
-        )
-
-        config = mock_client.models.generate_content.call_args.kwargs["config"]
-        assert "tools" not in config
-
-
-# MARK: Aclose
+# MARK: Aclose & Preload
 
 
 class TestAclose:
-    async def test_aclose_closes_client(
-        self,
-        fake_auth: FakeAuth,
-        mock_create: MagicMock,
-        mock_client: MagicMock,
-        generate_response: MagicMock,
+    async def test_closes_client(
+        self, api_auth: FakeAPIKeyAuth, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        mock_client.aio.models.generate_content = AsyncMock(return_value=generate_response)
-        provider = GoogleProvider(auth=fake_auth)
-
-        _ = await provider.achat("gemini-2.0-flash", [UserMessage(content="Hi")])
+        _ok(respx_mock, gen_response)
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        await provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert provider._async_client is not None
         await provider.aclose()
+        assert provider._async_client is None
 
-        mock_create.assert_called_once()
-        mock_client.aio.aclose.assert_awaited_once()
-        assert provider._client is None
-
-    async def test_aclose_noop_when_no_client(self, fake_auth: FakeAuth) -> None:
-        provider = GoogleProvider(auth=fake_auth)
+    async def test_noop_when_no_client(self, api_auth: FakeAPIKeyAuth) -> None:
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
         await provider.aclose()
-
-
-# MARK: Preload
 
 
 class TestPreload:
-    def test_preload_imports_genai(self) -> None:
-        preload()  # should not raise
+    def test_preload(self) -> None:
+        preload()

@@ -1,6 +1,6 @@
 # lmux-google
 
-Google (Gemini) provider for [lmux](https://github.com/cluebbehusen/lmux). Wraps the [google-genai](https://pypi.org/project/google-genai/) SDK, which serves Google's models through either backend:
+Google (Gemini) provider for [lmux](https://github.com/cluebbehusen/lmux). Talks to the Google Gemini REST API directly over [httpx](https://pypi.org/project/httpx/), using [google-auth](https://pypi.org/project/google-auth/) to resolve Vertex AI credentials. Serves Google's models through either backend:
 
 - **Vertex AI** (default) — authenticated with Google Cloud credentials
 - **Gemini Developer API** (AI Studio) — authenticated with an API key (`vertexai=False`)
