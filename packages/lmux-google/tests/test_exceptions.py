@@ -118,3 +118,10 @@ class TestErrorFromStream:
         err = error_from_stream({"error": "raw string error"})
         assert isinstance(err, ProviderError)
         assert "raw string error" in str(err)
+
+    def test_embedded_code_maps_to_typed_error(self) -> None:
+        # A mid-stream 429 must stay catchable as RateLimitError, not collapse to a bare ProviderError.
+        err = error_from_stream({"error": {"code": 429, "message": "slow down"}})
+        assert isinstance(err, RateLimitError)
+        assert err.status_code == 429
+        assert "slow down" in str(err)

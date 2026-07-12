@@ -43,6 +43,7 @@ from lmux_google._lazy import (
 from lmux_google._mappers import (
     Json,
     map_batch_embeddings_response,
+    map_embed_content_response,
     map_generate_content_chunk,
     map_generate_content_response,
     map_messages,
@@ -53,6 +54,7 @@ from lmux_google._mappers import (
 )
 from lmux_google._wire import (
     WireBatchEmbeddingsResponse,
+    WireEmbedContentResponse,
     WireGenerateContentResponse,
     WireVertexPredictResponse,
 )
@@ -125,14 +127,14 @@ class GoogleProvider(
     def _request_headers(self) -> Mapping[str, str]:
         if self._credentials is None:
             return {}
-        return bearer_headers(bearer_token(self._credentials))
+        return bearer_headers(bearer_token(self._credentials), self._credentials.quota_project_id)
 
     async def _arequest_headers(self) -> Mapping[str, str]:
         if self._credentials is None:
             return {}
         # Credential refresh does blocking HTTP; run it off the event loop.
         token = await asyncio.to_thread(bearer_token, self._credentials)
-        return bearer_headers(token)
+        return bearer_headers(token, self._credentials.quota_project_id)
 
     def _path(self, model: str, method: str, *, sse: bool = False) -> str:
         suffix = "?alt=sse" if sse else ""
@@ -335,6 +337,8 @@ class GoogleProvider(
         dimensions: int | None = None,
         provider_params: GoogleParams | None = None,
     ) -> EmbeddingResponse:
+        if self._vertexai and _uses_embed_content(model):
+            return self._embed_content(model, input, dimensions)
         path, body = self._embed_path_and_body(model, input, dimensions, provider_params)
         try:
             client = self._get_sync_client()
@@ -353,6 +357,8 @@ class GoogleProvider(
         dimensions: int | None = None,
         provider_params: GoogleParams | None = None,
     ) -> EmbeddingResponse:
+        if self._vertexai and _uses_embed_content(model):
+            return await self._aembed_content(model, input, dimensions)
         path, body = self._embed_path_and_body(model, input, dimensions, provider_params)
         try:
             client = await self._get_async_client()
@@ -361,6 +367,58 @@ class GoogleProvider(
             raise map_transport_error(e) from e
         raise_for_status(response)
         return self._map_embed_response(response, model)
+
+    def _embed_content(self, model: str, input: str | list[str], dimensions: int | None) -> EmbeddingResponse:  # noqa: A002
+        # Vertex serves Gemini Embedding 2 models only through :embedContent, which takes a single
+        # content per request (no batch) and rejects task_type — so a list is issued one item at a time.
+        texts = input if isinstance(input, list) else [input]
+        path = self._path(model, "embedContent")
+        embeddings: list[list[float]] = []
+        input_tokens = 0
+        try:
+            client = self._get_sync_client()
+            for text in texts:
+                headers = self._request_headers()
+                response = client.post(path, json=_embed_content_body(text, dimensions), headers=headers)
+                raise_for_status(response)
+                values, tokens = map_embed_content_response(parse_body(response, WireEmbedContentResponse))
+                embeddings.append(values)
+                input_tokens += tokens
+        except LmuxError:
+            raise
+        except Exception as e:
+            raise map_transport_error(e) from e
+        return self._embedding_response(model, embeddings, input_tokens)
+
+    async def _aembed_content(self, model: str, input: str | list[str], dimensions: int | None) -> EmbeddingResponse:  # noqa: A002
+        texts = input if isinstance(input, list) else [input]
+        path = self._path(model, "embedContent")
+        embeddings: list[list[float]] = []
+        input_tokens = 0
+        try:
+            client = await self._get_async_client()
+            for text in texts:
+                headers = await self._arequest_headers()
+                response = await client.post(path, json=_embed_content_body(text, dimensions), headers=headers)
+                raise_for_status(response)
+                values, tokens = map_embed_content_response(parse_body(response, WireEmbedContentResponse))
+                embeddings.append(values)
+                input_tokens += tokens
+        except LmuxError:
+            raise
+        except Exception as e:
+            raise map_transport_error(e) from e
+        return self._embedding_response(model, embeddings, input_tokens)
+
+    def _embedding_response(self, model: str, embeddings: list[list[float]], input_tokens: int) -> EmbeddingResponse:
+        usage = Usage(input_tokens=input_tokens, output_tokens=0)
+        return EmbeddingResponse(
+            embeddings=embeddings,
+            usage=usage,
+            cost=self._calculate_cost(model, usage),
+            model=model,
+            provider=PROVIDER_NAME,
+        )
 
     # MARK: Internal Helpers
 
@@ -536,3 +594,15 @@ class GoogleProvider(
         if config.exclude_domains is not None:
             gs_dict["excludeDomains"] = config.exclude_domains
         return gs_dict
+
+
+def _uses_embed_content(model: str) -> bool:
+    """Gemini Embedding 2 models are served on Vertex only through :embedContent (not :predict)."""
+    return model.startswith("gemini-embedding-2")
+
+
+def _embed_content_body(text: str, dimensions: int | None) -> Json:
+    body: Json = {"content": {"parts": [{"text": text}]}}
+    if dimensions is not None:
+        body["outputDimensionality"] = dimensions
+    return body

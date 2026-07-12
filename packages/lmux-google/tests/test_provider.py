@@ -55,9 +55,10 @@ class FakeAPIKeyAuth:
 
 
 class FakeCredentials:
-    def __init__(self, *, valid: bool = True, token: str = "vertex-token") -> None:  # noqa: S107
+    def __init__(self, *, valid: bool = True, token: str = "vertex-token", quota_project_id: str | None = None) -> None:  # noqa: S107
         self.valid = valid
         self.token = token
+        self.quota_project_id = quota_project_id
         self.refreshed = False
 
     def refresh(self, _request: Any) -> None:  # noqa: ANN401
@@ -502,6 +503,14 @@ class TestVertexTransport:
         await provider.achat(MODEL, [UserMessage(content="Hi")])
         assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
 
+    def test_vertex_quota_project_header(self, gen_response: dict[str, Any], respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials(quota_project_id="quota-proj")
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers["x-goog-user-project"] == "quota-proj"
+
 
 # MARK: Vertex Embeddings
 
@@ -548,6 +557,93 @@ class TestVertexEmbed:
         result = await provider.aembed(EMBED_MODEL, "hello")
         assert result.embeddings == [[0.3]]
         assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+
+
+# MARK: Vertex embedContent (Gemini Embedding 2)
+
+
+_EMBED2_MODEL = "gemini-embedding-2-preview"
+
+
+def _embed_content_url(model: str = _EMBED2_MODEL) -> str:
+    base = "https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models"
+    return f"{base}/{model}:embedContent"
+
+
+def _vertex_embed2_provider() -> GoogleProvider:
+    return GoogleProvider(auth=FakeCredentialsAuth(FakeCredentials()), project="my-proj", location="us-central1")
+
+
+class TestVertexEmbedContent:
+    def test_single_input_endpoint_and_shape(self, respx_mock: respx.MockRouter) -> None:
+        body = {"embedding": {"values": [0.1, 0.2]}, "usageMetadata": {"promptTokenCount": 4}}
+        route = respx_mock.post(_embed_content_url()).mock(return_value=httpx.Response(200, json=body))
+        result = _vertex_embed2_provider().embed(_EMBED2_MODEL, "hello")
+        assert result.embeddings == [[0.1, 0.2]]
+        assert result.usage.input_tokens == 4
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+        # embedContent is single-content and rejects task_type — the body carries neither instances nor task_type.
+        assert json.loads(route.calls.last.request.content) == {"content": {"parts": [{"text": "hello"}]}}
+
+    def test_list_issues_one_request_per_item(self, respx_mock: respx.MockRouter) -> None:
+        responses = [
+            httpx.Response(200, json={"embedding": {"values": [0.1]}, "usageMetadata": {"promptTokenCount": 2}}),
+            httpx.Response(200, json={"embedding": {"values": [0.2]}, "usageMetadata": {"promptTokenCount": 3}}),
+        ]
+        route = respx_mock.post(_embed_content_url()).mock(side_effect=responses)
+        result = _vertex_embed2_provider().embed(_EMBED2_MODEL, ["a", "b"])
+        assert result.embeddings == [[0.1], [0.2]]
+        assert result.usage.input_tokens == 5
+        assert len(route.calls) == 2
+        assert json.loads(route.calls[0].request.content) == {"content": {"parts": [{"text": "a"}]}}
+
+    def test_dimensions_forwarded(self, respx_mock: respx.MockRouter) -> None:
+        body = {"embedding": {"values": [0.1]}}
+        route = respx_mock.post(_embed_content_url()).mock(return_value=httpx.Response(200, json=body))
+        _vertex_embed2_provider().embed(_EMBED2_MODEL, "hi", dimensions=128)
+        assert json.loads(route.calls.last.request.content) == {
+            "content": {"parts": [{"text": "hi"}]},
+            "outputDimensionality": 128,
+        }
+
+    async def test_aembed_content(self, respx_mock: respx.MockRouter) -> None:
+        body = {"embedding": {"values": [0.5]}, "usageMetadata": {"promptTokenCount": 1}}
+        route = respx_mock.post(_embed_content_url()).mock(return_value=httpx.Response(200, json=body))
+        result = await _vertex_embed2_provider().aembed(_EMBED2_MODEL, "hi")
+        assert result.embeddings == [[0.5]]
+        assert result.usage.input_tokens == 1
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+
+    def test_status_error_mapped(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_embed_content_url()).mock(return_value=httpx.Response(404, json={"error": {"message": "no"}}))
+        with pytest.raises(NotFoundError):
+            _vertex_embed2_provider().embed(_EMBED2_MODEL, "hi")
+
+    def test_transport_error_mapped(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_embed_content_url()).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            _vertex_embed2_provider().embed(_EMBED2_MODEL, "hi")
+
+    async def test_aembed_transport_error_mapped(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_embed_content_url()).mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(ProviderError, match="refused"):
+            await _vertex_embed2_provider().aembed(_EMBED2_MODEL, "hi")
+
+    async def test_aembed_status_error_mapped(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_embed_content_url()).mock(return_value=httpx.Response(404, json={"error": {"message": "no"}}))
+        with pytest.raises(NotFoundError):
+            await _vertex_embed2_provider().aembed(_EMBED2_MODEL, "hi")
+
+    async def test_aembed_list_issues_one_request_per_item(self, respx_mock: respx.MockRouter) -> None:
+        responses = [
+            httpx.Response(200, json={"embedding": {"values": [0.1]}, "usageMetadata": {"promptTokenCount": 2}}),
+            httpx.Response(200, json={"embedding": {"values": [0.2]}, "usageMetadata": {"promptTokenCount": 3}}),
+        ]
+        route = respx_mock.post(_embed_content_url()).mock(side_effect=responses)
+        result = await _vertex_embed2_provider().aembed(_EMBED2_MODEL, ["a", "b"])
+        assert result.embeddings == [[0.1], [0.2]]
+        assert result.usage.input_tokens == 5
+        assert len(route.calls) == 2
 
 
 # MARK: Client Management
