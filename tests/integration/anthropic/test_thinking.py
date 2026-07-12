@@ -32,4 +32,5 @@ def test_thinking(
     resp = scenario(_CASSETTE, _chat, requires="ANTHROPIC_API_KEY")
     assert_chat(resp, provider="anthropic")
     assert resp.reasoning
+    assert "391" in resp.content  # the thinking produced the correct answer (17 * 23)
     assert_cost(resp, **_RATES)

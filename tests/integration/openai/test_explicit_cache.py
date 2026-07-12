@@ -42,5 +42,7 @@ def test_explicit_cache(
     resp = scenario(_CASSETTE, _chat, requires="OPENAI_API_KEY")
     assert_chat(resp, provider="openai")
     assert resp.usage is not None
-    assert resp.usage.cache_creation_tokens
+    created = resp.usage.cache_creation_tokens
+    assert created is not None
+    assert created > 1024  # a real, substantial cache write (the prompt is >1024 tokens by design)
     assert_cost(resp, **_RATES)

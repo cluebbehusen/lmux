@@ -42,5 +42,5 @@ def test_tool_calls(scenario: Callable[..., Any], assert_cost: Callable[..., Non
     assert resp.finish_reason == "tool_calls"
     assert resp.tool_calls is not None
     assert resp.tool_calls[0].function.name == "get_weather"
-    assert json.loads(resp.tool_calls[0].function.arguments)["location"]
+    assert "paris" in json.loads(resp.tool_calls[0].function.arguments)["location"].lower()
     assert_cost(resp, **_RATES)

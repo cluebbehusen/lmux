@@ -37,6 +37,7 @@ def test_reasoning(
 ) -> None:
     resp = scenario(_CASSETTE, _chat, requires="OPENAI_API_KEY")
     assert_chat(resp, provider="openai")
+    assert "391" in resp.content  # the reasoning produced the correct answer (17 * 23)
     assert resp.usage is not None
     assert resp.usage.reasoning_tokens
     assert resp.usage.reasoning_tokens <= resp.usage.output_tokens
