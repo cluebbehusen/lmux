@@ -107,6 +107,8 @@ OpenAIProvider(
     organization=...,     # Optional org id -> OpenAI-Organization header
     project=...,          # Optional project id -> OpenAI-Project header
     default_headers=...,  # Optional Mapping[str, str] added to every request
+    transport=...,        # Optional httpx.BaseTransport for the sync client (proxies, testing)
+    async_transport=...,  # Optional httpx.AsyncBaseTransport for the async client
 )
 ```
 

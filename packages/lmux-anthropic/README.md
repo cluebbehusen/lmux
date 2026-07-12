@@ -180,5 +180,7 @@ AnthropicProvider(
     timeout=...,            # Request timeout in seconds
     max_retries=...,        # Max retry attempts
     default_max_tokens=..., # Default max tokens (default: 4096)
+    transport=...,          # Optional httpx.BaseTransport for the sync client (proxies, testing)
+    async_transport=...,    # Optional httpx.AsyncBaseTransport for the async client
 )
 ```
