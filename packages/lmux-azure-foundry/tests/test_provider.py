@@ -641,6 +641,19 @@ class TestCreateResponse:
         assert body["seed"] == 42
         assert body["user"] == "u1"
 
+    def test_prompt_cache_params(
+        self, sync_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=responses_body))
+        sync_provider.create_response(
+            "gpt-5-pro",
+            "Hello",
+            provider_params=AzureFoundryParams(prompt_cache_key="tenant-42", prompt_cache_retention="24h"),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["prompt_cache_key"] == "tenant-42"
+        assert body["prompt_cache_retention"] == "24h"
+
     def test_deployment_multiplier(
         self, sync_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:

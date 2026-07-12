@@ -520,7 +520,7 @@ class AzureFoundryProvider(
             body["reasoning_effort"] = reasoning_effort
         if provider_params is not None:
             body.update(AzureFoundryProvider._provider_params_kwargs(provider_params))
-            body.update(AzureFoundryProvider._chat_cache_kwargs(provider_params))
+            body.update(AzureFoundryProvider._cache_kwargs(provider_params))
         return body
 
     @staticmethod
@@ -560,8 +560,8 @@ class AzureFoundryProvider(
         return kwargs
 
     @staticmethod
-    def _chat_cache_kwargs(params: AzureFoundryParams) -> dict[str, Any]:
-        """Chat-Completions-only prompt-cache kwargs (not valid on the embeddings endpoint).
+    def _cache_kwargs(params: AzureFoundryParams) -> dict[str, Any]:
+        """Prompt-cache kwargs for Chat Completions and the Responses API (not embeddings).
 
         Azure supports only implicit prompt caching plus these tuning fields; it does not accept
         OpenAI's explicit-breakpoint wire format, so ``CachePointContent`` is dropped by ``map_messages``.
@@ -586,6 +586,7 @@ class AzureFoundryProvider(
             extra["seed"] = provider_params.seed
         if provider_params.user is not None:
             extra["user"] = provider_params.user
+        extra.update(AzureFoundryProvider._cache_kwargs(provider_params))
         return extra
 
 
