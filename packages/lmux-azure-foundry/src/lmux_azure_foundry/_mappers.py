@@ -55,23 +55,8 @@ type Json = dict[str, Any]
 # MARK: Input Mappers (lmux -> OpenAI-compatible JSON)
 
 
-def supports_explicit_prompt_cache(model: str) -> bool:
-    """gpt-5.6+ supports explicit prompt-cache breakpoints; older models reject the field.
-
-    Matched by prefix on the gpt-5.6 family — extend this as OpenAI ships later families that support
-    explicit caching. An unrecognized newer model simply falls back to implicit caching until then.
-    """
-    return model.startswith("gpt-5.6")
-
-
-def map_messages(messages: Sequence[Message], *, explicit_cache: bool = False) -> list[Json]:
-    """Convert lmux Messages to OpenAI-compatible message dicts.
-
-    When ``explicit_cache`` is set (gpt-5.6+), a ``CachePointContent`` becomes a
-    ``prompt_cache_breakpoint`` on the preceding content block; otherwise cache points are dropped
-    (older models have no explicit representation). ``CachePointContent.ttl`` has no OpenAI equivalent
-    and is ignored.
-    """
+def map_messages(messages: Sequence[Message]) -> list[Json]:
+    """Convert lmux Messages to OpenAI-compatible message dicts."""
     result: list[Json] = []
     for msg in messages:
         if isinstance(msg, SystemMessage):
@@ -79,12 +64,10 @@ def map_messages(messages: Sequence[Message], *, explicit_cache: bool = False) -
         elif isinstance(msg, DeveloperMessage):
             result.append({"role": "developer", "content": msg.content})
         elif isinstance(msg, UserMessage):
-            content, leading_cache_point = _map_user_content(msg.content, explicit_cache=explicit_cache)
-            if leading_cache_point is not None and result:
-                # Nothing precedes the marker in this message — cache the prior message's prefix.
-                _attach_breakpoint(result[-1])
-            if isinstance(content, str) or content or not msg.content:
-                result.append({"role": "user", "content": content})
+            content = _map_user_content(msg.content)
+            if isinstance(content, list) and not content and msg.content:
+                continue  # message held only cache points, which this provider has no representation for
+            result.append({"role": "user", "content": content})
         elif isinstance(msg, AssistantMessage):
             d: Json = {"role": "assistant"}
             if msg.content is not None:
@@ -97,15 +80,6 @@ def map_messages(messages: Sequence[Message], *, explicit_cache: bool = False) -
     return result
 
 
-def has_cache_breakpoint(messages: list[Json]) -> bool:
-    """True if any mapped message carries a prompt_cache_breakpoint, i.e. the request opts into explicit mode."""
-    for message in messages:
-        content = message.get("content")
-        if isinstance(content, list) and any("prompt_cache_breakpoint" in block for block in content):
-            return True
-    return False
-
-
 def _map_tool_call_param(tc: ToolCall) -> Json:
     return {
         "id": tc.id,
@@ -114,45 +88,11 @@ def _map_tool_call_param(tc: ToolCall) -> Json:
     }
 
 
-def _map_user_content(
-    content: str | list[ContentPart], *, explicit_cache: bool
-) -> tuple[str | list[Json], CachePointContent | None]:
-    """Map user content, translating cache points to breakpoints on the preceding block.
-
-    Returns ``(mapped, leading_cache_point)`` — a cache point with no preceding block in this message
-    is returned so the caller can attach it to whatever precedes the message.
-    """
+def _map_user_content(content: str | list[ContentPart]) -> str | list[Json]:
     if isinstance(content, str):
-        return content, None
-    blocks: list[Json] = []
-    leading_cache_point: CachePointContent | None = None
-    for part in content:
-        if isinstance(part, CachePointContent):
-            if not explicit_cache:
-                continue
-            if not blocks:
-                if leading_cache_point is None:
-                    leading_cache_point = part
-            elif "prompt_cache_breakpoint" not in blocks[-1]:
-                blocks[-1]["prompt_cache_breakpoint"] = {"mode": "explicit"}
-        else:
-            blocks.append(_map_content_part(part))
-    return blocks, leading_cache_point
-
-
-def _attach_breakpoint(message: Json) -> None:
-    """Attach a prompt_cache_breakpoint to the last content block of ``message`` (the first marker wins)."""
-    content = message.get("content")
-    if content is None:
-        return
-    if isinstance(content, str):
-        if not content:
-            return
-        message["content"] = [{"type": "text", "text": content, "prompt_cache_breakpoint": {"mode": "explicit"}}]
-        return
-    blocks: list[Json] = content
-    if blocks and "prompt_cache_breakpoint" not in blocks[-1]:
-        blocks[-1]["prompt_cache_breakpoint"] = {"mode": "explicit"}
+        return content
+    # Cache points are dropped: this provider caches implicitly and has no explicit representation.
+    return [_map_content_part(part) for part in content if not isinstance(part, CachePointContent)]
 
 
 def _map_content_part(part: TextContent | ImageContent) -> Json:

@@ -13,15 +13,7 @@ from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError
-from lmux.types import (
-    CachePointContent,
-    FunctionDefinition,
-    JsonObjectResponseFormat,
-    ResponseInputMessage,
-    TextContent,
-    Tool,
-    UserMessage,
-)
+from lmux.types import FunctionDefinition, JsonObjectResponseFormat, ResponseInputMessage, Tool, UserMessage
 from lmux_azure_foundry import preload
 from lmux_azure_foundry.auth import AzureAdToken
 from lmux_azure_foundry.params import AzureFoundryParams
@@ -242,36 +234,18 @@ class TestChat:
         body = json.loads(route.calls.last.request.content)
         assert body["reasoning_effort"] == "high"
 
-    def test_explicit_cache_gpt56_emits_breakpoint_and_option(
+    def test_prompt_cache_params_sent(
         self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        route = respx_mock.post(_chat_url("gpt-5.6-sol")).mock(return_value=httpx.Response(200, json=completion))
-        sync_provider.chat("gpt-5.6-sol", [UserMessage(content=[TextContent(text="ctx"), CachePointContent()])])
+        route = respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, json=completion))
+        sync_provider.chat(
+            "gpt-4o",
+            [UserMessage(content="Hi")],
+            provider_params=AzureFoundryParams(prompt_cache_key="tenant-42", prompt_cache_retention="24h"),
+        )
         body = json.loads(route.calls.last.request.content)
-        assert body["messages"] == [
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": "ctx", "prompt_cache_breakpoint": {"mode": "explicit"}}],
-            }
-        ]
-        assert body["prompt_cache_options"] == {"mode": "explicit"}
-
-    def test_cache_point_dropped_for_older_model(
-        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
-    ) -> None:
-        route = respx_mock.post(_chat_url("gpt-5.5")).mock(return_value=httpx.Response(200, json=completion))
-        sync_provider.chat("gpt-5.5", [UserMessage(content=[TextContent(text="ctx"), CachePointContent()])])
-        body = json.loads(route.calls.last.request.content)
-        assert body["messages"] == [{"role": "user", "content": [{"type": "text", "text": "ctx"}]}]
-        assert "prompt_cache_options" not in body
-
-    def test_no_cache_option_without_cache_points(
-        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
-    ) -> None:
-        route = respx_mock.post(_chat_url("gpt-5.6-sol")).mock(return_value=httpx.Response(200, json=completion))
-        sync_provider.chat("gpt-5.6-sol", [UserMessage(content=[TextContent(text="hi")])])
-        body = json.loads(route.calls.last.request.content)
-        assert "prompt_cache_options" not in body
+        assert body["prompt_cache_key"] == "tenant-42"
+        assert body["prompt_cache_retention"] == "24h"
 
     def test_status_error_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(400, json={"error": {"message": "bad"}}))
@@ -559,9 +533,16 @@ class TestEmbed:
         route = respx_mock.post(_emb_url("text-embedding-3-small")).mock(
             return_value=httpx.Response(200, json=embedding_response)
         )
-        sync_provider.embed("text-embedding-3-small", "hello", provider_params=AzureFoundryParams(user="u1"))
+        sync_provider.embed(
+            "text-embedding-3-small",
+            "hello",
+            provider_params=AzureFoundryParams(user="u1", prompt_cache_key="k", prompt_cache_retention="24h"),
+        )
         body = json.loads(route.calls.last.request.content)
         assert body["user"] == "u1"
+        # prompt-cache fields are Chat-Completions-only and must not leak onto the embeddings body.
+        assert "prompt_cache_key" not in body
+        assert "prompt_cache_retention" not in body
 
     def test_status_error_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_emb_url("text-embedding-3-small")).mock(

@@ -34,7 +34,6 @@ from lmux_azure_foundry._exceptions import (
 )
 from lmux_azure_foundry._lazy import auth_headers, create_async_client, create_sync_client
 from lmux_azure_foundry._mappers import (
-    has_cache_breakpoint,
     map_chat_chunk,
     map_chat_completion,
     map_embedding_response,
@@ -44,7 +43,6 @@ from lmux_azure_foundry._mappers import (
     map_responses_response,
     map_tool_choice,
     map_tools,
-    supports_explicit_prompt_cache,
 )
 from lmux_azure_foundry._wire import (
     WireChunk,
@@ -500,10 +498,7 @@ class AzureFoundryProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: AzureFoundryParams | None,
     ) -> dict[str, Any]:
-        message_dicts = map_messages(messages, explicit_cache=supports_explicit_prompt_cache(model))
-        body: dict[str, Any] = {"model": model, "messages": message_dicts}
-        if has_cache_breakpoint(message_dicts):
-            body["prompt_cache_options"] = {"mode": "explicit"}
+        body: dict[str, Any] = {"model": model, "messages": map_messages(messages)}
         if temperature is not None:
             body["temperature"] = temperature
         if max_tokens is not None:
@@ -525,6 +520,7 @@ class AzureFoundryProvider(
             body["reasoning_effort"] = reasoning_effort
         if provider_params is not None:
             body.update(AzureFoundryProvider._provider_params_kwargs(provider_params))
+            body.update(AzureFoundryProvider._chat_cache_kwargs(provider_params))
         return body
 
     @staticmethod
@@ -561,6 +557,20 @@ class AzureFoundryProvider(
             kwargs["seed"] = params.seed
         if params.user is not None:
             kwargs["user"] = params.user
+        return kwargs
+
+    @staticmethod
+    def _chat_cache_kwargs(params: AzureFoundryParams) -> dict[str, Any]:
+        """Chat-Completions-only prompt-cache kwargs (not valid on the embeddings endpoint).
+
+        Azure supports only implicit prompt caching plus these tuning fields; it does not accept
+        OpenAI's explicit-breakpoint wire format, so ``CachePointContent`` is dropped by ``map_messages``.
+        """
+        kwargs: dict[str, Any] = {}
+        if params.prompt_cache_key is not None:
+            kwargs["prompt_cache_key"] = params.prompt_cache_key
+        if params.prompt_cache_retention is not None:
+            kwargs["prompt_cache_retention"] = params.prompt_cache_retention
         return kwargs
 
     @staticmethod

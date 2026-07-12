@@ -115,6 +115,8 @@ response = provider.chat(
 | `reasoning_effort` | `"low" \| "medium" \| "high"` | Reasoning effort for o-series models |
 | `seed` | `int` | Deterministic sampling seed |
 | `user` | `str` | End-user identifier |
+| `prompt_cache_key` | `str` | Cache key for Azure's automatic prompt caching (Chat Completions) |
+| `prompt_cache_retention` | `str` | Prompt cache retention policy (Chat Completions) |
 | `deployment_type` | `"global" \| "data_zone" \| "regional"` | Affects cost calculation only, not sent to API |
 
 ## Constructor Options
