@@ -12,35 +12,35 @@
     "stream": false
   },
   "response": {
-    "id": "chatcmpl-1eec9f9b-77c1-4fb5-a8c8-a615baa1c52e",
+    "id": "chatcmpl-c1b2bd6a-45df-4896-9fdd-606ab22662d4",
     "object": "chat.completion",
-    "created": 1783873615,
+    "created": 1783884288,
     "model": "llama-3.1-8b-instant",
     "choices": [
       {
         "index": 0,
         "message": {
           "role": "assistant",
-          "content": "pong"
+          "content": "Pong"
         },
         "logprobs": null,
         "finish_reason": "stop"
       }
     ],
     "usage": {
-      "queue_time": 0.06444133,
+      "queue_time": 0.05051724,
       "prompt_tokens": 42,
-      "prompt_time": 0.010274686,
-      "completion_tokens": 2,
-      "completion_time": 0.010463462,
-      "total_tokens": 44,
-      "total_time": 0.020738148
+      "prompt_time": 0.002195562,
+      "completion_tokens": 3,
+      "completion_time": 0.007800693,
+      "total_tokens": 45,
+      "total_time": 0.009996255
     },
     "usage_breakdown": null,
-    "system_fingerprint": "fp_020e283281",
+    "system_fingerprint": "fp_e2c608b1d6",
     "x_groq": {
-      "id": "req_01kxbjedaee43bzdns4z6h8c84",
-      "seed": 699042088
+      "id": "req_01kxbwm457e3yt0r56vq816pzx",
+      "seed": 926539735
     },
     "service_tier": "on_demand"
   }
