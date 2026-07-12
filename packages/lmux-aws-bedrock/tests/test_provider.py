@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
 
+import botocore.exceptions
 import httpx
 import pytest
 import respx
@@ -100,6 +101,16 @@ class FakeAuth:
         return cast("AioSession", self._session)
 
 
+class _RaisingSessionAuth:
+    """Auth provider whose session construction fails, e.g. a stale AWS_PROFILE."""
+
+    def get_credentials(self) -> "boto3.Session":
+        raise botocore.exceptions.ProfileNotFound(profile="missing-profile")
+
+    async def aget_credentials(self) -> "AioSession":  # pragma: no cover - protocol conformance only
+        raise botocore.exceptions.ProfileNotFound(profile="missing-profile")
+
+
 # MARK: Event-stream framing (mirrors tests/test_eventstream.py)
 
 
@@ -116,6 +127,9 @@ def _encode(headers: dict[str, str], payload: bytes) -> bytes:
 
 def _frame(event_type: str, payload: dict[str, Any] | None, *, message_type: str = "event") -> bytes:
     data = json.dumps(payload).encode() if payload is not None else b""
+    if message_type == "exception":
+        # Real exception frames carry a camelCase :exception-type and no :event-type.
+        return _encode({":message-type": "exception", ":exception-type": event_type}, data)
     return _encode({":event-type": event_type, ":message-type": message_type}, data)
 
 
@@ -567,21 +581,13 @@ class TestChatStream:
         with pytest.raises(ProviderError):
             list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
 
-    def test_stream_exception_frame(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
-        content = _frame("contentBlockDelta", {"delta": {"text": "Hi"}, "contentBlockIndex": 0}) + _frame(
-            "throttlingException", {"message": "slow down"}, message_type="exception"
-        )
-        respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(200, content=content))
-        with pytest.raises(ProviderError, match="slow down"):
-            list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
-
-    def test_exception_frame_maps_to_typed_error(
+    def test_stream_exception_frame_maps_to_typed_error(
         self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter
     ) -> None:
         # A real exception frame carries a camelCase :exception-type and no :event-type; it must both
         # avoid a KeyError on :event-type and classify to the typed error (RateLimitError here).
-        content = _encode(
-            {":message-type": "exception", ":exception-type": "throttlingException"}, b'{"message": "slow down"}'
+        content = _frame("contentBlockDelta", {"delta": {"text": "Hi"}, "contentBlockIndex": 0}) + _frame(
+            "throttlingException", {"message": "slow down"}, message_type="exception"
         )
         respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(200, content=content))
         with pytest.raises(RateLimitError, match="slow down"):
@@ -638,12 +644,14 @@ class TestAchatStream:
             async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass  # pragma: no cover
 
-    async def test_exception_frame(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
+    async def test_exception_frame_maps_to_typed_error(
+        self, async_provider: BedrockProvider, respx_mock: respx.MockRouter
+    ) -> None:
         content = _frame("contentBlockDelta", {"delta": {"text": "Hi"}, "contentBlockIndex": 0}) + _frame(
             "validationException", {"message": "invalid"}, message_type="exception"
         )
         respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(200, content=content))
-        with pytest.raises(ProviderError, match="invalid"):
+        with pytest.raises(InvalidRequestError, match="invalid"):
             async for _ in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")]):
                 pass
 
@@ -939,9 +947,21 @@ class TestBearerAuth:
         route = respx_mock.post(_url(MODEL, "converse", base=base)).mock(
             return_value=httpx.Response(200, json=converse_response)
         )
-        provider = BedrockProvider(region="eu-central-1")
+        provider = BedrockProvider(auth=FakeAuth(), region="eu-central-1")
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert route.called
+
+    def test_bearer_token_survives_unconstructable_session(
+        self, converse_response: dict[str, Any], respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "bt-secret")
+        route = _ok_converse(converse_response, respx_mock)  # default us-east-1 endpoint
+        # A stale AWS_PROFILE makes boto3.Session() raise at construction; bearer mode must not fail —
+        # it falls back to the default region since it never needs the session.
+        provider = BedrockProvider(auth=_RaisingSessionAuth())
+        result = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert result.content == "Hello!"
+        assert route.calls.last.request.headers["authorization"] == "Bearer bt-secret"
 
 
 # MARK: Register Pricing

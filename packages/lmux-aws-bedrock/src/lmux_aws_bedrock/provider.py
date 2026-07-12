@@ -127,20 +127,36 @@ def _resolve_auth_context(auth: "AuthProvider[boto3.Session, AioSession]", regio
     """Resolve the auth mode once: bearer token if present, else a SigV4 credentials source.
 
     The region is resolved from the configured session (``AWS_DEFAULT_REGION``, a profile, or an
-    explicit ``region_name``) in both modes — a bearer token still needs the caller's region to reach
-    the right regional endpoint, so it must not silently fall back to us-east-1.
+    explicit ``region_name``) so a bearer token reaches the right regional endpoint instead of
+    silently defaulting to us-east-1. Bearer mode resolves the region best-effort and never *requires*
+    a constructable session — a stale ``AWS_PROFILE`` must not break bearer auth, which does not use
+    boto3 at all.
     """
-    session = auth.get_credentials()
-    region = region_override or session.region_name or DEFAULT_REGION
-
     bearer = os.environ.get(_BEARER_TOKEN_ENV)
     if bearer:
-        return _AuthContext(region=region, bearer_token=bearer)
+        return _AuthContext(region=region_override or _session_region(auth), bearer_token=bearer)
 
+    session = auth.get_credentials()
+    region = region_override or session.region_name or DEFAULT_REGION
     credentials = session.get_credentials()
     if credentials is None:
         _raise_no_credentials()
     return _AuthContext(region=region, credentials=credentials)
+
+
+def _session_region(auth: "AuthProvider[boto3.Session, AioSession]") -> str:
+    """Best-effort region from the configured session for bearer mode.
+
+    ``region_name`` already reflects ``AWS_REGION``/``AWS_DEFAULT_REGION``/profile config; if the
+    session cannot be constructed (e.g. a missing ``AWS_PROFILE``), fall back to the default region
+    rather than failing a request that only needs a bearer token.
+    """
+    import botocore.exceptions  # noqa: PLC0415
+
+    try:
+        return auth.get_credentials().region_name or DEFAULT_REGION
+    except botocore.exceptions.BotoCoreError:
+        return DEFAULT_REGION
 
 
 def _raise_no_credentials() -> NoReturn:
