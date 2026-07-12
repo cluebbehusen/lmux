@@ -700,6 +700,7 @@ version = "0.9.1"
 source = { editable = "packages/lmux-aws-bedrock" }
 dependencies = [
     { name = "boto3" },
+    { name = "httpx" },
     { name = "lmux" },
 ]
 
@@ -712,6 +713,7 @@ async = [
 requires-dist = [
     { name = "aiobotocore", marker = "extra == 'async'", specifier = "~=3.3.0" },
     { name = "boto3", specifier = ">=1.42.31,<2" },
+    { name = "httpx", specifier = "~=0.28" },
     { name = "lmux", editable = "packages/lmux" },
 ]
 provides-extras = ["async"]
