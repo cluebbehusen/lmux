@@ -44,13 +44,18 @@ class CachePointContent(BaseModel):
     """A prompt-cache breakpoint marking the end of a stable prompt prefix.
 
     Providers with explicit prompt caching translate this to their native
-    representation (Anthropic ``cache_control``, Bedrock ``cachePoint``).
-    Providers without one ignore it — it is a caching hint, not semantic
-    content, so dropping it never changes the conversation.
+    representation (Anthropic ``cache_control``, Bedrock ``cachePoint``,
+    OpenAI ``prompt_cache_breakpoint``). Providers without one ignore it — it
+    is a caching hint, not semantic content, so dropping it never changes the
+    conversation.
 
-    ``ttl`` is passed through to the provider verbatim and validated there;
-    Anthropic and Bedrock currently accept ``"5m"`` and ``"1h"``. When two
-    cache points resolve to the same position, the first one wins.
+    ``ttl`` is a per-breakpoint hint honored by providers that model it that
+    way: Anthropic and Bedrock pass it through verbatim (the service validates
+    it; both currently accept ``"5m"`` and ``"1h"``). OpenAI's cache lifetime is
+    instead a request-wide option (``prompt_cache_options.ttl``, currently only
+    ``"30m"``, the default), so a per-breakpoint ``ttl`` does not map there and
+    is ignored. When two cache points resolve to the same position, the first
+    one wins.
     """
 
     type: Literal["cache_point"] = "cache_point"

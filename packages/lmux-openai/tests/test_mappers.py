@@ -174,6 +174,7 @@ class TestMapMessages:
         ]
 
     def test_explicit_cache_ttl_is_ignored(self) -> None:
+        # OpenAI's ttl is request-wide (prompt_cache_options.ttl, only "30m"); per-breakpoint ttl doesn't map.
         result = map_messages(
             [UserMessage(content=[TextContent(text="ctx"), CachePointContent(ttl="1h")])], explicit_cache=True
         )

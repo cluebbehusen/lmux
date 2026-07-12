@@ -62,8 +62,9 @@ def map_messages(messages: Sequence[Message], *, explicit_cache: bool = False) -
 
     When ``explicit_cache`` is set (gpt-5.6+), a ``CachePointContent`` becomes a
     ``prompt_cache_breakpoint`` on the preceding content block; otherwise cache points are dropped
-    (older models have no explicit representation). ``CachePointContent.ttl`` has no OpenAI equivalent
-    and is ignored.
+    (older models have no explicit representation). ``CachePointContent.ttl`` is per-breakpoint, but
+    OpenAI's cache lifetime is a request-wide option (``prompt_cache_options.ttl``, currently only
+    ``"30m"``, the default), so the per-breakpoint ``ttl`` is not mapped and has no effect.
     """
     result: list[Json] = []
     for msg in messages:
