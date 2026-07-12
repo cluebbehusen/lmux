@@ -7,9 +7,11 @@ JSON payload, which is all the Converse stream needs. Unit-tested for parity wit
 """
 
 import struct
+import zlib
 from collections.abc import Iterator
 
 _PRELUDE_LEN = 12  # total_length(4) + headers_length(4) + prelude_crc(4)
+_PRELUDE_DATA_LEN = 8  # total_length(4) + headers_length(4), the bytes the prelude CRC covers
 _MESSAGE_CRC_LEN = 4
 _HEADER_STRING_TYPE = 7
 _TOTAL_LENGTH_LEN = 4
@@ -36,8 +38,18 @@ def _parse_headers(raw: bytes) -> dict[str, str]:
 
 
 def _decode_frame(frame: bytes) -> tuple[dict[str, str], bytes]:
-    """Decode one complete event-stream message frame into ``(headers, payload)``."""
-    total_length, headers_length = struct.unpack(">II", frame[:8])
+    """Decode one complete event-stream message frame into ``(headers, payload)``.
+
+    Both CRC32 checksums are verified first (matching botocore); a corrupted frame that would
+    otherwise still decode is rejected rather than silently yielding altered headers or payload.
+    """
+    total_length, headers_length = struct.unpack(">II", frame[:_PRELUDE_DATA_LEN])
+    if struct.unpack(">I", frame[_PRELUDE_DATA_LEN:_PRELUDE_LEN])[0] != zlib.crc32(frame[:_PRELUDE_DATA_LEN]):
+        msg = "event-stream prelude checksum mismatch"
+        raise ValueError(msg)
+    if struct.unpack(">I", frame[-_MESSAGE_CRC_LEN:])[0] != zlib.crc32(frame[:-_MESSAGE_CRC_LEN]):
+        msg = "event-stream message checksum mismatch"
+        raise ValueError(msg)
     payload_start = _PRELUDE_LEN + headers_length
     payload_end = total_length - _MESSAGE_CRC_LEN
     return _parse_headers(frame[_PRELUDE_LEN:payload_start]), frame[payload_start:payload_end]

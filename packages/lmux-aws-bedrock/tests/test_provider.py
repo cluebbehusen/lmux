@@ -23,6 +23,7 @@ from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
     ProviderError,
+    RateLimitError,
     TimeoutError,  # noqa: A004
     UnsupportedFeatureError,
 )
@@ -170,6 +171,16 @@ def async_create_two_clients(mocker: MockerFixture) -> tuple[MagicMock, MagicMoc
     c1, c2 = MagicMock(), MagicMock()
     create = mocker.patch("lmux_aws_bedrock.provider.create_async_client", side_effect=[c1, c2])
     return create, c1, c2
+
+
+@pytest.fixture
+def mock_create_sync(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_aws_bedrock.provider.create_sync_client", return_value=MagicMock())
+
+
+@pytest.fixture
+def mock_create_async(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_aws_bedrock.provider.create_async_client", return_value=MagicMock())
 
 
 @pytest.fixture
@@ -564,16 +575,16 @@ class TestChatStream:
         with pytest.raises(ProviderError, match="slow down"):
             list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
 
-    def test_exception_frame_without_event_type(
+    def test_exception_frame_maps_to_typed_error(
         self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter
     ) -> None:
-        # A real exception frame carries :exception-type and no :event-type; indexing :event-type
-        # first would KeyError before the error could be surfaced.
+        # A real exception frame carries a camelCase :exception-type and no :event-type; it must both
+        # avoid a KeyError on :event-type and classify to the typed error (RateLimitError here).
         content = _encode(
-            {":message-type": "exception", ":exception-type": "ThrottlingException"}, b'{"message": "slow down"}'
+            {":message-type": "exception", ":exception-type": "throttlingException"}, b'{"message": "slow down"}'
         )
         respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(200, content=content))
-        with pytest.raises(ProviderError, match="slow down"):
+        with pytest.raises(RateLimitError, match="slow down"):
             list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
 
     def test_client_init_failure(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
@@ -805,6 +816,20 @@ class TestClientManagement:
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert route.called
 
+    def test_timeout_and_retries_forwarded(self, fake_auth: FakeAuth, mock_create_sync: MagicMock) -> None:
+        provider = BedrockProvider(auth=fake_auth, timeout=30.0, max_retries=5)
+        provider._get_sync_client()
+        mock_create_sync.assert_called_once_with(
+            base_url="https://bedrock-runtime.us-east-1.amazonaws.com", timeout=30.0, max_retries=5
+        )
+
+    async def test_async_timeout_and_retries_forwarded(self, fake_auth: FakeAuth, mock_create_async: MagicMock) -> None:
+        provider = BedrockProvider(auth=fake_auth, timeout=30.0, max_retries=5)
+        await provider._get_async_client()
+        mock_create_async.assert_called_once_with(
+            base_url="https://bedrock-runtime.us-east-1.amazonaws.com", timeout=30.0, max_retries=5
+        )
+
     def test_no_credentials_raises_auth_error(
         self, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
@@ -886,10 +911,25 @@ class TestBearerAuth:
     ) -> None:
         monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "bt-secret")
         route = _ok_converse(converse_response, respx_mock)
-        provider = BedrockProvider()  # no auth provider needed in bearer mode
+        # A session with no region falls back to us-east-1 (the default _url region).
+        provider = BedrockProvider(auth=FakeAuth())
         result = provider.chat(MODEL, [UserMessage(content="Hi")])
         assert result.content == "Hello!"
         assert route.calls.last.request.headers["authorization"] == "Bearer bt-secret"
+
+    def test_bearer_token_honors_session_region(
+        self, converse_response: dict[str, Any], respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "bt-secret")
+        base = "https://bedrock-runtime.eu-west-1.amazonaws.com"
+        route = respx_mock.post(_url(MODEL, "converse", base=base)).mock(
+            return_value=httpx.Response(200, json=converse_response)
+        )
+        # No constructor region, but the session is configured for eu-west-1 — bearer mode must use it
+        # instead of silently defaulting to us-east-1.
+        provider = BedrockProvider(auth=FakeAuth(_Session(region_name="eu-west-1")))
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.called
 
     def test_bearer_token_respects_region(
         self, converse_response: dict[str, Any], respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch

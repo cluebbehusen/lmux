@@ -14,7 +14,13 @@ from lmux.exceptions import (
     RateLimitError,
     TimeoutError,  # noqa: A004
 )
-from lmux_aws_bedrock._exceptions import error_from_response, map_transport_error, parse_body, raise_for_status
+from lmux_aws_bedrock._exceptions import (
+    error_from_response,
+    error_from_stream_exception,
+    map_transport_error,
+    parse_body,
+    raise_for_status,
+)
 from lmux_aws_bedrock._wire import WireConverseResponse
 
 
@@ -98,6 +104,25 @@ class TestErrorFromResponse:
         result = error_from_response(_response(503, json={"message": "boom"}))
         assert isinstance(result, ProviderError)
         assert result.status_code == 503
+
+
+# MARK: error_from_stream_exception
+
+
+class TestErrorFromStreamException:
+    def test_throttling_maps_to_rate_limit(self) -> None:
+        # Stream frames carry camelCase exception types with no HTTP status.
+        result = error_from_stream_exception("throttlingException", "slow down")
+        assert isinstance(result, RateLimitError)
+        assert result.status_code is None
+        assert "slow down" in str(result)
+
+    def test_validation_maps_to_invalid_request(self) -> None:
+        assert isinstance(error_from_stream_exception("validationException", "bad"), InvalidRequestError)
+
+    def test_unknown_type_falls_back_to_provider_error(self) -> None:
+        result = error_from_stream_exception("modelStreamErrorException", "boom")
+        assert isinstance(result, ProviderError)
 
 
 # MARK: Error-type header parsing

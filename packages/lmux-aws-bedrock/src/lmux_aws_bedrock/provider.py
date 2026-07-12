@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from botocore.credentials import Credentials
 
 from lmux.cost import ModelPricing, calculate_cost
-from lmux.exceptions import LmuxError, ProviderError
+from lmux.exceptions import LmuxError
 from lmux.protocols import AuthProvider, CompletionProvider, EmbeddingProvider, PricingProvider
 from lmux.types import (
     ChatChunk,
@@ -43,7 +43,13 @@ from lmux.types import (
     Usage,
 )
 from lmux_aws_bedrock._eventstream import EventStreamDecoder
-from lmux_aws_bedrock._exceptions import PROVIDER, map_transport_error, parse_body, raise_for_status
+from lmux_aws_bedrock._exceptions import (
+    PROVIDER,
+    error_from_stream_exception,
+    map_transport_error,
+    parse_body,
+    raise_for_status,
+)
 from lmux_aws_bedrock._lazy import DEFAULT_REGION, bedrock_base_url, create_async_client, create_sync_client
 from lmux_aws_bedrock._mappers import (
     build_embedding_request_body,
@@ -118,16 +124,22 @@ class _AuthContext:
 
 
 def _resolve_auth_context(auth: "AuthProvider[boto3.Session, AioSession]", region_override: str | None) -> _AuthContext:
-    """Resolve the auth mode once: bearer token if present, else a SigV4 credentials source."""
+    """Resolve the auth mode once: bearer token if present, else a SigV4 credentials source.
+
+    The region is resolved from the configured session (``AWS_DEFAULT_REGION``, a profile, or an
+    explicit ``region_name``) in both modes — a bearer token still needs the caller's region to reach
+    the right regional endpoint, so it must not silently fall back to us-east-1.
+    """
+    session = auth.get_credentials()
+    region = region_override or session.region_name or DEFAULT_REGION
+
     bearer = os.environ.get(_BEARER_TOKEN_ENV)
     if bearer:
-        return _AuthContext(region=region_override or DEFAULT_REGION, bearer_token=bearer)
+        return _AuthContext(region=region, bearer_token=bearer)
 
-    session = auth.get_credentials()
     credentials = session.get_credentials()
     if credentials is None:
         _raise_no_credentials()
-    region = region_override or session.region_name or DEFAULT_REGION
     return _AuthContext(region=region, credentials=credentials)
 
 
@@ -151,10 +163,14 @@ class BedrockProvider(
         auth: "AuthProvider[boto3.Session, AioSession] | None" = None,
         region: str | None = None,
         endpoint_url: str | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
     ) -> None:
         self._auth: AuthProvider[boto3.Session, AioSession] = auth or BedrockEnvAuthProvider()
         self._region: str | None = region
         self._endpoint_url: str | None = endpoint_url
+        self._timeout: float | None = timeout
+        self._max_retries: int | None = max_retries
         self._auth_ctx: _AuthContext | None = None
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
@@ -193,14 +209,18 @@ class BedrockProvider(
     def _get_sync_client(self) -> "httpx.Client":
         if self._sync_client is None:
             auth = self._resolve_auth()
-            self._sync_client = create_sync_client(base_url=self._base_url(auth))
+            self._sync_client = create_sync_client(
+                base_url=self._base_url(auth), timeout=self._timeout, max_retries=self._max_retries
+            )
         return self._sync_client
 
     async def _get_async_client(self) -> "httpx.AsyncClient":
         loop = asyncio.get_running_loop()
         if self._async_client is None or self._async_loop is not loop:
             auth = self._resolve_auth()
-            self._async_client = create_async_client(base_url=self._base_url(auth))
+            self._async_client = create_async_client(
+                base_url=self._base_url(auth), timeout=self._timeout, max_retries=self._max_retries
+            )
             self._async_loop = loop
         return self._async_client
 
@@ -586,6 +606,7 @@ def _decode_event(headers: dict[str, str], payload: bytes) -> dict[str, Any]:
     """
     data: dict[str, Any] = json.loads(payload) if payload else {}
     if headers.get(":message-type") == _EXCEPTION_MESSAGE_TYPE:
-        message = data.get("message") or data.get("Message") or headers.get(":exception-type", "")
-        raise ProviderError(str(message), provider=PROVIDER_NAME)
+        exception_type = headers.get(":exception-type", "")
+        message = data.get("message") or data.get("Message") or exception_type
+        raise error_from_stream_exception(exception_type, str(message))
     return {headers[":event-type"]: data}

@@ -63,16 +63,28 @@ def parse_body[T: BaseModel](response: "httpx.Response", model: type[T]) -> T:
 
 def error_from_response(response: "httpx.Response") -> LmuxError:
     """Map an HTTP error response to an lmux exception, using the AWS error type header."""
-    code = response.status_code
-    error_type = _error_type(response)
-    message = _message(response)
+    return _classify(_error_type(response), response.status_code, _message(response), _retry_after(response))
 
+
+def error_from_stream_exception(exception_type: str, message: str) -> LmuxError:
+    """Map a mid-stream event-stream ``:exception-type`` to the lmux exception hierarchy.
+
+    Stream exception frames carry the AWS error name in camelCase (``throttlingException``) with no HTTP
+    status, so the name is PascalCased and run through the same classifier as the ``x-amzn-errortype``
+    response header — keeping RateLimitError/InvalidRequestError/etc. catchable for mid-stream failures.
+    """
+    normalized = exception_type[:1].upper() + exception_type[1:]
+    return _classify(normalized, None, message, None)
+
+
+def _classify(error_type: str, code: int | None, message: str, retry_after: float | None) -> LmuxError:
+    """Map an AWS error type (and/or HTTP status) to an lmux exception."""
     if error_type in _AUTH_ERROR_TYPES or code == _AUTH:
         return AuthenticationError(message, provider=PROVIDER, status_code=code)
     if error_type in _PERMISSION_ERROR_TYPES or code == _FORBIDDEN:
         return PermissionDeniedError(message, provider=PROVIDER, status_code=code)
     if error_type == "ThrottlingException" or code == _RATE_LIMIT:
-        return RateLimitError(message, provider=PROVIDER, status_code=code, retry_after=_retry_after(response))
+        return RateLimitError(message, provider=PROVIDER, status_code=code, retry_after=retry_after)
     if error_type == "ValidationException" or code == _BAD_REQUEST:
         return InvalidRequestError(message, provider=PROVIDER, status_code=code)
     if error_type == "ResourceNotFoundException" or code == _NOT_FOUND:

@@ -4,6 +4,7 @@ import json
 import struct
 import zlib
 
+import pytest
 from botocore.eventstream import EventStreamBuffer
 
 from lmux_aws_bedrock._eventstream import EventStreamDecoder, decode_messages
@@ -54,3 +55,17 @@ class TestEventStreamDecoder:
         assert list(decoder.feed(_FRAMES[:6])) == []
         messages = list(decoder.feed(_FRAMES[6:]))
         assert [h[":event-type"] for h, _ in messages] == ["messageStart", "contentBlockDelta"]
+
+
+class TestCrcValidation:
+    def test_bad_prelude_crc_raises(self) -> None:
+        frame = bytearray(_encode({":event-type": "contentBlockDelta"}, b'{"x":1}'))
+        frame[8] ^= 0xFF  # corrupt the prelude CRC (bytes 8:12)
+        with pytest.raises(ValueError, match="prelude checksum"):
+            list(decode_messages(bytes(frame)))
+
+    def test_bad_message_crc_raises(self) -> None:
+        frame = bytearray(_encode({":event-type": "contentBlockDelta"}, b'{"x":1}'))
+        frame[-5] ^= 0xFF  # corrupt the last payload byte -> message CRC no longer matches
+        with pytest.raises(ValueError, match="message checksum"):
+            list(decode_messages(bytes(frame)))
