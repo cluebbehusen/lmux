@@ -26,6 +26,6 @@ def _respond(auth: Any, transport: Any) -> ResponseResponse:  # noqa: ANN401 —
 def test_responses(scenario: Callable[..., Any], assert_cost: Callable[..., None]) -> None:
     resp = scenario(_CASSETTE, _respond, requires="OPENAI_API_KEY")
     assert resp.provider == "openai"
-    assert isinstance(resp.output_text, str)
+    assert "pong" in resp.output_text.lower()
     assert resp.id
     assert_cost(resp, **_RATES)
