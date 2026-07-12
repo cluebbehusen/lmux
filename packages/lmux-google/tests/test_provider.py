@@ -417,6 +417,67 @@ class TestEmbed:
         with pytest.raises(ProviderError, match="refused"):
             provider.embed(EMBED_MODEL, "hello")
 
+    def test_status_error_mapped(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_EMBED_URL).mock(return_value=httpx.Response(404, json={"error": {"message": "no"}}))
+        with pytest.raises(NotFoundError):
+            provider.embed(EMBED_MODEL, "hello")
+
+
+# MARK: gemini-embedding-001 (one input per request)
+
+
+_GEMINI_EMBED_001 = "gemini-embedding-001"
+
+
+class TestGeminiEmbedding001Batching:
+    # The whole gemini-embedding-* family is one-input-per-request; on the Developer API a multi-input
+    # request would otherwise silently return a single aggregated embedding.
+    @pytest.mark.parametrize("model", ["gemini-embedding-001", "gemini-embedding-2-preview"])
+    def test_dev_api_splits_into_one_request_per_input(
+        self, model: str, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter
+    ) -> None:
+        url = f"{_GEMINI}/{model}:batchEmbedContents"
+        responses = [
+            httpx.Response(200, json={"embeddings": [{"values": [0.1]}], "usageMetadata": {"promptTokenCount": 2}}),
+            httpx.Response(200, json={"embeddings": [{"values": [0.2]}], "usageMetadata": {"promptTokenCount": 3}}),
+        ]
+        route = respx_mock.post(url).mock(side_effect=responses)
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        result = provider.embed(model, ["a", "b"])
+        assert result.embeddings == [[0.1], [0.2]]
+        assert result.usage.input_tokens == 5
+        assert len(route.calls) == 2
+        # Each request carries exactly one input.
+        assert [len(json.loads(c.request.content)["requests"]) for c in route.calls] == [1, 1]
+
+    def test_vertex_splits_into_one_request_per_input(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{_GEMINI_EMBED_001}:predict"
+        responses = [
+            httpx.Response(200, json={"predictions": [{"embeddings": {"values": [0.1]}}]}),
+            httpx.Response(200, json={"predictions": [{"embeddings": {"values": [0.2]}}]}),
+        ]
+        route = respx_mock.post(url).mock(side_effect=responses)
+        result = provider.embed(_GEMINI_EMBED_001, ["a", "b"])
+        assert result.embeddings == [[0.1], [0.2]]
+        assert len(route.calls) == 2
+        assert json.loads(route.calls[0].request.content) == {"instances": [{"content": "a"}]}
+
+    async def test_aembed_splits_into_one_request_per_input(
+        self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter
+    ) -> None:
+        url = f"{_GEMINI}/{_GEMINI_EMBED_001}:batchEmbedContents"
+        responses = [
+            httpx.Response(200, json={"embeddings": [{"values": [0.1]}]}),
+            httpx.Response(200, json={"embeddings": [{"values": [0.2]}]}),
+        ]
+        route = respx_mock.post(url).mock(side_effect=responses)
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        result = await provider.aembed(_GEMINI_EMBED_001, ["a", "b"])
+        assert result.embeddings == [[0.1], [0.2]]
+        assert len(route.calls) == 2
+
 
 # MARK: Aembed
 

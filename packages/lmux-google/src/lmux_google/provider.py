@@ -339,14 +339,23 @@ class GoogleProvider(
     ) -> EmbeddingResponse:
         if self._vertexai and _uses_embed_content(model):
             return self._embed_content(model, input, dimensions)
-        path, body = self._embed_path_and_body(model, input, dimensions, provider_params)
+        texts = input if isinstance(input, list) else [input]
+        embeddings: list[list[float]] = []
+        input_tokens = 0
         try:
             client = self._get_sync_client()
-            response = client.post(path, json=body, headers=self._request_headers())
+            for chunk in _embed_batches(texts, _max_embed_batch(model)):
+                path, body = self._embed_path_and_body(model, chunk, dimensions, provider_params)
+                response = client.post(path, json=body, headers=self._request_headers())
+                raise_for_status(response)
+                result = self._map_embed_response(response, model)
+                embeddings.extend(result.embeddings)
+                input_tokens += result.usage.input_tokens
+        except LmuxError:
+            raise
         except Exception as e:
             raise map_transport_error(e) from e
-        raise_for_status(response)
-        return self._map_embed_response(response, model)
+        return self._embedding_response(model, embeddings, input_tokens)
 
     @override
     async def aembed(
@@ -359,14 +368,23 @@ class GoogleProvider(
     ) -> EmbeddingResponse:
         if self._vertexai and _uses_embed_content(model):
             return await self._aembed_content(model, input, dimensions)
-        path, body = self._embed_path_and_body(model, input, dimensions, provider_params)
+        texts = input if isinstance(input, list) else [input]
+        embeddings: list[list[float]] = []
+        input_tokens = 0
         try:
             client = await self._get_async_client()
-            response = await client.post(path, json=body, headers=await self._arequest_headers())
+            for chunk in _embed_batches(texts, _max_embed_batch(model)):
+                path, body = self._embed_path_and_body(model, chunk, dimensions, provider_params)
+                response = await client.post(path, json=body, headers=await self._arequest_headers())
+                raise_for_status(response)
+                result = self._map_embed_response(response, model)
+                embeddings.extend(result.embeddings)
+                input_tokens += result.usage.input_tokens
+        except LmuxError:
+            raise
         except Exception as e:
             raise map_transport_error(e) from e
-        raise_for_status(response)
-        return self._map_embed_response(response, model)
+        return self._embedding_response(model, embeddings, input_tokens)
 
     def _embed_content(self, model: str, input: str | list[str], dimensions: int | None) -> EmbeddingResponse:  # noqa: A002
         # Vertex serves Gemini Embedding 2 models only through :embedContent, which takes a single
@@ -599,6 +617,28 @@ class GoogleProvider(
 def _uses_embed_content(model: str) -> bool:
     """Gemini Embedding 2 models are served on Vertex only through :embedContent (not :predict)."""
     return model.startswith("gemini-embedding-2")
+
+
+def _max_embed_batch(model: str) -> int | None:
+    """Max inputs per embedding request, or None for no limit (send the whole batch at once).
+
+    The Gemini Embedding family (gemini-embedding-001, gemini-embedding-2, ...) accepts exactly one
+    input per request; a multi-input request is not batched — on the Developer API it silently returns
+    a single aggregated embedding, and on Vertex :predict it is rejected. So a list is split into
+    single-input requests. (On Vertex the gemini-embedding-2 models take the :embedContent path and
+    never reach here; this covers gemini-embedding-001 on both transports and gemini-embedding-2 on
+    the Developer API.) The text-embedding-* / text-multilingual-embedding-* models batch normally.
+    """
+    return 1 if model.startswith("gemini-embedding-") else None
+
+
+def _embed_batches(texts: list[str], limit: int | None) -> Iterator[list[str]]:
+    """Yield ``texts`` as request-sized batches: one batch of all texts when ``limit`` is None."""
+    if limit is None:
+        yield texts
+        return
+    for start in range(0, len(texts), limit):
+        yield texts[start : start + limit]
 
 
 def _embed_content_body(text: str, dimensions: int | None) -> Json:
