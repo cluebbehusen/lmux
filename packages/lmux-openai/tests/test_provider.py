@@ -16,6 +16,7 @@ from lmux.types import (
     CachePointContent,
     FunctionDefinition,
     JsonObjectResponseFormat,
+    JsonSchemaResponseFormat,
     ResponseInputMessage,
     TextContent,
     Tool,
@@ -189,6 +190,56 @@ class TestChat:
         assert body["tools"] == [{"type": "function", "function": {"name": "get_weather"}}]
         assert body["tool_choice"] == "required"
         assert body["response_format"] == {"type": "json_object"}
+
+    def test_json_schema_response_format(
+        self, sync_provider: OpenAIProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        schema = {
+            "type": "object",
+            "properties": {"answer": {"type": "integer"}},
+            "required": ["answer"],
+            "additionalProperties": False,
+        }
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            response_format=JsonSchemaResponseFormat(name="ans", json_schema=schema, strict=True),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {"name": "ans", "schema": schema, "strict": True},
+        }
+
+    def test_tools_full_function_definition(
+        self, sync_provider: OpenAIProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        params = {"type": "object", "properties": {"location": {"type": "string"}}, "required": ["location"]}
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            tools=[
+                Tool(
+                    function=FunctionDefinition(
+                        name="get_weather", description="Get the weather.", parameters=params, strict=True
+                    )
+                )
+            ],
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["tools"] == [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get the weather.",
+                    "parameters": params,
+                    "strict": True,
+                },
+            }
+        ]
 
     def test_reasoning_effort(
         self, sync_provider: OpenAIProvider, completion: dict[str, Any], respx_mock: respx.MockRouter

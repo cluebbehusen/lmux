@@ -322,6 +322,29 @@ class TestChat:
         body = json.loads(route.calls.last.request.content)
         assert body["output_config"]["format"]["type"] == "json_schema"
 
+    def test_json_schema_response_format_full_body(
+        self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock)
+        schema = {"type": "object", "properties": {"answer": {"type": "integer"}}, "required": ["answer"]}
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            response_format=JsonSchemaResponseFormat(name="ans", json_schema=schema),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["output_config"] == {
+            "format": {
+                "type": "json_schema",
+                "schema": {
+                    "type": "object",
+                    "properties": {"answer": {"type": "integer"}},
+                    "required": ["answer"],
+                    "additionalProperties": False,
+                },
+            }
+        }
+
     def test_text_response_format_noop(self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
         route = _ok(respx_mock)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], response_format=TextResponseFormat())
