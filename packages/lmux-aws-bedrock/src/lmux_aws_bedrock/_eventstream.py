@@ -15,7 +15,7 @@ _PRELUDE_DATA_LEN = 8  # total_length(4) + headers_length(4), the bytes the prel
 _MESSAGE_CRC_LEN = 4
 _HEADER_STRING_TYPE = 7
 _TOTAL_LENGTH_LEN = 4
-_MAX_FRAME_LEN = 32 * 1024 * 1024  # anti-DoS bound; above botocore's max message and any real (KB-scale) frame
+_MAX_FRAME_LEN = 32 * 1024 * 1024  # anti-DoS cap on per-frame buffering; real Converse frames are KB-scale
 
 
 def _parse_headers(raw: bytes) -> dict[str, str]:
