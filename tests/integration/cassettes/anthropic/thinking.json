@@ -1,0 +1,52 @@
+{
+  "endpoint": "https://api.anthropic.com/v1/messages",
+  "request": {
+    "model": "claude-haiku-4-5",
+    "max_tokens": 2048,
+    "thinking": {
+      "type": "enabled",
+      "budget_tokens": 1024
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is 17 * 23? Think step by step, then state the number."
+      }
+    ]
+  },
+  "response": {
+    "model": "claude-haiku-4-5-20251001",
+    "id": "msg_011Ccxc4qR9N5fShxLdfnKTX",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "Let me calculate 17 * 23 step by step.\n\nI can break this down:\n17 * 23 = 17 * (20 + 3)\n= 17 * 20 + 17 * 3\n= 340 + 51\n= 391\n\nLet me verify this another way:\n17 * 23 = (10 + 7) * 23\n= 10 * 23 + 7 * 23\n= 230 + 161\n= 391\n\nBoth methods give me 391.",
+        "signature": "EuoDCpMBCA8YAipAQRiEU0rrLwMtsHWx1pDPYOfKc5HNgyfOC3p/M546DYZk8jZYa8Keo+lg1olVTKuYpsTU2fygYxZas78vBVCgbzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okZTQxYzY2NTYtODI4MC00NTgyLTkxZTItNmUwY2UzODA4M2VkEgykVSqyypoXxLqND74aDFeMQiNCiM+JyO0q4CIw2tsHK1m6Dlc0UysPpDk4e1yjJvITGB8Twz6Fyvv7uWh28jEOJK3c8Nb04yW0E9XGKoMCd3/MP14/RT39yTIttYN333yEB4ew53XGMJYablqhoNE5SuSDxcUQ7KpV9A8ceVdPTXFWCSUNj7D9QVFM3dsL4FAaRgBZmEh8NpcCeElmcWyVNGe/MK+9QXrWOn6zXpYvm/vV9kdqYJwfqM3YlYIMMOCJNkpV9bTSt7IHbq4Ngc7oRCMsRfWz/hvowGopUfDLL5Lr76AmpTIQwrAbVlY6+guAGv36uRZIMUhyD2M+BXkRPdPU8/+/JtYf/O7LI5cPP5OwXwLGLbXd9KZJBhZtsOlTrm3X4psJZhAplCPgI0wzXiw9AAftvKHJRQJqJIy1CB3zFkP3KapmxkRP/vUfYlYB+hgB"
+      },
+      {
+        "type": "text",
+        "text": "# Calculating 17 \u00d7 23\n\nBreaking it down:\n- 17 \u00d7 23 = 17 \u00d7 (20 + 3)\n- = (17 \u00d7 20) + (17 \u00d7 3)\n- = 340 + 51\n- = 391\n\n**The answer is 391.**"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 55,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 216,
+      "output_tokens_details": {
+        "thinking_tokens": 135
+      },
+      "service_tier": "standard",
+      "inference_geo": "not_available"
+    }
+  }
+}
