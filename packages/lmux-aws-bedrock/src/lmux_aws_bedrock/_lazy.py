@@ -18,9 +18,14 @@ if TYPE_CHECKING:
 DEFAULT_REGION = "us-east-1"
 
 
-def bedrock_base_url(region: str) -> str:
-    """Return the bedrock-runtime endpoint for a region."""
-    return f"https://bedrock-runtime.{region}.amazonaws.com"
+def bedrock_base_url(region: str, *, use_fips: bool = False) -> str:
+    """Return the bedrock-runtime endpoint for a region, optionally the FIPS 140-3 variant.
+
+    FIPS endpoints (``bedrock-runtime-fips.<region>.amazonaws.com``) are offered in the commercial
+    and GovCloud regions where Bedrock runs; they force FIPS-validated in-transit cryptography.
+    """
+    service = "bedrock-runtime-fips" if use_fips else "bedrock-runtime"
+    return f"https://{service}.{region}.amazonaws.com"
 
 
 def create_sync_client(

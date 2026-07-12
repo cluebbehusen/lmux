@@ -15,6 +15,7 @@ _PRELUDE_DATA_LEN = 8  # total_length(4) + headers_length(4), the bytes the prel
 _MESSAGE_CRC_LEN = 4
 _HEADER_STRING_TYPE = 7
 _TOTAL_LENGTH_LEN = 4
+_MAX_FRAME_LEN = 32 * 1024 * 1024  # anti-DoS bound; above botocore's max message and any real (KB-scale) frame
 
 
 def _parse_headers(raw: bytes) -> dict[str, str]:
@@ -77,8 +78,19 @@ class EventStreamDecoder:
 
     def feed(self, chunk: bytes) -> Iterator[tuple[dict[str, str], bytes]]:
         self._buffer.extend(chunk)
-        while len(self._buffer) >= _TOTAL_LENGTH_LEN:
+        while len(self._buffer) >= _PRELUDE_LEN:
             total_length = struct.unpack(">I", self._buffer[:_TOTAL_LENGTH_LEN])[0]
+            # Validate the prelude (its own CRC covers the first 8 bytes) and bound the advertised
+            # frame size BEFORE buffering total_length bytes, so a corrupt/huge length cannot drive
+            # the buffer toward gigabytes before the frame's own checksum would catch it.
+            if struct.unpack(">I", self._buffer[_PRELUDE_DATA_LEN:_PRELUDE_LEN])[0] != zlib.crc32(
+                self._buffer[:_PRELUDE_DATA_LEN]
+            ):
+                msg = "event-stream prelude checksum mismatch"
+                raise ValueError(msg)
+            if total_length > _MAX_FRAME_LEN:
+                msg = f"event-stream frame length {total_length} exceeds the {_MAX_FRAME_LEN}-byte limit"
+                raise ValueError(msg)
             if len(self._buffer) < total_length:
                 break
             frame = bytes(self._buffer[:total_length])

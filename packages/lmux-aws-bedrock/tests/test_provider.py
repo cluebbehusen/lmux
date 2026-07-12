@@ -824,6 +824,17 @@ class TestClientManagement:
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert route.called
 
+    def test_use_fips_selects_fips_host(
+        self, fake_auth: FakeAuth, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        base = "https://bedrock-runtime-fips.us-east-1.amazonaws.com"
+        route = respx_mock.post(_url(MODEL, "converse", base=base)).mock(
+            return_value=httpx.Response(200, json=converse_response)
+        )
+        provider = BedrockProvider(auth=fake_auth, use_fips=True)
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.called
+
     def test_timeout_and_retries_forwarded(self, fake_auth: FakeAuth, mock_create_sync: MagicMock) -> None:
         provider = BedrockProvider(auth=fake_auth, timeout=30.0, max_retries=5)
         provider._get_sync_client()

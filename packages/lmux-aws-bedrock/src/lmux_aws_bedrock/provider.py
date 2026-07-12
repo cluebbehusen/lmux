@@ -173,18 +173,20 @@ class BedrockProvider(
 ):
     """AWS Bedrock API provider over httpx (Converse API + InvokeModel embeddings)."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         auth: "AuthProvider[boto3.Session, AioSession] | None" = None,
         region: str | None = None,
         endpoint_url: str | None = None,
+        use_fips: bool = False,
         timeout: float | None = None,
         max_retries: int | None = None,
     ) -> None:
         self._auth: AuthProvider[boto3.Session, AioSession] = auth or BedrockEnvAuthProvider()
         self._region: str | None = region
         self._endpoint_url: str | None = endpoint_url
+        self._use_fips: bool = use_fips
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
         self._auth_ctx: _AuthContext | None = None
@@ -220,7 +222,7 @@ class BedrockProvider(
         return self._auth_ctx
 
     def _base_url(self, auth: _AuthContext) -> str:
-        return self._endpoint_url or bedrock_base_url(auth.region)
+        return self._endpoint_url or bedrock_base_url(auth.region, use_fips=self._use_fips)
 
     def _get_sync_client(self) -> "httpx.Client":
         if self._sync_client is None:

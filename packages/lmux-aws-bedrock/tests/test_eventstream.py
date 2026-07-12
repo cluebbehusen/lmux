@@ -51,10 +51,24 @@ class TestEventStreamDecoder:
 
     def test_holds_partial_frame_until_complete(self) -> None:
         decoder = EventStreamDecoder()
-        # A few bytes in (>= 4, but short of a full frame) nothing decodes yet.
-        assert list(decoder.feed(_FRAMES[:6])) == []
-        messages = list(decoder.feed(_FRAMES[6:]))
+        # A full prelude but short of the frame it advertises -> nothing decodes yet.
+        assert list(decoder.feed(_FRAMES[:20])) == []
+        messages = list(decoder.feed(_FRAMES[20:]))
         assert [h[":event-type"] for h, _ in messages] == ["messageStart", "contentBlockDelta"]
+
+    def test_bad_prelude_crc_raises_before_buffering(self) -> None:
+        frame = bytearray(_encode({":event-type": "contentBlockDelta"}, b'{"x":1}'))
+        frame[8] ^= 0xFF  # corrupt the prelude CRC
+        with pytest.raises(ValueError, match="prelude checksum"):
+            list(EventStreamDecoder().feed(bytes(frame)))
+
+    def test_oversized_frame_rejected_before_buffering(self) -> None:
+        # A prelude with a valid CRC but an absurd total_length must be rejected on sight, not
+        # buffered toward 4 GiB. headers_length=0, total_length=0xFFFFFFFF.
+        prelude_data = struct.pack(">II", 0xFFFFFFFF, 0)
+        prelude = prelude_data + struct.pack(">I", zlib.crc32(prelude_data) & 0xFFFFFFFF)
+        with pytest.raises(ValueError, match="exceeds"):
+            list(EventStreamDecoder().feed(prelude))
 
 
 class TestCrcValidation:
