@@ -201,10 +201,9 @@ class _RecordingTransport(httpx.BaseTransport):
         self._inner.close()
 
 
-def _replay_transport(cassette_path: Path) -> httpx.MockTransport:
-    cassette = json.loads(cassette_path.read_text())
-
-    def _handler(request: httpx.Request) -> httpx.Response:  # noqa: ARG001
+def _replay_transport(cassette: dict[str, Any], sink: list[httpx.Request]) -> httpx.MockTransport:
+    def _handler(request: httpx.Request) -> httpx.Response:
+        sink.append(request)
         if "response_sse" in cassette:
             return httpx.Response(
                 200, content=cassette["response_sse"].encode(), headers={"content-type": "text/event-stream"}
@@ -232,15 +231,26 @@ def scenario() -> Callable[..., Any]:
     ``scenario(cassette_path, call, requires=...)`` where ``call(auth, transport)``
     builds and invokes the provider with an injected httpx transport: a replay
     transport offline, a recording transport in record mode, and the default (real)
-    transport live. offline replays the cassette; live hits the API; record hits the
-    API *through the provider*, captures the exchange, and writes the cassette.
+    transport live. offline replays the cassette and asserts the provider called the
+    recorded endpoint; live hits the API; record hits the API *through the provider*,
+    captures the exchange, and writes the cassette.
     ``requires`` names the env var live/record need (those modes skip if it's absent)."""
     captured: list[tuple[httpx.Request, httpx.Response]] = []
     recorded: set[Path] = set()
 
     def _run(cassette_path: Path, call: Callable[..., Any], *, requires: str | None = None) -> Any:  # noqa: ANN401
         if _MODE == "offline":
-            return call(_OFFLINE_AUTH, _replay_transport(cassette_path))
+            cassette = json.loads(cassette_path.read_text())
+            seen: list[httpx.Request] = []
+            resp = call(_OFFLINE_AUTH, _replay_transport(cassette, seen))
+            # Assert the outbound endpoint here, not inside the transport: providers wrap
+            # request errors in a broad except that would swallow an assertion raised there.
+            assert seen, "the provider made no request"
+            recorded_path = httpx.URL(cassette["endpoint"]).path
+            assert seen[0].url.path == recorded_path, (
+                f"replayed request hit {seen[0].url.path}, cassette recorded {recorded_path}"
+            )
+            return resp
         if requires and not os.environ.get(requires):
             pytest.skip(f"{requires} not set")
         if _MODE == "record":
