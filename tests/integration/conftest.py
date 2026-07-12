@@ -26,7 +26,6 @@ from typing import Any
 
 import httpx
 import pytest
-import respx
 
 from lmux.types import ChatChunk, ChatResponse, EmbeddingResponse, ResponseResponse
 
@@ -51,7 +50,6 @@ def pytest_configure(config: pytest.Config) -> None:
         ("offline", "supports offline mode (cassette replay)."),
         ("live", "supports live mode (real endpoint; LMUX_LIVE=1)."),
         ("record", "supports record mode (refresh cassette from a real call; LMUX_RECORD=1)."),
-        ("integration", "full-stack integration test over the httpx transport."),
     ):
         config.addinivalue_line("markers", f"{name}: {desc}")
 
@@ -69,45 +67,6 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if _MODE not in _supported_modes(item):
             item.add_marker(pytest.mark.skip(reason=f"not run in {_MODE!r} mode"))
-
-
-# MARK: Credentials
-
-
-@pytest.fixture
-def openai_key() -> str:
-    """The real OpenAI key from the ambient environment; skip the test when absent."""
-    key = os.environ.get("OPENAI_API_KEY")
-    if not key:
-        pytest.skip("OPENAI_API_KEY not set")
-    return key
-
-
-@pytest.fixture
-def anthropic_key() -> str:
-    """The real Anthropic key from the ambient environment; skip the test when absent."""
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        pytest.skip("ANTHROPIC_API_KEY not set")
-    return key
-
-
-@pytest.fixture
-def groq_key() -> str:
-    """The real Groq key from the ambient environment; skip the test when absent."""
-    key = os.environ.get("GROQ_API_KEY")
-    if not key:
-        pytest.skip("GROQ_API_KEY not set")
-    return key
-
-
-@pytest.fixture
-def gemini_key() -> str:
-    """The real Gemini Developer API key from the environment; skip the test when absent."""
-    key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-    if not key:
-        pytest.skip("GOOGLE_API_KEY / GEMINI_API_KEY not set")
-    return key
 
 
 # MARK: Prompt helpers
@@ -197,134 +156,13 @@ def assert_cost() -> Callable[..., None]:
     return _assert
 
 
-# MARK: Cassette replay / record
-
-
-@pytest.fixture
-def mount_cassette(respx_mock: respx.MockRouter) -> Callable[[Path], dict[str, Any]]:
-    """Mount a recorded JSON cassette on respx so the provider's real transport
-    replays it. Returns the parsed cassette for further assertions."""
-
-    def _mount(cassette_path: Path) -> dict[str, Any]:
-        cassette = json.loads(cassette_path.read_text())
-        if "response_sse" in cassette:  # streaming cassette: raw SSE bytes
-            response = httpx.Response(
-                200, content=cassette["response_sse"].encode(), headers={"content-type": "text/event-stream"}
-            )
-        else:  # unary JSON cassette
-            response = httpx.Response(200, json=cassette["response"])
-        respx_mock.post(cassette["endpoint"]).mock(return_value=response)
-        return cassette
-
-    return _mount
-
-
-# MARK: Request capture + hand-authored mounting
-
-
-@pytest.fixture
-def sent_request(respx_mock: respx.MockRouter) -> Callable[..., tuple[dict[str, Any], dict[str, str]]]:
-    """The JSON body + headers of an outgoing request (default: the most recent).
-
-    The core harness mocks only responses; this exposes the REQUEST the provider
-    emitted, so tests can assert request-shaping (cache breakpoints, endpoint
-    routing, dropped params) and auth headers. Pass a positional index for a
-    specific call in a fan-out (0 = first)."""
-
-    def _get(index: int = -1) -> tuple[dict[str, Any], dict[str, str]]:
-        request = respx_mock.calls[index].request
-        body = json.loads(request.content) if request.content else {}
-        return body, dict(request.headers)
-
-    return _get
-
-
-@pytest.fixture
-def mount_response(respx_mock: respx.MockRouter) -> Callable[..., None]:
-    """Mount one response of any status / body / headers on an endpoint — for
-    replaying recorded non-2xx / error responses that ``mount_cassette`` (which
-    always replays HTTP 200) can't express."""
-
-    def _mount(  # noqa: PLR0913
-        endpoint: str,
-        *,
-        status: int = 200,
-        json_body: Any = None,  # noqa: ANN401
-        text: str | None = None,
-        sse: str | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> None:
-        extra = headers or {}
-        if sse is not None:
-            response = httpx.Response(
-                status, content=sse.encode(), headers={"content-type": "text/event-stream", **extra}
-            )
-        elif text is not None:
-            response = httpx.Response(status, content=text.encode(), headers=extra)
-        else:
-            response = httpx.Response(status, json=json_body, headers=extra)
-        respx_mock.post(endpoint).mock(return_value=response)
-
-    return _mount
-
-
-@pytest.fixture
-def mount_sequence(respx_mock: respx.MockRouter) -> Callable[..., None]:
-    """Mount N JSON responses served in order on a single endpoint, modelling
-    provider fan-out (Vertex ``:predict`` batch-size-1, ``:embedContent``, Bedrock
-    multi-input) where one call issues N POSTs to the same URL. Assert the fan-out
-    with ``respx_mock.calls.call_count == N``."""
-
-    def _mount(endpoint: str, responses: list[dict[str, Any]]) -> None:
-        side_effect = [httpx.Response(r.get("status", 200), json=r["json"]) for r in responses]
-        respx_mock.post(endpoint).mock(side_effect=side_effect)
-
-    return _mount
-
-
 def _scrub(obj: object) -> object:
-    """Defensive: drop any credential-ish keys before a cassette touches disk."""
+    """Drop any credential-ish keys before a cassette touches disk."""
     if isinstance(obj, dict):
         return {k: _scrub(v) for k, v in obj.items() if str(k).lower() not in _SECRET_KEYS}
     if isinstance(obj, list):
         return [_scrub(v) for v in obj]
     return obj
-
-
-@pytest.fixture
-def record_cassette() -> Callable[..., dict[str, Any]]:
-    """Hit a real endpoint, scrub credentials, and write a JSON cassette. Returns
-    the raw response JSON so the recorder can assert the captured shape."""
-
-    def _record(
-        cassette_path: Path, *, endpoint: str, request_body: dict[str, Any], headers: dict[str, str]
-    ) -> dict[str, Any]:
-        response = httpx.post(endpoint, headers=headers, json=request_body, timeout=90.0)
-        response.raise_for_status()
-        data = response.json()
-        cassette = {"endpoint": endpoint, "request": _scrub(request_body), "response": _scrub(data)}
-        cassette_path.parent.mkdir(parents=True, exist_ok=True)
-        cassette_path.write_text(json.dumps(cassette, indent=2) + "\n")
-        return data
-
-    return _record
-
-
-@pytest.fixture
-def record_stream_cassette() -> Callable[..., str]:
-    """Like ``record_cassette`` but for a streaming (SSE) endpoint: captures the
-    raw event-stream body verbatim and returns it for assertions."""
-
-    def _record(cassette_path: Path, *, endpoint: str, request_body: dict[str, Any], headers: dict[str, str]) -> str:
-        response = httpx.post(endpoint, headers=headers, json=request_body, timeout=90.0)
-        response.raise_for_status()
-        sse = response.text
-        cassette = {"endpoint": endpoint, "request": _scrub(request_body), "response_sse": sse}
-        cassette_path.parent.mkdir(parents=True, exist_ok=True)
-        cassette_path.write_text(json.dumps(cassette, indent=2) + "\n")
-        return sse
-
-    return _record
 
 
 # MARK: Scenario — one test, three modes (offline / live / record)
