@@ -49,10 +49,12 @@ from lmux_google._mappers import (
     map_response_format,
     map_tool_choice,
     map_tools,
+    map_vertex_embed_response,
 )
 from lmux_google._wire import (
     WireBatchEmbeddingsResponse,
     WireGenerateContentResponse,
+    WireVertexPredictResponse,
 )
 from lmux_google.auth import GoogleADCAuthProvider
 from lmux_google.cost import calculate_google_cost
@@ -92,6 +94,7 @@ class GoogleProvider(
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
+        self._credentials: Credentials | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
 
     # MARK: Pricing
@@ -111,10 +114,25 @@ class GoogleProvider(
     def _base_url(self) -> str:
         return vertex_base_url(self._location) if self._vertexai else GEMINI_BASE_URL
 
-    def _headers(self, auth_result: "Credentials | str") -> Mapping[str, str]:
+    def _static_headers(self, auth_result: "Credentials | str") -> Mapping[str, str]:
+        # API keys are static and baked into the cached client; Vertex bearer tokens are
+        # short-lived and applied per request (see _request_headers) so they refresh rather
+        # than freeze on a long-lived provider.
         if isinstance(auth_result, str):
             return api_key_headers(auth_result)
-        return bearer_headers(bearer_token(auth_result))
+        return {"Content-Type": "application/json"}
+
+    def _request_headers(self) -> Mapping[str, str]:
+        if self._credentials is None:
+            return {}
+        return bearer_headers(bearer_token(self._credentials))
+
+    async def _arequest_headers(self) -> Mapping[str, str]:
+        if self._credentials is None:
+            return {}
+        # Credential refresh does blocking HTTP; run it off the event loop.
+        token = await asyncio.to_thread(bearer_token, self._credentials)
+        return bearer_headers(token)
 
     def _path(self, model: str, method: str, *, sse: bool = False) -> str:
         suffix = "?alt=sse" if sse else ""
@@ -130,9 +148,10 @@ class GoogleProvider(
     def _get_sync_client(self) -> "httpx.Client":
         if self._sync_client is None:
             auth_result = self._auth.get_credentials()
+            self._credentials = auth_result if not isinstance(auth_result, str) else None
             self._sync_client = create_sync_client(
                 base_url=self._base_url(),
-                headers=self._headers(auth_result),
+                headers=self._static_headers(auth_result),
                 timeout=self._timeout,
                 max_retries=self._max_retries,
             )
@@ -142,9 +161,10 @@ class GoogleProvider(
         loop = asyncio.get_running_loop()
         if self._async_client is None or self._async_loop is not loop:
             auth_result = await self._auth.aget_credentials()
+            self._credentials = auth_result if not isinstance(auth_result, str) else None
             self._async_client = create_async_client(
                 base_url=self._base_url(),
-                headers=self._headers(auth_result),
+                headers=self._static_headers(auth_result),
                 timeout=self._timeout,
                 max_retries=self._max_retries,
             )
@@ -183,7 +203,7 @@ class GoogleProvider(
         path = self._path(model, "generateContent")
         try:
             client = self._get_sync_client()
-            response = client.post(path, json=body)
+            response = client.post(path, json=body, headers=self._request_headers())
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
@@ -214,7 +234,7 @@ class GoogleProvider(
         path = self._path(model, "generateContent")
         try:
             client = await self._get_async_client()
-            response = await client.post(path, json=body)
+            response = await client.post(path, json=body, headers=await self._arequest_headers())
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
@@ -245,10 +265,11 @@ class GoogleProvider(
         path = self._path(model, "streamGenerateContent", sse=True)
         try:
             client = self._get_sync_client()
+            headers = self._request_headers()
         except Exception as e:
             raise map_transport_error(e) from e
         try:
-            with client.stream("POST", path, json=body) as response:
+            with client.stream("POST", path, json=body, headers=headers) as response:
                 if response.status_code >= _HTTP_ERROR:
                     response.read()
                     raise error_from_response(response)  # noqa: TRY301
@@ -285,10 +306,11 @@ class GoogleProvider(
         path = self._path(model, "streamGenerateContent", sse=True)
         try:
             client = await self._get_async_client()
+            headers = await self._arequest_headers()
         except Exception as e:
             raise map_transport_error(e) from e
         try:
-            async with client.stream("POST", path, json=body) as response:
+            async with client.stream("POST", path, json=body, headers=headers) as response:
                 if response.status_code >= _HTTP_ERROR:
                     await response.aread()
                     raise error_from_response(response)  # noqa: TRY301
@@ -313,17 +335,14 @@ class GoogleProvider(
         dimensions: int | None = None,
         provider_params: GoogleParams | None = None,
     ) -> EmbeddingResponse:
-        body = self._build_embed_body(model, input, dimensions, provider_params)
-        path = self._path(model, "batchEmbedContents")
+        path, body = self._embed_path_and_body(model, input, dimensions, provider_params)
         try:
             client = self._get_sync_client()
-            response = client.post(path, json=body)
+            response = client.post(path, json=body, headers=self._request_headers())
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_batch_embeddings_response(
-            parse_body(response, WireBatchEmbeddingsResponse), model, PROVIDER_NAME, self._calculate_cost
-        )
+        return self._map_embed_response(response, model)
 
     @override
     async def aembed(
@@ -334,17 +353,14 @@ class GoogleProvider(
         dimensions: int | None = None,
         provider_params: GoogleParams | None = None,
     ) -> EmbeddingResponse:
-        body = self._build_embed_body(model, input, dimensions, provider_params)
-        path = self._path(model, "batchEmbedContents")
+        path, body = self._embed_path_and_body(model, input, dimensions, provider_params)
         try:
             client = await self._get_async_client()
-            response = await client.post(path, json=body)
+            response = await client.post(path, json=body, headers=await self._arequest_headers())
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_batch_embeddings_response(
-            parse_body(response, WireBatchEmbeddingsResponse), model, PROVIDER_NAME, self._calculate_cost
-        )
+        return self._map_embed_response(response, model)
 
     # MARK: Internal Helpers
 
@@ -353,6 +369,29 @@ class GoogleProvider(
         if mapped.usage is not None:
             mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
         return mapped
+
+    def _embed_path_and_body(
+        self,
+        model: str,
+        input: str | list[str],  # noqa: A002
+        dimensions: int | None,
+        provider_params: GoogleParams | None,
+    ) -> tuple[str, Json]:
+        # Vertex AI serves embeddings through the generic ``:predict`` endpoint (instances/parameters),
+        # while the Gemini Developer API uses ``:batchEmbedContents`` (requests/content).
+        if self._vertexai:
+            return self._path(model, "predict"), self._build_vertex_embed_body(input, dimensions, provider_params)
+        body = self._build_embed_body(model, input, dimensions, provider_params)
+        return self._path(model, "batchEmbedContents"), body
+
+    def _map_embed_response(self, response: "httpx.Response", model: str) -> EmbeddingResponse:
+        if self._vertexai:
+            return map_vertex_embed_response(
+                parse_body(response, WireVertexPredictResponse), model, PROVIDER_NAME, self._calculate_cost
+            )
+        return map_batch_embeddings_response(
+            parse_body(response, WireBatchEmbeddingsResponse), model, PROVIDER_NAME, self._calculate_cost
+        )
 
     @staticmethod
     def _build_embed_body(
@@ -371,6 +410,24 @@ class GoogleProvider(
                 req["taskType"] = provider_params.task_type
             requests.append(req)
         return {"requests": requests}
+
+    @staticmethod
+    def _build_vertex_embed_body(
+        input: str | list[str],  # noqa: A002
+        dimensions: int | None,
+        provider_params: GoogleParams | None,
+    ) -> Json:
+        texts = input if isinstance(input, list) else [input]
+        instances: list[Json] = []
+        for text in texts:
+            instance: Json = {"content": text}
+            if provider_params is not None and provider_params.task_type is not None:
+                instance["task_type"] = provider_params.task_type
+            instances.append(instance)
+        body: Json = {"instances": instances}
+        if dimensions is not None:
+            body["parameters"] = {"outputDimensionality": dimensions}
+        return body
 
     @staticmethod
     def _build_body(  # noqa: PLR0913, PLR0912
@@ -403,7 +460,9 @@ class GoogleProvider(
             if mime_type is not None:
                 gen["responseMimeType"] = mime_type
             if schema is not None:
-                gen["responseSchema"] = schema
+                # responseJsonSchema accepts full JSON Schema (incl. $defs/$ref); responseSchema
+                # is the narrower OpenAPI-style shape that rejects those constructs.
+                gen["responseJsonSchema"] = schema
         if reasoning_effort is not None:
             gen["thinkingConfig"] = {"thinkingBudget": _THINKING_BUDGETS[reasoning_effort], "includeThoughts": True}
         if tools is not None:

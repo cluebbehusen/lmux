@@ -227,7 +227,7 @@ class TestChat:
         provider.chat(MODEL, [UserMessage(content="Hi")], response_format=rf)
         body = json.loads(route.calls.last.request.content)
         assert body["generationConfig"]["responseMimeType"] == "application/json"
-        assert body["generationConfig"]["responseSchema"] == {"type": "object"}
+        assert body["generationConfig"]["responseJsonSchema"] == {"type": "object"}
 
     def test_reasoning_effort(
         self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
@@ -479,6 +479,75 @@ class TestVertexTransport:
         provider = GoogleProvider(auth=FakeCredentialsAuth(creds))
         with pytest.raises(ProviderError, match="requires a project"):
             provider.chat(MODEL, [UserMessage(content="Hi")])
+
+    def test_vertex_reresolves_token_per_request(
+        self, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls[0].request.headers["authorization"] == "Bearer vertex-token"
+        # Credentials expire between requests — the second call must resolve a fresh token, not reuse baked headers.
+        creds.valid = False
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls[1].request.headers["authorization"] == "Bearer refreshed-token"
+
+    async def test_vertex_async_bearer(self, gen_response: dict[str, Any], respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        await provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+
+
+# MARK: Vertex Embeddings
+
+
+class TestVertexEmbed:
+    def test_predict_endpoint_and_shape(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{EMBED_MODEL}:predict"
+        predictions = {"predictions": [{"embeddings": {"values": [0.1, 0.2], "statistics": {"token_count": 3}}}]}
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=predictions))
+        result = provider.embed(EMBED_MODEL, "hello")
+        assert result.embeddings == [[0.1, 0.2]]
+        assert result.usage.input_tokens == 3
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+        body = json.loads(route.calls.last.request.content)
+        assert body == {"instances": [{"content": "hello"}]}
+
+    def test_dimensions_and_task_type(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{EMBED_MODEL}:predict"
+        predictions = {"predictions": [{"embeddings": {"values": [0.1]}}, {"embeddings": {"values": [0.2]}}]}
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=predictions))
+        result = provider.embed(
+            EMBED_MODEL, ["a", "b"], dimensions=256, provider_params=GoogleParams(task_type="RETRIEVAL_QUERY")
+        )
+        assert result.embeddings == [[0.1], [0.2]]
+        body = json.loads(route.calls.last.request.content)
+        assert body == {
+            "instances": [
+                {"content": "a", "task_type": "RETRIEVAL_QUERY"},
+                {"content": "b", "task_type": "RETRIEVAL_QUERY"},
+            ],
+            "parameters": {"outputDimensionality": 256},
+        }
+
+    async def test_aembed_predict(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{EMBED_MODEL}:predict"
+        predictions = {"predictions": [{"embeddings": {"values": [0.3]}}]}
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=predictions))
+        result = await provider.aembed(EMBED_MODEL, "hello")
+        assert result.embeddings == [[0.3]]
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
 
 
 # MARK: Client Management

@@ -45,6 +45,7 @@ from lmux_google._wire import (
     WireCandidate,
     WireGenerateContentResponse,
     WireUsageMetadata,
+    WireVertexPredictResponse,
 )
 
 type CostCalculator = Callable[[str, Usage], Cost | None]
@@ -358,6 +359,26 @@ def map_batch_embeddings_response(
     usage = Usage(input_tokens=input_tokens, output_tokens=0)
     cost = cost_fn(model, usage)
 
+    return EmbeddingResponse(
+        embeddings=embeddings,
+        usage=usage,
+        cost=cost,
+        model=model,
+        provider=provider_name,
+    )
+
+
+def map_vertex_embed_response(
+    response: WireVertexPredictResponse,
+    model: str,
+    provider_name: str,
+    cost_fn: CostCalculator,
+) -> EmbeddingResponse:
+    """Convert a validated Vertex AI ``:predict`` embeddings response to an lmux EmbeddingResponse."""
+    embeddings: list[list[float]] = [list(p.embeddings.values) for p in response.predictions]
+    input_tokens = sum(p.embeddings.statistics.token_count for p in response.predictions)
+    usage = Usage(input_tokens=input_tokens, output_tokens=0)
+    cost = cost_fn(model, usage)
     return EmbeddingResponse(
         embeddings=embeddings,
         usage=usage,

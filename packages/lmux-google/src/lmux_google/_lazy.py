@@ -23,10 +23,17 @@ if TYPE_CHECKING:
     from google.auth.credentials import Credentials
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com"
+_REFRESH_TIMEOUT = 120.0
 
 
 def vertex_base_url(location: str | None) -> str:
-    """Resolve the Vertex AI regional (or global) base URL for a location."""
+    """Resolve the Vertex AI base URL for a location.
+
+    ``global`` has no region prefix; the ``us`` and ``eu`` multi-regions use their dedicated
+    ``rep`` endpoints; anything else is a standard regional host.
+    """
+    if location in ("us", "eu"):
+        return f"https://aiplatform.{location}.rep.googleapis.com"
     if location and location != "global":
         return f"https://{location}-aiplatform.googleapis.com"
     return "https://aiplatform.googleapis.com"
@@ -42,12 +49,57 @@ def bearer_headers(token: str) -> Mapping[str, str]:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
+class _HttpxAuthResponse:
+    """Adapt an httpx response to the ``google.auth.transport.Response`` interface."""
+
+    def __init__(self, response: "httpx.Response") -> None:
+        self._response = response
+
+    @property
+    def status(self) -> int:
+        return self._response.status_code
+
+    @property
+    def headers(self) -> "httpx.Headers":
+        return self._response.headers
+
+    @property
+    def data(self) -> bytes:
+        return self._response.content
+
+
+class HttpxAuthRequest:
+    """Minimal ``google.auth.transport.Request`` backed by httpx.
+
+    Lets credential refresh reuse httpx instead of pulling in the ``requests`` library that
+    ``google.auth.transport.requests`` (and the ``google-auth[requests]`` extra) needs.
+    """
+
+    def __call__(
+        self,
+        url: str,
+        method: str = "GET",
+        body: bytes | None = None,
+        headers: Mapping[str, str] | None = None,
+        timeout: float | None = None,
+        **kwargs: object,  # noqa: ARG002
+    ) -> _HttpxAuthResponse:
+        import httpx  # noqa: PLC0415
+
+        response = httpx.request(
+            method,
+            url,
+            content=body,
+            headers=dict(headers) if headers else None,
+            timeout=timeout if timeout is not None else _REFRESH_TIMEOUT,
+        )
+        return _HttpxAuthResponse(response)
+
+
 def bearer_token(credentials: "Credentials") -> str:
     """Return a valid access token from google-auth credentials, refreshing if needed."""
-    from google.auth.transport.requests import Request  # noqa: PLC0415
-
     if not credentials.valid:
-        credentials.refresh(Request())
+        credentials.refresh(HttpxAuthRequest())
     return cast("str", credentials.token)
 
 

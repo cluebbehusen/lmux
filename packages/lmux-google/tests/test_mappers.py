@@ -42,8 +42,13 @@ from lmux_google._mappers import (
     map_response_format,
     map_tool_choice,
     map_tools,
+    map_vertex_embed_response,
 )
-from lmux_google._wire import WireBatchEmbeddingsResponse, WireGenerateContentResponse
+from lmux_google._wire import (
+    WireBatchEmbeddingsResponse,
+    WireGenerateContentResponse,
+    WireVertexPredictResponse,
+)
 
 # MARK: Fixtures
 
@@ -705,3 +710,48 @@ class TestMapBatchEmbeddingsResponse:
             WireBatchEmbeddingsResponse.model_validate(response), "text-embedding-005", "google", noop_cost_fn
         )
         assert result.usage == Usage(input_tokens=0, output_tokens=0)
+
+
+# MARK: map_vertex_embed_response
+
+
+class TestMapVertexEmbedResponse:
+    def test_single_prediction(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {"predictions": [{"embeddings": {"values": [0.1, 0.2], "statistics": {"token_count": 3}}}]}
+        result = map_vertex_embed_response(
+            WireVertexPredictResponse.model_validate(response), "text-embedding-005", "google", noop_cost_fn
+        )
+        assert result == EmbeddingResponse(
+            embeddings=[[0.1, 0.2]],
+            usage=Usage(input_tokens=3, output_tokens=0),
+            cost=Cost(input_cost=0.0, output_cost=0.0, total_cost=0.0),
+            model="text-embedding-005",
+            provider="google",
+        )
+
+    def test_multiple_predictions_sum_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {
+            "predictions": [
+                {"embeddings": {"values": [0.1], "statistics": {"token_count": 2}}},
+                {"embeddings": {"values": [0.2], "statistics": {"token_count": 4}}},
+            ]
+        }
+        result = map_vertex_embed_response(
+            WireVertexPredictResponse.model_validate(response), "text-embedding-005", "google", noop_cost_fn
+        )
+        assert result.embeddings == [[0.1], [0.2]]
+        assert result.usage == Usage(input_tokens=6, output_tokens=0)
+
+    def test_missing_statistics_defaults_tokens_to_zero(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {"predictions": [{"embeddings": {"values": [0.1]}}]}
+        result = map_vertex_embed_response(
+            WireVertexPredictResponse.model_validate(response), "text-embedding-005", "google", noop_cost_fn
+        )
+        assert result.usage == Usage(input_tokens=0, output_tokens=0)
+
+    def test_cost_none_for_unknown(self, none_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {"predictions": [{"embeddings": {"values": [0.1]}}]}
+        result = map_vertex_embed_response(
+            WireVertexPredictResponse.model_validate(response), "unknown-model", "google", none_cost_fn
+        )
+        assert result.cost is None
