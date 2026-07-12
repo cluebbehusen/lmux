@@ -96,7 +96,7 @@ class AnthropicProvider(
 
     _provider_name: ClassVar[str] = PROVIDER_NAME
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         auth: AuthProvider[str] | None = None,
@@ -104,12 +104,14 @@ class AnthropicProvider(
         timeout: float | None = None,
         max_retries: int | None = None,
         default_max_tokens: int = DEFAULT_MAX_TOKENS,
+        transport: "httpx.BaseTransport | None" = None,
     ) -> None:
         self._auth: AuthProvider[str] = auth or AnthropicEnvAuthProvider()
         self._base_url: str | None = base_url
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
         self._default_max_tokens: int = default_max_tokens
+        self._transport: httpx.BaseTransport | None = transport
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -142,6 +144,7 @@ class AnthropicProvider(
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
+            transport=self._transport,
         )
 
     async def _create_async_client(self) -> "httpx.AsyncClient":

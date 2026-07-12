@@ -51,11 +51,13 @@ class GroqProvider(
         base_url: str | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
+        transport: "httpx.BaseTransport | None" = None,
     ) -> None:
         self._auth: AuthProvider[str] = auth or GroqEnvAuthProvider()
         self._base_url: str | None = base_url
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
+        self._transport: httpx.BaseTransport | None = transport
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -80,6 +82,7 @@ class GroqProvider(
                 base_url=self._base_url,
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                transport=self._transport,
             )
         return self._sync_client
 

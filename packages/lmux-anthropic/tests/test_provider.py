@@ -687,6 +687,19 @@ class TestClientManagement:
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert route.called
 
+    def test_custom_transport_used(self, fake_auth: FakeAuth) -> None:
+        # No respx here: the injected transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=_message())
+
+        provider = AnthropicProvider(auth=fake_auth, transport=httpx.MockTransport(handler))
+        resp = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "anthropic"
+
     def test_timeout_and_retries(self, fake_auth: FakeAuth, respx_mock: respx.MockRouter) -> None:
         _ok(respx_mock)
         provider = AnthropicProvider(auth=fake_auth, timeout=30.0, max_retries=5)

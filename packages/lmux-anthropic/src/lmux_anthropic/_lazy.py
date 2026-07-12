@@ -32,10 +32,15 @@ def create_sync_client(
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
+    transport: "httpx.BaseTransport | None" = None,
 ) -> "httpx.Client":
     """Create an httpx client for the Anthropic Messages API."""
     return _create_sync(
-        base_url=base_url or DEFAULT_BASE_URL, headers=_api_headers(api_key), timeout=timeout, max_retries=max_retries
+        base_url=base_url or DEFAULT_BASE_URL,
+        headers=_api_headers(api_key),
+        timeout=timeout,
+        max_retries=max_retries,
+        transport=transport,
     )
 
 
