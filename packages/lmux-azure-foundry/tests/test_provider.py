@@ -234,6 +234,19 @@ class TestChat:
         body = json.loads(route.calls.last.request.content)
         assert body["reasoning_effort"] == "high"
 
+    def test_prompt_cache_params_sent(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, json=completion))
+        sync_provider.chat(
+            "gpt-4o",
+            [UserMessage(content="Hi")],
+            provider_params=AzureFoundryParams(prompt_cache_key="tenant-42", prompt_cache_retention="24h"),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["prompt_cache_key"] == "tenant-42"
+        assert body["prompt_cache_retention"] == "24h"
+
     def test_status_error_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(400, json={"error": {"message": "bad"}}))
         with pytest.raises(InvalidRequestError):
@@ -520,9 +533,16 @@ class TestEmbed:
         route = respx_mock.post(_emb_url("text-embedding-3-small")).mock(
             return_value=httpx.Response(200, json=embedding_response)
         )
-        sync_provider.embed("text-embedding-3-small", "hello", provider_params=AzureFoundryParams(user="u1"))
+        sync_provider.embed(
+            "text-embedding-3-small",
+            "hello",
+            provider_params=AzureFoundryParams(user="u1", prompt_cache_key="k", prompt_cache_retention="24h"),
+        )
         body = json.loads(route.calls.last.request.content)
         assert body["user"] == "u1"
+        # prompt-cache fields are Chat-Completions-only and must not leak onto the embeddings body.
+        assert "prompt_cache_key" not in body
+        assert "prompt_cache_retention" not in body
 
     def test_status_error_mapped(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_emb_url("text-embedding-3-small")).mock(
@@ -620,6 +640,19 @@ class TestCreateResponse:
         assert body["reasoning"] == {"effort": "low"}
         assert body["seed"] == 42
         assert body["user"] == "u1"
+
+    def test_prompt_cache_params(
+        self, sync_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=responses_body))
+        sync_provider.create_response(
+            "gpt-5-pro",
+            "Hello",
+            provider_params=AzureFoundryParams(prompt_cache_key="tenant-42", prompt_cache_retention="24h"),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["prompt_cache_key"] == "tenant-42"
+        assert body["prompt_cache_retention"] == "24h"
 
     def test_deployment_multiplier(
         self, sync_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter

@@ -34,6 +34,7 @@ from lmux_openai._exceptions import (
 )
 from lmux_openai._lazy import create_async_client, create_sync_client
 from lmux_openai._mappers import (
+    has_cache_breakpoint,
     map_chat_chunk,
     map_chat_completion,
     map_embedding_response,
@@ -43,6 +44,7 @@ from lmux_openai._mappers import (
     map_responses_response,
     map_tool_choice,
     map_tools,
+    supports_explicit_prompt_cache,
 )
 from lmux_openai._wire import (
     WireChunk,
@@ -427,6 +429,7 @@ class OpenAIProvider(
         body: dict[str, Any] = {"model": model, "input": map_response_input(input)}
         if provider_params is not None:
             body.update(OpenAIProvider._provider_params_kwargs(provider_params))
+            body.update(OpenAIProvider._cache_kwargs(provider_params))
             # Responses API uses reasoning={"effort": ...}, not flat reasoning_effort
             if provider_params.reasoning_effort is not None:
                 body["reasoning"] = {"effort": provider_params.reasoning_effort}
@@ -453,7 +456,7 @@ class OpenAIProvider(
         return {**body, "stream": True, "stream_options": {"include_usage": True}}
 
     @staticmethod
-    def _build_body(  # noqa: PLR0913
+    def _build_body(  # noqa: PLR0913, PLR0912
         model: str,
         messages: Sequence[Message],
         temperature: float | None,
@@ -466,7 +469,10 @@ class OpenAIProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: OpenAIParams | None,
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {"model": model, "messages": map_messages(messages)}
+        message_dicts = map_messages(messages, explicit_cache=supports_explicit_prompt_cache(model))
+        body: dict[str, Any] = {"model": model, "messages": message_dicts}
+        if has_cache_breakpoint(message_dicts):
+            body["prompt_cache_options"] = {"mode": "explicit"}
         if temperature is not None:
             body["temperature"] = temperature
         if max_tokens is not None:
@@ -488,10 +494,25 @@ class OpenAIProvider(
             body["reasoning_effort"] = reasoning_effort
         if provider_params is not None:
             body.update(OpenAIProvider._provider_params_kwargs(provider_params))
+            body.update(OpenAIProvider._cache_kwargs(provider_params))
             # Chat Completions uses flat reasoning_effort; provider_params overrides top-level
             if provider_params.reasoning_effort is not None:
                 body["reasoning_effort"] = provider_params.reasoning_effort
         return body
+
+    @staticmethod
+    def _cache_kwargs(params: OpenAIParams) -> dict[str, Any]:
+        """Prompt-cache kwargs for Chat Completions and the Responses API (not embeddings).
+
+        ``prompt_cache_key`` is an optional routing hint that improves cache hit rates (recommended
+        for reliable gpt-5.6+ matching); ``prompt_cache_retention`` is legacy (pre-gpt-5.6).
+        """
+        kwargs: dict[str, Any] = {}
+        if params.prompt_cache_key is not None:
+            kwargs["prompt_cache_key"] = params.prompt_cache_key
+        if params.prompt_cache_retention is not None:
+            kwargs["prompt_cache_retention"] = params.prompt_cache_retention
+        return kwargs
 
     @staticmethod
     def _provider_params_kwargs(params: OpenAIParams) -> dict[str, Any]:

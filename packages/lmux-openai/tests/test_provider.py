@@ -13,9 +13,11 @@ from pytest_mock import MockerFixture
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, NotFoundError, ProviderError
 from lmux.types import (
+    CachePointContent,
     FunctionDefinition,
     JsonObjectResponseFormat,
     ResponseInputMessage,
+    TextContent,
     Tool,
     UserMessage,
 )
@@ -195,6 +197,37 @@ class TestChat:
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], reasoning_effort="medium")
         body = json.loads(route.calls.last.request.content)
         assert body["reasoning_effort"] == "medium"
+
+    def test_explicit_cache_gpt56_emits_breakpoint_and_option(
+        self, sync_provider: OpenAIProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(_completion("gpt-5.6-sol"), _CHAT_URL, respx_mock)
+        sync_provider.chat("gpt-5.6-sol", [UserMessage(content=[TextContent(text="ctx"), CachePointContent()])])
+        body = json.loads(route.calls.last.request.content)
+        assert body["messages"] == [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "ctx", "prompt_cache_breakpoint": {"mode": "explicit"}}],
+            }
+        ]
+        assert body["prompt_cache_options"] == {"mode": "explicit"}
+
+    def test_cache_point_dropped_for_older_model(
+        self, sync_provider: OpenAIProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        sync_provider.chat("gpt-5.5", [UserMessage(content=[TextContent(text="ctx"), CachePointContent()])])
+        body = json.loads(route.calls.last.request.content)
+        assert body["messages"] == [{"role": "user", "content": [{"type": "text", "text": "ctx"}]}]
+        assert "prompt_cache_options" not in body
+
+    def test_no_cache_option_without_cache_points(
+        self, sync_provider: OpenAIProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(_completion("gpt-5.6-sol"), _CHAT_URL, respx_mock)
+        sync_provider.chat("gpt-5.6-sol", [UserMessage(content=[TextContent(text="hi")])])
+        body = json.loads(route.calls.last.request.content)
+        assert "prompt_cache_options" not in body
 
     def test_status_error_mapped(self, sync_provider: OpenAIProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_CHAT_URL).mock(return_value=httpx.Response(400, json={"error": {"message": "bad"}}))
@@ -404,9 +437,13 @@ class TestEmbed:
     ) -> None:
         route = _ok(embedding, _EMBED_URL, respx_mock)
         sync_provider.embed(
-            "text-embedding-3-small", ["a", "b"], dimensions=256, provider_params=OpenAIParams(user="u1")
+            "text-embedding-3-small",
+            ["a", "b"],
+            dimensions=256,
+            provider_params=OpenAIParams(user="u1", prompt_cache_key="k", prompt_cache_retention="24h"),
         )
         body = json.loads(route.calls.last.request.content)
+        # prompt-cache controls are chat/responses-only and must not ride along on embeddings.
         assert body == {"model": "text-embedding-3-small", "input": ["a", "b"], "dimensions": 256, "user": "u1"}
 
     def test_status_error_mapped(self, sync_provider: OpenAIProvider, respx_mock: respx.MockRouter) -> None:
@@ -472,6 +509,17 @@ class TestCreateResponse:
         body = json.loads(route.calls.last.request.content)
         assert body["seed"] == 1
         assert "reasoning" not in body
+
+    def test_prompt_cache_params(
+        self, sync_provider: OpenAIProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(responses_body, _RESPONSES_URL, respx_mock)
+        sync_provider.create_response(
+            MODEL, "Hi", provider_params=OpenAIParams(prompt_cache_key="tenant-42", prompt_cache_retention="24h")
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["prompt_cache_key"] == "tenant-42"
+        assert body["prompt_cache_retention"] == "24h"
 
     def test_status_error_mapped(self, sync_provider: OpenAIProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_RESPONSES_URL).mock(return_value=httpx.Response(400, json={"error": {"message": "bad"}}))
@@ -699,6 +747,19 @@ class TestProviderParams:
         assert body["service_tier"] == "flex"
         assert body["seed"] == 42
         assert body["user"] == "u1"
+
+    def test_prompt_cache_params(
+        self, sync_provider: OpenAIProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            provider_params=OpenAIParams(prompt_cache_key="tenant-42", prompt_cache_retention="24h"),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["prompt_cache_key"] == "tenant-42"
+        assert body["prompt_cache_retention"] == "24h"
 
     def test_empty_params(
         self, sync_provider: OpenAIProvider, completion: dict[str, Any], respx_mock: respx.MockRouter

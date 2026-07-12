@@ -520,6 +520,7 @@ class AzureFoundryProvider(
             body["reasoning_effort"] = reasoning_effort
         if provider_params is not None:
             body.update(AzureFoundryProvider._provider_params_kwargs(provider_params))
+            body.update(AzureFoundryProvider._cache_kwargs(provider_params))
         return body
 
     @staticmethod
@@ -559,6 +560,20 @@ class AzureFoundryProvider(
         return kwargs
 
     @staticmethod
+    def _cache_kwargs(params: AzureFoundryParams) -> dict[str, Any]:
+        """Prompt-cache kwargs for Chat Completions and the Responses API (not embeddings).
+
+        Azure supports only implicit prompt caching plus these tuning fields; it does not accept
+        OpenAI's explicit-breakpoint wire format, so ``CachePointContent`` is dropped by ``map_messages``.
+        """
+        kwargs: dict[str, Any] = {}
+        if params.prompt_cache_key is not None:
+            kwargs["prompt_cache_key"] = params.prompt_cache_key
+        if params.prompt_cache_retention is not None:
+            kwargs["prompt_cache_retention"] = params.prompt_cache_retention
+        return kwargs
+
+    @staticmethod
     def _responses_kwargs(provider_params: AzureFoundryParams | None) -> dict[str, Any]:
         """Build extra body kwargs for the Responses API."""
         if provider_params is None:
@@ -571,6 +586,7 @@ class AzureFoundryProvider(
             extra["seed"] = provider_params.seed
         if provider_params.user is not None:
             extra["user"] = provider_params.user
+        extra.update(AzureFoundryProvider._cache_kwargs(provider_params))
         return extra
 
 

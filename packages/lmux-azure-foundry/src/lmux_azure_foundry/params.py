@@ -11,6 +11,19 @@ class AzureFoundryParams(BaseProviderParams):
     reasoning_effort: Literal["low", "medium", "high"] | None = None
     seed: int | None = None
     user: str | None = None
+    prompt_cache_key: str | None = None
+    """Cache key for Azure's automatic prompt caching, scoping cache hits to requests that share it.
+
+    Azure Foundry caches long prompt prefixes implicitly; this key partitions that cache (e.g. per
+    tenant or per prompt template) and replaces ``user`` for cache routing. Sent on Chat Completions
+    and the Responses API. Azure does not support OpenAI's explicit cache breakpoints, so
+    ``CachePointContent`` is dropped.
+    """
+    prompt_cache_retention: Literal["in_memory", "24h"] | None = None
+    """Retention policy for the prompt cache, passed through as Azure's ``prompt_cache_retention``.
+
+    Allowed values ``in_memory`` and ``24h``. Sent on Chat Completions and the Responses API.
+    """
     deployment_type: Literal["global", "data_zone", "regional"] | None = None
     """Deployment type for cost calculation.
 
