@@ -36,6 +36,7 @@ from lmux.types import (
 from lmux_google._mappers import (
     Json,
     map_batch_embeddings_response,
+    map_embed_content_response,
     map_generate_content_chunk,
     map_generate_content_response,
     map_messages,
@@ -46,6 +47,7 @@ from lmux_google._mappers import (
 )
 from lmux_google._wire import (
     WireBatchEmbeddingsResponse,
+    WireEmbedContentResponse,
     WireGenerateContentResponse,
     WireVertexPredictResponse,
 )
@@ -697,15 +699,15 @@ class TestMapBatchEmbeddingsResponse:
         )
         assert result.cost is None
 
-    def test_approximates_tokens_from_billable_characters(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        response = {"embeddings": [{"values": [0.1]}], "metadata": {"billableCharacterCount": 400}}
+    def test_tokens_from_usage_metadata(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {"embeddings": [{"values": [0.1]}], "usageMetadata": {"promptTokenCount": 42}}
         result = map_batch_embeddings_response(
             WireBatchEmbeddingsResponse.model_validate(response), "text-embedding-005", "google", noop_cost_fn
         )
-        assert result.usage == Usage(input_tokens=100, output_tokens=0)
+        assert result.usage == Usage(input_tokens=42, output_tokens=0)
 
-    def test_billable_character_count_none_falls_back_to_zero(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
-        response = {"embeddings": [{"values": [0.1]}], "metadata": {"billableCharacterCount": None}}
+    def test_missing_usage_metadata_falls_back_to_zero(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {"embeddings": [{"values": [0.1]}]}
         result = map_batch_embeddings_response(
             WireBatchEmbeddingsResponse.model_validate(response), "text-embedding-005", "google", noop_cost_fn
         )
@@ -755,3 +757,20 @@ class TestMapVertexEmbedResponse:
             WireVertexPredictResponse.model_validate(response), "unknown-model", "google", none_cost_fn
         )
         assert result.cost is None
+
+
+# MARK: map_embed_content_response
+
+
+class TestMapEmbedContentResponse:
+    def test_values_and_tokens(self) -> None:
+        response = {"embedding": {"values": [0.1, 0.2]}, "usageMetadata": {"promptTokenCount": 7}}
+        values, tokens = map_embed_content_response(WireEmbedContentResponse.model_validate(response))
+        assert values == [0.1, 0.2]
+        assert tokens == 7
+
+    def test_missing_usage_defaults_to_zero(self) -> None:
+        response = {"embedding": {"values": [0.3]}}
+        values, tokens = map_embed_content_response(WireEmbedContentResponse.model_validate(response))
+        assert values == [0.3]
+        assert tokens == 0

@@ -44,9 +44,17 @@ def api_key_headers(api_key: str) -> Mapping[str, str]:
     return {"x-goog-api-key": api_key, "Content-Type": "application/json"}
 
 
-def bearer_headers(token: str) -> Mapping[str, str]:
-    """Auth headers for the Vertex AI transport (OAuth bearer token)."""
-    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+def bearer_headers(token: str, quota_project: str | None = None) -> Mapping[str, str]:
+    """Auth headers for the Vertex AI transport (OAuth bearer token).
+
+    ADC credentials that carry a ``quota_project_id`` must send it as ``x-goog-user-project`` so
+    quota and billing are attributed to the configured project (this is what ``Credentials.apply``
+    would add); omitting it can cause a quota-related 403 for user ADC.
+    """
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    if quota_project is not None:
+        headers["x-goog-user-project"] = quota_project
+    return headers
 
 
 class _HttpxAuthResponse:

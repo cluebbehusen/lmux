@@ -43,6 +43,7 @@ from lmux.types import (
 from lmux_google._wire import (
     WireBatchEmbeddingsResponse,
     WireCandidate,
+    WireEmbedContentResponse,
     WireGenerateContentResponse,
     WireUsageMetadata,
     WireVertexPredictResponse,
@@ -349,13 +350,12 @@ def map_batch_embeddings_response(
     """Convert a validated Gemini ``batchEmbedContents`` response to an lmux EmbeddingResponse."""
     embeddings: list[list[float]] = [list(emb.values or []) for emb in response.embeddings or []]
 
-    # The embedding API does not return token counts — only ``billableCharacterCount``
-    # in metadata (Vertex AI only). We approximate tokens as chars / 4, consistent
-    # with how litellm handles this. This is an approximation, not exact token usage.
+    # The Developer API reports input tokens in usageMetadata.promptTokenCount; older API versions
+    # omit it entirely, in which case token usage (and therefore cost) is left at zero.
     input_tokens = 0
-    billable = response.metadata.billable_character_count if response.metadata else None
-    if billable is not None:
-        input_tokens = billable // 4
+    prompt_tokens = response.usage_metadata.prompt_token_count if response.usage_metadata else None
+    if prompt_tokens is not None:
+        input_tokens = prompt_tokens
     usage = Usage(input_tokens=input_tokens, output_tokens=0)
     cost = cost_fn(model, usage)
 
@@ -366,6 +366,11 @@ def map_batch_embeddings_response(
         model=model,
         provider=provider_name,
     )
+
+
+def map_embed_content_response(response: WireEmbedContentResponse) -> tuple[list[float], int]:
+    """Extract (embedding values, prompt tokens) from one Vertex ``:embedContent`` response."""
+    return list(response.embedding.values), response.usage_metadata.prompt_token_count
 
 
 def map_vertex_embed_response(

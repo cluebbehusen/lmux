@@ -44,29 +44,40 @@ def parse_body[T: BaseModel](response: "httpx.Response", model: type[T]) -> T:
 
 
 def error_from_stream(payload: dict[str, Any]) -> LmuxError:
-    """Map an error object embedded in a streamed response to an lmux error."""
+    """Map an error object embedded in a streamed (HTTP 200) response to an lmux error.
+
+    A mid-stream error carries an RPC status code (e.g. ``{"error": {"code": 429, ...}}``); routing
+    it through the same classifier as non-streamed errors keeps RateLimitError/AuthenticationError/etc.
+    catchable instead of collapsing every mid-stream failure into a generic ProviderError.
+    """
     error = payload.get("error")
-    message = error.get("message") if isinstance(error, dict) else error
-    return ProviderError(str(message), provider=PROVIDER)
+    if isinstance(error, dict):
+        code = error.get("code")
+        message = str(error.get("message") or error)
+        return _error_for_code(code if isinstance(code, int) else None, message)
+    return ProviderError(str(error), provider=PROVIDER)
 
 
-def error_from_response(response: "httpx.Response") -> LmuxError:  # noqa: PLR0911 — one return per mapped status
+def error_from_response(response: "httpx.Response") -> LmuxError:
     """Map an HTTP error response to an lmux exception (body must be readable)."""
-    code = response.status_code
-    msg = _message(response)
+    return _error_for_code(response.status_code, _message(response))
+
+
+def _error_for_code(code: int | None, message: str) -> LmuxError:  # noqa: PLR0911 — one return per mapped status
+    """Map an HTTP/RPC status code to the lmux exception hierarchy."""
     if code == _AUTH:
-        return AuthenticationError(msg, provider=PROVIDER, status_code=code)
+        return AuthenticationError(message, provider=PROVIDER, status_code=code)
     if code == _FORBIDDEN:
-        return PermissionDeniedError(msg, provider=PROVIDER, status_code=code)
+        return PermissionDeniedError(message, provider=PROVIDER, status_code=code)
     if code == _RATE_LIMIT:
-        return RateLimitError(msg, provider=PROVIDER, status_code=code)
+        return RateLimitError(message, provider=PROVIDER, status_code=code)
     if code == _BAD_REQUEST:
-        return InvalidRequestError(msg, provider=PROVIDER, status_code=code)
+        return InvalidRequestError(message, provider=PROVIDER, status_code=code)
     if code == _NOT_FOUND:
-        return NotFoundError(msg, provider=PROVIDER, status_code=code)
+        return NotFoundError(message, provider=PROVIDER, status_code=code)
     if code == _TIMEOUT:
-        return TimeoutError(msg, provider=PROVIDER, status_code=code)
-    return ProviderError(msg, provider=PROVIDER, status_code=code)
+        return TimeoutError(message, provider=PROVIDER, status_code=code)
+    return ProviderError(message, provider=PROVIDER, status_code=code)
 
 
 def map_transport_error(error: Exception) -> LmuxError:

@@ -72,13 +72,25 @@ class WireEmbedding(_GeminiModel):
     values: list[float] | None = None
 
 
-class WireEmbeddingsMetadata(_GeminiModel):
-    billable_character_count: int | None = None
-
-
 class WireBatchEmbeddingsResponse(_GeminiModel):
     embeddings: list[WireEmbedding] | None = None
-    metadata: WireEmbeddingsMetadata | None = None
+    usage_metadata: WireUsageMetadata | None = None
+
+
+# MARK: embedContent (Vertex Gemini Embedding 2 — single content per request)
+
+
+class WireEmbedContentEmbedding(_GeminiModel):
+    values: list[float] = Field(default_factory=list)
+
+
+class WireEmbedContentUsage(_GeminiModel):
+    prompt_token_count: int = 0
+
+
+class WireEmbedContentResponse(_GeminiModel):
+    embedding: WireEmbedContentEmbedding = Field(default_factory=WireEmbedContentEmbedding)
+    usage_metadata: WireEmbedContentUsage = Field(default_factory=WireEmbedContentUsage)
 
 
 # MARK: Vertex AI embeddings (:predict — instances/predictions shape)

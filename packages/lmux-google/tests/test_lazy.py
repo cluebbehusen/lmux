@@ -55,6 +55,13 @@ class TestBearerHeaders:
     def test_builds_headers(self) -> None:
         assert bearer_headers("tok") == {"Authorization": "Bearer tok", "Content-Type": "application/json"}
 
+    def test_includes_quota_project(self) -> None:
+        assert bearer_headers("tok", "quota-proj") == {
+            "Authorization": "Bearer tok",
+            "Content-Type": "application/json",
+            "x-goog-user-project": "quota-proj",
+        }
+
 
 class TestBearerToken:
     def test_returns_valid_token_without_refresh(self) -> None:
