@@ -81,6 +81,7 @@ _CONVERSE_STREAM = "converse-stream"
 _INVOKE = "invoke"
 
 _EXCEPTION_MESSAGE_TYPE = "exception"
+_ERROR_MESSAGE_TYPE = "error"
 
 
 def _today() -> date:
@@ -617,14 +618,18 @@ class BedrockProvider(
 def _decode_event(headers: dict[str, str], payload: bytes) -> dict[str, Any]:
     """Decode one event-stream message into a ``{event_type: payload}`` dict.
 
-    Exception frames (a mid-stream service error) carry ``:message-type: exception`` and an
-    ``:exception-type`` header but no ``:event-type``, so the message type is checked before the
-    event type is read; those frames are raised rather than returned, preserving the boto3
-    client's fail-on-error behavior.
+    A mid-stream failure has no ``:event-type``, so ``:message-type`` is checked first and those
+    frames are raised (preserving boto3's fail-on-error behavior): a modeled ``exception`` frame
+    carries ``:exception-type`` plus a JSON message, and an unmodeled ``error`` frame carries
+    ``:error-code``/``:error-message`` headers. Both are classified through the same hierarchy.
     """
     data: dict[str, Any] = json.loads(payload) if payload else {}
-    if headers.get(":message-type") == _EXCEPTION_MESSAGE_TYPE:
+    message_type = headers.get(":message-type")
+    if message_type == _EXCEPTION_MESSAGE_TYPE:
         exception_type = headers.get(":exception-type", "")
         message = data.get("message") or data.get("Message") or exception_type
         raise error_from_stream_exception(exception_type, str(message))
+    if message_type == _ERROR_MESSAGE_TYPE:
+        error_code = headers.get(":error-code", "")
+        raise error_from_stream_exception(error_code, headers.get(":error-message") or error_code)
     return {headers[":event-type"]: data}

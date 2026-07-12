@@ -593,6 +593,18 @@ class TestChatStream:
         with pytest.raises(RateLimitError, match="slow down"):
             list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
 
+    def test_stream_error_frame_surfaces_service_error(
+        self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        # An unmodeled error frame carries :error-code/:error-message and no :event-type; the real
+        # service error must surface, not a KeyError-wrapped "':event-type'".
+        content = _encode(
+            {":message-type": "error", ":error-code": "internalServerException", ":error-message": "boom"}, b""
+        )
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(return_value=httpx.Response(200, content=content))
+        with pytest.raises(ProviderError, match="boom"):
+            list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
     def test_client_init_failure(self, fake_auth: FakeAuth, sync_create_raises: MagicMock) -> None:
         provider = BedrockProvider(auth=fake_auth)
         with pytest.raises(ProviderError, match="client init failed"):

@@ -66,14 +66,15 @@ def error_from_response(response: "httpx.Response") -> LmuxError:
     return _classify(_error_type(response), response.status_code, _message(response), _retry_after(response))
 
 
-def error_from_stream_exception(exception_type: str, message: str) -> LmuxError:
-    """Map a mid-stream event-stream ``:exception-type`` to the lmux exception hierarchy.
+def error_from_stream_exception(error_type: str, message: str) -> LmuxError:
+    """Map a mid-stream event-stream failure code to the lmux exception hierarchy.
 
-    Stream exception frames carry the AWS error name in camelCase (``throttlingException``) with no HTTP
-    status, so the name is PascalCased and run through the same classifier as the ``x-amzn-errortype``
+    Applies to both ``exception`` frames (the ``:exception-type`` header, camelCase like
+    ``throttlingException``) and unmodeled ``error`` frames (the ``:error-code`` header); the code has
+    no HTTP status, so it is PascalCased and run through the same classifier as the ``x-amzn-errortype``
     response header — keeping RateLimitError/InvalidRequestError/etc. catchable for mid-stream failures.
     """
-    normalized = exception_type[:1].upper() + exception_type[1:]
+    normalized = error_type[:1].upper() + error_type[1:]
     return _classify(normalized, None, message, None)
 
 
