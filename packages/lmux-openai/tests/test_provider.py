@@ -13,9 +13,11 @@ from pytest_mock import MockerFixture
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, NotFoundError, ProviderError
 from lmux.types import (
+    CachePointContent,
     FunctionDefinition,
     JsonObjectResponseFormat,
     ResponseInputMessage,
+    TextContent,
     Tool,
     UserMessage,
 )
@@ -195,6 +197,37 @@ class TestChat:
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], reasoning_effort="medium")
         body = json.loads(route.calls.last.request.content)
         assert body["reasoning_effort"] == "medium"
+
+    def test_explicit_cache_gpt56_emits_breakpoint_and_option(
+        self, sync_provider: OpenAIProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(_completion("gpt-5.6-sol"), _CHAT_URL, respx_mock)
+        sync_provider.chat("gpt-5.6-sol", [UserMessage(content=[TextContent(text="ctx"), CachePointContent()])])
+        body = json.loads(route.calls.last.request.content)
+        assert body["messages"] == [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "ctx", "prompt_cache_breakpoint": {"mode": "explicit"}}],
+            }
+        ]
+        assert body["prompt_cache_options"] == {"mode": "explicit"}
+
+    def test_cache_point_dropped_for_older_model(
+        self, sync_provider: OpenAIProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(completion, _CHAT_URL, respx_mock)
+        sync_provider.chat("gpt-5.5", [UserMessage(content=[TextContent(text="ctx"), CachePointContent()])])
+        body = json.loads(route.calls.last.request.content)
+        assert body["messages"] == [{"role": "user", "content": [{"type": "text", "text": "ctx"}]}]
+        assert "prompt_cache_options" not in body
+
+    def test_no_cache_option_without_cache_points(
+        self, sync_provider: OpenAIProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(_completion("gpt-5.6-sol"), _CHAT_URL, respx_mock)
+        sync_provider.chat("gpt-5.6-sol", [UserMessage(content=[TextContent(text="hi")])])
+        body = json.loads(route.calls.last.request.content)
+        assert "prompt_cache_options" not in body
 
     def test_status_error_mapped(self, sync_provider: OpenAIProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_CHAT_URL).mock(return_value=httpx.Response(400, json={"error": {"message": "bad"}}))

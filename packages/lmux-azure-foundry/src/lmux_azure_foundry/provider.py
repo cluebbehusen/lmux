@@ -34,6 +34,7 @@ from lmux_azure_foundry._exceptions import (
 )
 from lmux_azure_foundry._lazy import auth_headers, create_async_client, create_sync_client
 from lmux_azure_foundry._mappers import (
+    has_cache_breakpoint,
     map_chat_chunk,
     map_chat_completion,
     map_embedding_response,
@@ -43,6 +44,7 @@ from lmux_azure_foundry._mappers import (
     map_responses_response,
     map_tool_choice,
     map_tools,
+    supports_explicit_prompt_cache,
 )
 from lmux_azure_foundry._wire import (
     WireChunk,
@@ -498,7 +500,10 @@ class AzureFoundryProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: AzureFoundryParams | None,
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {"model": model, "messages": map_messages(messages)}
+        message_dicts = map_messages(messages, explicit_cache=supports_explicit_prompt_cache(model))
+        body: dict[str, Any] = {"model": model, "messages": message_dicts}
+        if has_cache_breakpoint(message_dicts):
+            body["prompt_cache_options"] = {"mode": "explicit"}
         if temperature is not None:
             body["temperature"] = temperature
         if max_tokens is not None:

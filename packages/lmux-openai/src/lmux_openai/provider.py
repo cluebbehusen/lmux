@@ -34,6 +34,7 @@ from lmux_openai._exceptions import (
 )
 from lmux_openai._lazy import create_async_client, create_sync_client
 from lmux_openai._mappers import (
+    has_cache_breakpoint,
     map_chat_chunk,
     map_chat_completion,
     map_embedding_response,
@@ -43,6 +44,7 @@ from lmux_openai._mappers import (
     map_responses_response,
     map_tool_choice,
     map_tools,
+    supports_explicit_prompt_cache,
 )
 from lmux_openai._wire import (
     WireChunk,
@@ -453,7 +455,7 @@ class OpenAIProvider(
         return {**body, "stream": True, "stream_options": {"include_usage": True}}
 
     @staticmethod
-    def _build_body(  # noqa: PLR0913
+    def _build_body(  # noqa: PLR0913, PLR0912
         model: str,
         messages: Sequence[Message],
         temperature: float | None,
@@ -466,7 +468,10 @@ class OpenAIProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: OpenAIParams | None,
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {"model": model, "messages": map_messages(messages)}
+        message_dicts = map_messages(messages, explicit_cache=supports_explicit_prompt_cache(model))
+        body: dict[str, Any] = {"model": model, "messages": message_dicts}
+        if has_cache_breakpoint(message_dicts):
+            body["prompt_cache_options"] = {"mode": "explicit"}
         if temperature is not None:
             body["temperature"] = temperature
         if max_tokens is not None:

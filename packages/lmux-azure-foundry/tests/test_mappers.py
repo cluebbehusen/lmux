@@ -30,6 +30,7 @@ from lmux.types import (
     UserMessage,
 )
 from lmux_azure_foundry._mappers import (
+    has_cache_breakpoint,
     map_chat_chunk,
     map_chat_completion,
     map_embedding_response,
@@ -39,6 +40,7 @@ from lmux_azure_foundry._mappers import (
     map_responses_response,
     map_tool_choice,
     map_tools,
+    supports_explicit_prompt_cache,
 )
 from lmux_azure_foundry._wire import (
     WireChunk,
@@ -110,6 +112,138 @@ class TestMapMessages:
         assert map_messages([ToolMessage(content="r", tool_call_id="c1")]) == [
             {"role": "tool", "content": "r", "tool_call_id": "c1"}
         ]
+
+    # --- explicit prompt caching (gpt-5.6+): map cache points to prompt_cache_breakpoint ---
+
+    def test_explicit_cache_attaches_to_preceding_block(self) -> None:
+        result = map_messages(
+            [UserMessage(content=[TextContent(text="Big"), CachePointContent()])], explicit_cache=True
+        )
+        assert result == [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "Big", "prompt_cache_breakpoint": {"mode": "explicit"}}],
+            }
+        ]
+
+    def test_explicit_cache_mid_message_marks_only_preceding_block(self) -> None:
+        result = map_messages(
+            [UserMessage(content=[TextContent(text="Stable"), CachePointContent(), TextContent(text="Varying")])],
+            explicit_cache=True,
+        )
+        assert result[0]["content"] == [
+            {"type": "text", "text": "Stable", "prompt_cache_breakpoint": {"mode": "explicit"}},
+            {"type": "text", "text": "Varying"},
+        ]
+
+    def test_explicit_cache_first_breakpoint_wins_within_message(self) -> None:
+        result = map_messages(
+            [UserMessage(content=[TextContent(text="ctx"), CachePointContent(), CachePointContent()])],
+            explicit_cache=True,
+        )
+        assert result[0]["content"] == [
+            {"type": "text", "text": "ctx", "prompt_cache_breakpoint": {"mode": "explicit"}}
+        ]
+
+    def test_explicit_cache_ttl_is_ignored(self) -> None:
+        result = map_messages(
+            [UserMessage(content=[TextContent(text="ctx"), CachePointContent(ttl="1h")])], explicit_cache=True
+        )
+        assert result[0]["content"] == [
+            {"type": "text", "text": "ctx", "prompt_cache_breakpoint": {"mode": "explicit"}}
+        ]
+
+    def test_explicit_leading_cache_attaches_to_previous_string_message(self) -> None:
+        result = map_messages(
+            [UserMessage(content="Hello"), UserMessage(content=[CachePointContent()])], explicit_cache=True
+        )
+        assert result == [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "Hello", "prompt_cache_breakpoint": {"mode": "explicit"}}],
+            }
+        ]
+
+    def test_explicit_leading_cache_attaches_to_previous_blocks(self) -> None:
+        result = map_messages(
+            [
+                UserMessage(content=[TextContent(text="A")]),
+                UserMessage(content=[CachePointContent(), TextContent(text="B")]),
+            ],
+            explicit_cache=True,
+        )
+        assert result[0]["content"] == [{"type": "text", "text": "A", "prompt_cache_breakpoint": {"mode": "explicit"}}]
+        assert result[1]["content"] == [{"type": "text", "text": "B"}]
+
+    def test_explicit_leading_cache_with_no_prefix_is_dropped(self) -> None:
+        result = map_messages([UserMessage(content=[CachePointContent(), TextContent(text="Hi")])], explicit_cache=True)
+        assert result == [{"role": "user", "content": [{"type": "text", "text": "Hi"}]}]
+
+    def test_explicit_first_leading_cache_wins(self) -> None:
+        result = map_messages(
+            [
+                UserMessage(content="prev"),
+                UserMessage(content=[CachePointContent(), CachePointContent(), TextContent(text="Hi")]),
+            ],
+            explicit_cache=True,
+        )
+        assert result[0]["content"] == [
+            {"type": "text", "text": "prev", "prompt_cache_breakpoint": {"mode": "explicit"}}
+        ]
+
+    def test_explicit_leading_cache_prior_already_marked_is_noop(self) -> None:
+        result = map_messages(
+            [
+                UserMessage(content=[TextContent(text="A"), CachePointContent()]),
+                UserMessage(content=[CachePointContent()]),
+            ],
+            explicit_cache=True,
+        )
+        assert result == [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "A", "prompt_cache_breakpoint": {"mode": "explicit"}}],
+            }
+        ]
+
+    def test_explicit_leading_cache_prior_no_content_is_noop(self) -> None:
+        tc = ToolCall(id="tc1", function=FunctionCallResult(name="f", arguments="{}"))
+        result = map_messages(
+            [AssistantMessage(tool_calls=[tc]), UserMessage(content=[CachePointContent()])], explicit_cache=True
+        )
+        assert "content" not in result[0]
+
+    def test_explicit_leading_cache_prior_empty_string_is_noop(self) -> None:
+        result = map_messages(
+            [UserMessage(content=""), UserMessage(content=[CachePointContent()])], explicit_cache=True
+        )
+        assert result == [{"role": "user", "content": ""}]
+
+    def test_explicit_leading_cache_prior_empty_blocks_is_noop(self) -> None:
+        result = map_messages(
+            [UserMessage(content=[]), UserMessage(content=[CachePointContent()])], explicit_cache=True
+        )
+        assert result == [{"role": "user", "content": []}]
+
+
+class TestSupportsExplicitPromptCache:
+    def test_gpt_5_6_supported(self) -> None:
+        assert supports_explicit_prompt_cache("gpt-5.6-sol") is True
+
+    def test_older_model_not_supported(self) -> None:
+        assert supports_explicit_prompt_cache("gpt-5.5") is False
+
+
+class TestHasCacheBreakpoint:
+    def test_true_when_a_block_carries_a_breakpoint(self) -> None:
+        messages = [{"role": "user", "content": [{"type": "text", "text": "x", "prompt_cache_breakpoint": {}}]}]
+        assert has_cache_breakpoint(messages) is True
+
+    def test_false_when_no_breakpoint(self) -> None:
+        assert has_cache_breakpoint([{"role": "user", "content": [{"type": "text", "text": "x"}]}]) is False
+
+    def test_false_for_string_content(self) -> None:
+        assert has_cache_breakpoint([{"role": "user", "content": "hi"}]) is False
 
 
 # MARK: map_tools
