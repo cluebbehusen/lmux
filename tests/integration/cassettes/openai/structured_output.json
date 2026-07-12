@@ -8,11 +8,11 @@
         "content": "What is 17 times 23?"
       }
     ],
+    "max_tokens": 64,
     "response_format": {
       "type": "json_schema",
       "json_schema": {
         "name": "math_answer",
-        "strict": true,
         "schema": {
           "type": "object",
           "properties": {
@@ -24,16 +24,16 @@
             "answer"
           ],
           "additionalProperties": false
-        }
+        },
+        "strict": true
       }
     },
-    "max_tokens": 64,
     "stream": false
   },
   "response": {
-    "id": "chatcmpl-E0snmDZVyFRyJI5rdCNLICs4tvgnj",
+    "id": "chatcmpl-E0uOhgMuQyb6vPxDT1E0SRQtRvnwZ",
     "object": "chat.completion",
-    "created": 1783879366,
+    "created": 1783885499,
     "model": "gpt-4o-mini-2024-07-18",
     "choices": [
       {

@@ -8,6 +8,7 @@
         "content": "What is the weather in Paris? Use the get_weather tool."
       }
     ],
+    "max_tokens": 128,
     "tools": [
       {
         "type": "function",
@@ -28,14 +29,12 @@
         }
       }
     ],
-    "tool_choice": "auto",
-    "max_tokens": 128,
     "stream": false
   },
   "response": {
-    "id": "chatcmpl-E0shOCK2zFdX6QpNQLmtp3LGkicY3",
+    "id": "chatcmpl-E0uOhUeclu1upy0pE0c9SAwfkJ37q",
     "object": "chat.completion",
-    "created": 1783878970,
+    "created": 1783885499,
     "model": "gpt-4o-mini-2024-07-18",
     "choices": [
       {
@@ -45,7 +44,7 @@
           "content": null,
           "tool_calls": [
             {
-              "id": "call_mzmRUASEjmhox7GvDOnZzo0X",
+              "id": "call_ACikIgmTJMKofLUwdAXN19KU",
               "type": "function",
               "function": {
                 "name": "get_weather",

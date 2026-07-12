@@ -2,18 +2,19 @@
   "endpoint": "https://api.openai.com/v1/responses",
   "request": {
     "model": "gpt-4o-mini",
-    "input": "Reply with exactly the word: pong"
+    "input": "Reply with exactly the word: pong",
+    "stream": false
   },
   "response": {
-    "id": "resp_0249ea4d39006c15006a53c85970d48195bdd660e795f32b47",
+    "id": "resp_0b8077f6b4dc62a6006a53eeb8cde08196ba22291939079086",
     "object": "response",
-    "created_at": 1783875673,
+    "created_at": 1783885496,
     "status": "completed",
     "background": false,
     "billing": {
       "payer": "developer"
     },
-    "completed_at": 1783875677,
+    "completed_at": 1783885498,
     "error": null,
     "frequency_penalty": 0.0,
     "incomplete_details": null,
@@ -24,7 +25,7 @@
     "moderation": null,
     "output": [
       {
-        "id": "msg_0249ea4d39006c15006a53c85dc63c81959c283305699f3cc3",
+        "id": "msg_0b8077f6b4dc62a6006a53eeba11408196a5f65270c02e7424",
         "type": "message",
         "status": "completed",
         "content": [

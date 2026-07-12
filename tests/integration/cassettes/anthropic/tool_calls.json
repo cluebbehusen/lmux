@@ -2,17 +2,17 @@
   "endpoint": "https://api.anthropic.com/v1/messages",
   "request": {
     "model": "claude-haiku-4-5",
-    "max_tokens": 256,
     "messages": [
       {
         "role": "user",
         "content": "What is the weather in Paris? Use the get_weather tool."
       }
     ],
+    "max_tokens": 256,
+    "stream": false,
     "tools": [
       {
         "name": "get_weather",
-        "description": "Get the current weather for a city.",
         "input_schema": {
           "type": "object",
           "properties": {
@@ -23,22 +23,20 @@
           "required": [
             "location"
           ]
-        }
+        },
+        "description": "Get the current weather for a city."
       }
-    ],
-    "tool_choice": {
-      "type": "auto"
-    }
+    ]
   },
   "response": {
     "model": "claude-haiku-4-5-20251001",
-    "id": "msg_011CcxbvxhyBVny2Pkq4wyog",
+    "id": "msg_011CcxjiH7pM4SedqSEJdxFZ",
     "type": "message",
     "role": "assistant",
     "content": [
       {
         "type": "tool_use",
-        "id": "toolu_01DHhJS2KSzGwyxKqkZc9874",
+        "id": "toolu_01JmhKxBnfQaY2QUgdr8nEow",
         "name": "get_weather",
         "input": {
           "location": "Paris"

@@ -12,35 +12,35 @@
     "stream": false
   },
   "response": {
-    "id": "chatcmpl-c1b2bd6a-45df-4896-9fdd-606ab22662d4",
+    "id": "chatcmpl-cbfded27-d18f-4d6f-bb5d-444f52792039",
     "object": "chat.completion",
-    "created": 1783884288,
+    "created": 1783885490,
     "model": "llama-3.1-8b-instant",
     "choices": [
       {
         "index": 0,
         "message": {
           "role": "assistant",
-          "content": "Pong"
+          "content": "pong"
         },
         "logprobs": null,
         "finish_reason": "stop"
       }
     ],
     "usage": {
-      "queue_time": 0.05051724,
+      "queue_time": 0.033684225,
       "prompt_tokens": 42,
-      "prompt_time": 0.002195562,
-      "completion_tokens": 3,
-      "completion_time": 0.007800693,
-      "total_tokens": 45,
-      "total_time": 0.009996255
+      "prompt_time": 0.002829142,
+      "completion_tokens": 2,
+      "completion_time": 0.009052967,
+      "total_tokens": 44,
+      "total_time": 0.011882109
     },
     "usage_breakdown": null,
-    "system_fingerprint": "fp_e2c608b1d6",
+    "system_fingerprint": "fp_020e283281",
     "x_groq": {
-      "id": "req_01kxbwm457e3yt0r56vq816pzx",
-      "seed": 926539735
+      "id": "req_01kxbxrt55fkva290kp18jk5n7",
+      "seed": 790581321
     },
     "service_tier": "on_demand"
   }
