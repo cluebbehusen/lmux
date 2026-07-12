@@ -105,6 +105,7 @@ class AnthropicProvider(
         max_retries: int | None = None,
         default_max_tokens: int = DEFAULT_MAX_TOKENS,
         transport: "httpx.BaseTransport | None" = None,
+        async_transport: "httpx.AsyncBaseTransport | None" = None,
     ) -> None:
         self._auth: AuthProvider[str] = auth or AnthropicEnvAuthProvider()
         self._base_url: str | None = base_url
@@ -112,6 +113,7 @@ class AnthropicProvider(
         self._max_retries: int | None = max_retries
         self._default_max_tokens: int = default_max_tokens
         self._transport: httpx.BaseTransport | None = transport
+        self._async_transport: httpx.AsyncBaseTransport | None = async_transport
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -153,6 +155,7 @@ class AnthropicProvider(
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
+            transport=self._async_transport,
         )
 
     def _get_sync_client(self) -> "httpx.Client":

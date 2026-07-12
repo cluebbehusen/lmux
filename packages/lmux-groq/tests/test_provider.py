@@ -393,6 +393,19 @@ class TestClientManagement:
         assert len(requests) == 1
         assert resp.provider == "groq"
 
+    async def test_custom_async_transport_used(self, fake_auth: FakeAuth, completion: dict[str, Any]) -> None:
+        # The injected async transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=completion)
+
+        provider = GroqProvider(auth=fake_auth, async_transport=httpx.MockTransport(handler))
+        resp = await provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "groq"
+
     def test_timeout_and_retries(
         self, fake_auth: FakeAuth, completion: dict[str, Any], mount_completion: Callable[[dict[str, Any]], respx.Route]
     ) -> None:

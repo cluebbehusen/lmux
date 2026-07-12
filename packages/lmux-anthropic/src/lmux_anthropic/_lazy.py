@@ -50,10 +50,15 @@ def create_async_client(
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
+    transport: "httpx.AsyncBaseTransport | None" = None,
 ) -> "httpx.AsyncClient":
     """Create an async httpx client for the Anthropic Messages API."""
     return _create_async(
-        base_url=base_url or DEFAULT_BASE_URL, headers=_api_headers(api_key), timeout=timeout, max_retries=max_retries
+        base_url=base_url or DEFAULT_BASE_URL,
+        headers=_api_headers(api_key),
+        timeout=timeout,
+        max_retries=max_retries,
+        transport=transport,
     )
 
 

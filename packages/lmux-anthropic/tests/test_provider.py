@@ -700,6 +700,19 @@ class TestClientManagement:
         assert len(requests) == 1
         assert resp.provider == "anthropic"
 
+    async def test_custom_async_transport_used(self, fake_auth: FakeAuth) -> None:
+        # The injected async transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=_message())
+
+        provider = AnthropicProvider(auth=fake_auth, async_transport=httpx.MockTransport(handler))
+        resp = await provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "anthropic"
+
     def test_timeout_and_retries(self, fake_auth: FakeAuth, respx_mock: respx.MockRouter) -> None:
         _ok(respx_mock)
         provider = AnthropicProvider(auth=fake_auth, timeout=30.0, max_retries=5)
