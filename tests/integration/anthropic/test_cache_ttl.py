@@ -39,8 +39,10 @@ def test_cold_write_then_warm_read(
     write = scenario(_WRITE_CASSETTE, _chat, requires="ANTHROPIC_API_KEY")
     assert_chat(write, provider="anthropic")
     assert write.usage is not None
-    assert write.usage.cache_creation_tokens_by_ttl is not None
-    assert set(write.usage.cache_creation_tokens_by_ttl) == {"1h"}
+    created = write.usage.cache_creation_tokens
+    assert created is not None
+    assert created > 1024  # a real, substantial cache write (the prompt is >1024 tokens by design)
+    assert write.usage.cache_creation_tokens_by_ttl == {"1h": created}  # all of it written at the 1h TTL
     assert_cost(
         write,
         input_rate=_INPUT_RATE,
@@ -52,5 +54,5 @@ def test_cold_write_then_warm_read(
     read = scenario(_READ_CASSETTE, _chat, requires="ANTHROPIC_API_KEY")
     assert_chat(read, provider="anthropic")
     assert read.usage is not None
-    assert read.usage.cache_read_tokens
+    assert read.usage.cache_read_tokens == created  # reads back exactly the tokens the 1h write created
     assert_cost(read, input_rate=_INPUT_RATE, output_rate=_OUTPUT_RATE, cache_read_rate=_CACHE_READ_RATE)

@@ -42,13 +42,15 @@ def test_cold_write_then_warm_read(
     write = scenario(_WRITE_CASSETTE, _chat, requires="OPENAI_API_KEY")
     assert_chat(write, provider="openai")
     assert write.usage is not None
-    assert write.usage.cache_creation_tokens
-    assert write.usage.cache_read_tokens is None
+    created = write.usage.cache_creation_tokens
+    assert created is not None
+    assert created > 1024  # a real, substantial cache write (the prompt is >1024 tokens by design)
+    assert write.usage.cache_read_tokens is None  # a cold write reads nothing
     assert_cost(write, **_RATES)
 
     read = scenario(_READ_CASSETTE, _chat, requires="OPENAI_API_KEY")
     assert_chat(read, provider="openai")
     assert read.usage is not None
-    assert read.usage.cache_read_tokens
-    assert read.usage.cache_creation_tokens is None
+    assert read.usage.cache_creation_tokens is None  # a warm read writes nothing new
+    assert read.usage.cache_read_tokens == created  # reads back exactly the tokens the write created
     assert_cost(read, **_RATES)
