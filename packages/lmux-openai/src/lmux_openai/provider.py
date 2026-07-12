@@ -429,6 +429,7 @@ class OpenAIProvider(
         body: dict[str, Any] = {"model": model, "input": map_response_input(input)}
         if provider_params is not None:
             body.update(OpenAIProvider._provider_params_kwargs(provider_params))
+            body.update(OpenAIProvider._cache_kwargs(provider_params))
             # Responses API uses reasoning={"effort": ...}, not flat reasoning_effort
             if provider_params.reasoning_effort is not None:
                 body["reasoning"] = {"effort": provider_params.reasoning_effort}
@@ -493,10 +494,25 @@ class OpenAIProvider(
             body["reasoning_effort"] = reasoning_effort
         if provider_params is not None:
             body.update(OpenAIProvider._provider_params_kwargs(provider_params))
+            body.update(OpenAIProvider._cache_kwargs(provider_params))
             # Chat Completions uses flat reasoning_effort; provider_params overrides top-level
             if provider_params.reasoning_effort is not None:
                 body["reasoning_effort"] = provider_params.reasoning_effort
         return body
+
+    @staticmethod
+    def _cache_kwargs(params: OpenAIParams) -> dict[str, Any]:
+        """Prompt-cache kwargs for Chat Completions and the Responses API (not embeddings).
+
+        ``prompt_cache_key`` is an optional routing hint that improves cache hit rates (recommended
+        for reliable gpt-5.6+ matching); ``prompt_cache_retention`` is legacy (pre-gpt-5.6).
+        """
+        kwargs: dict[str, Any] = {}
+        if params.prompt_cache_key is not None:
+            kwargs["prompt_cache_key"] = params.prompt_cache_key
+        if params.prompt_cache_retention is not None:
+            kwargs["prompt_cache_retention"] = params.prompt_cache_retention
+        return kwargs
 
     @staticmethod
     def _provider_params_kwargs(params: OpenAIParams) -> dict[str, Any]:
