@@ -1,0 +1,44 @@
+{
+  "endpoint": "https://bedrock-runtime.us-east-1.amazonaws.com/model/us.anthropic.claude-haiku-4-5-20251001-v1%3A0/converse",
+  "request": {
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "text": "Reply with exactly the word: pong"
+          }
+        ]
+      }
+    ],
+    "inferenceConfig": {
+      "maxTokens": 16
+    }
+  },
+  "response": {
+    "metrics": {
+      "latencyMs": 1326
+    },
+    "output": {
+      "message": {
+        "content": [
+          {
+            "text": "pong"
+          }
+        ],
+        "role": "assistant"
+      }
+    },
+    "stopReason": "end_turn",
+    "usage": {
+      "cacheReadInputTokenCount": 0,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokenCount": 0,
+      "cacheWriteInputTokens": 0,
+      "inputTokens": 15,
+      "outputTokens": 5,
+      "serverToolUsage": {},
+      "totalTokens": 20
+    }
+  }
+}

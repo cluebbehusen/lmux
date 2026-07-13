@@ -183,6 +183,8 @@ class BedrockProvider(
         use_fips: bool = False,
         timeout: float | None = None,
         max_retries: int | None = None,
+        transport: "httpx.BaseTransport | None" = None,
+        async_transport: "httpx.AsyncBaseTransport | None" = None,
     ) -> None:
         self._auth: AuthProvider[boto3.Session, AioSession] = auth or BedrockEnvAuthProvider()
         self._region: str | None = region
@@ -190,6 +192,8 @@ class BedrockProvider(
         self._use_fips: bool = use_fips
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
+        self._transport: httpx.BaseTransport | None = transport
+        self._async_transport: httpx.AsyncBaseTransport | None = async_transport
         self._auth_ctx: _AuthContext | None = None
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
@@ -229,7 +233,10 @@ class BedrockProvider(
         if self._sync_client is None:
             auth = self._resolve_auth()
             self._sync_client = create_sync_client(
-                base_url=self._base_url(auth), timeout=self._timeout, max_retries=self._max_retries
+                base_url=self._base_url(auth),
+                timeout=self._timeout,
+                max_retries=self._max_retries,
+                transport=self._transport,
             )
         return self._sync_client
 
@@ -238,7 +245,10 @@ class BedrockProvider(
         if self._async_client is None or self._async_loop is not loop:
             auth = self._resolve_auth()
             self._async_client = create_async_client(
-                base_url=self._base_url(auth), timeout=self._timeout, max_retries=self._max_retries
+                base_url=self._base_url(auth),
+                timeout=self._timeout,
+                max_retries=self._max_retries,
+                transport=self._async_transport,
             )
             self._async_loop = loop
         return self._async_client
