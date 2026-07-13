@@ -1,0 +1,58 @@
+{
+  "endpoint": "https://bedrock-runtime.us-east-1.amazonaws.com/model/us.anthropic.claude-haiku-4-5-20251001-v1%3A0/converse",
+  "request": {
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "text": "What is 17 * 23? Think step by step, then state the number."
+          }
+        ]
+      }
+    ],
+    "inferenceConfig": {
+      "maxTokens": 2048
+    },
+    "additionalModelRequestFields": {
+      "thinking": {
+        "type": "enabled",
+        "budget_tokens": 1024
+      }
+    }
+  },
+  "response": {
+    "metrics": {
+      "latencyMs": 2315
+    },
+    "output": {
+      "message": {
+        "content": [
+          {
+            "reasoningContent": {
+              "reasoningText": {
+                "signature": "ErsDCkgIDxABGAIqQEOy0bkOBLsAgAYwvSGcJRaURq4F7uLP6Op92OXrVUP3IDwN49kp545mTPPMEIkz1zqHYzbW6I0CHcVJrTVsK9ISDD9VXpFFdfMa+aHZURoMqy7ESKtzXFdIjODnIjC6eukgu4xOnJ6GVpKsSx1FhCaEhyy+7V6fHNyQovJA/a9rKUSMnDFJ/CcCnM798OIqoAJs80Pw7tVxEjCX6lYINHmyn3cmF1Dv7wceHRMwwd+d+OotXkdaxcjYX7Y+z4XmxMKfUTx8BEPe+qonPAIkBx5ip+nRRNNiEas9zxoH/PnbSjmq/hHQ2HwKpcQL13H3lRDSukQwegvXypaq6wppjqI5D1eYzZnY9homWUCUyS8BBTCLF3Q2c+InBmI+SyJ5OMyZfT7Y6FBf98bBDLykBA+HsDeSXKCdL1zo6dxekc3HYjC76bZegf3V6Uj2y7U7sAb+X3C+jjVWqQNZjnUSJNRKabg38L9Sjtb1tahTUuinaWj+nzUplWSCi1k07VRF1l+JsMYpaTCaQnidvz1O4tn8zA4Q6f3sxLUFIUGSVgpwg/AmOySepREKfhNHuW247OcYAQ==",
+                "text": "Let me calculate 17 * 23 step by step.\n\nMethod 1: Break it down\n17 * 23 = 17 * (20 + 3)\n= 17 * 20 + 17 * 3\n= 340 + 51\n= 391\n\nLet me verify with another method:\nMethod 2: Standard multiplication\n  17\n\u00d723\n---\n  51  (17 * 3)\n340  (17 * 20)\n---\n391\n\nBoth methods give me 391."
+              }
+            }
+          },
+          {
+            "text": "# Calculating 17 \u00d7 23\n\nLet me break this down:\n\n17 \u00d7 23 = 17 \u00d7 (20 + 3)\n\n= (17 \u00d7 20) + (17 \u00d7 3)\n\n= 340 + 51\n\n= **391**"
+          }
+        ],
+        "role": "assistant"
+      }
+    },
+    "stopReason": "end_turn",
+    "usage": {
+      "cacheReadInputTokenCount": 0,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokenCount": 0,
+      "cacheWriteInputTokens": 0,
+      "inputTokens": 55,
+      "outputTokens": 201,
+      "serverToolUsage": {},
+      "totalTokens": 256
+    }
+  }
+}

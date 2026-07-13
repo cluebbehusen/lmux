@@ -16,6 +16,7 @@ the active mode; a test declares the modes it supports via markers (`@verified` 
 all three).
 """
 
+import base64
 import json
 import math
 import os
@@ -208,6 +209,12 @@ def _replay_transport(cassette: dict[str, Any], sink: list[httpx.Request]) -> ht
             return httpx.Response(
                 200, content=cassette["response_sse"].encode(), headers={"content-type": "text/event-stream"}
             )
+        if "response_raw" in cassette:
+            return httpx.Response(
+                200,
+                content=base64.b64decode(cassette["response_raw"]),
+                headers={"content-type": cassette["content_type"]},
+            )
         return httpx.Response(200, json=cassette["response"])
 
     return httpx.MockTransport(_handler)
@@ -216,10 +223,15 @@ def _replay_transport(cassette: dict[str, Any], sink: list[httpx.Request]) -> ht
 def _write_captured_cassette(cassette_path: Path, request: httpx.Request, response: httpx.Response) -> None:
     endpoint = str(request.url).split("?", 1)[0]
     req_body = json.loads(request.content) if request.content else {}
-    if "text/event-stream" in response.headers.get("content-type", ""):
-        cassette: dict[str, Any] = {"endpoint": endpoint, "request": _scrub(req_body), "response_sse": response.text}
+    base: dict[str, Any] = {"endpoint": endpoint, "request": _scrub(req_body)}
+    content_type = response.headers.get("content-type", "")
+    if "text/event-stream" in content_type:
+        cassette = {**base, "response_sse": response.text}
+    elif "json" in content_type:
+        cassette = {**base, "response": _scrub(response.json())}
     else:
-        cassette = {"endpoint": endpoint, "request": _scrub(req_body), "response": _scrub(response.json())}
+        # Binary bodies (e.g. AWS event-stream framing) — store the raw bytes verbatim.
+        cassette = {**base, "content_type": content_type, "response_raw": base64.b64encode(response.content).decode()}
     cassette_path.parent.mkdir(parents=True, exist_ok=True)
     cassette_path.write_text(json.dumps(cassette, indent=2) + "\n")
 
@@ -234,15 +246,24 @@ def scenario() -> Callable[..., Any]:
     transport live. offline replays the cassette and asserts the provider called the
     recorded endpoint; live hits the API; record hits the API *through the provider*,
     captures the exchange, and writes the cassette.
-    ``requires`` names the env var live/record need (those modes skip if it's absent)."""
+    ``requires`` names the env var live/record need (those modes skip if it's absent).
+    ``offline_auth`` overrides the fake auth used offline — the default is a generic
+    key-based stub; providers with a different auth shape (e.g. Bedrock's boto3 session)
+    pass their own."""
     captured: list[tuple[httpx.Request, httpx.Response]] = []
     recorded: set[Path] = set()
 
-    def _run(cassette_path: Path, call: Callable[..., Any], *, requires: str | None = None) -> Any:  # noqa: ANN401
+    def _run(
+        cassette_path: Path,
+        call: Callable[..., Any],
+        *,
+        requires: str | None = None,
+        offline_auth: Any = _OFFLINE_AUTH,  # noqa: ANN401
+    ) -> Any:  # noqa: ANN401
         if _MODE == "offline":
             cassette = json.loads(cassette_path.read_text())
             seen: list[httpx.Request] = []
-            resp = call(_OFFLINE_AUTH, _replay_transport(cassette, seen))
+            resp = call(offline_auth, _replay_transport(cassette, seen))
             # Assert the outbound endpoint here, not inside the transport: providers wrap
             # request errors in a broad except that would swallow an assertion raised there.
             assert seen, "the provider made no request"

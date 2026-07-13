@@ -1,0 +1,40 @@
+{
+  "endpoint": "https://bedrock-runtime.us-east-1.amazonaws.com/model/amazon.nova-micro-v1%3A0/converse",
+  "request": {
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "text": "Reply with exactly the word: pong"
+          }
+        ]
+      }
+    ],
+    "inferenceConfig": {
+      "maxTokens": 16
+    }
+  },
+  "response": {
+    "metrics": {
+      "latencyMs": 259
+    },
+    "output": {
+      "message": {
+        "content": [
+          {
+            "text": "pong"
+          }
+        ],
+        "role": "assistant"
+      }
+    },
+    "stopReason": "end_turn",
+    "usage": {
+      "inputTokens": 8,
+      "outputTokens": 3,
+      "serverToolUsage": {},
+      "totalTokens": 11
+    }
+  }
+}
