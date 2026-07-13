@@ -33,13 +33,14 @@ def create_sync_client(
     base_url: str,
     timeout: float | None = None,
     max_retries: int | None = None,
+    transport: "httpx.BaseTransport | None" = None,
 ) -> "httpx.Client":
     """Create an httpx client for the Bedrock runtime endpoint.
 
     Auth headers are attached per request (SigV4 signs the exact body/host, or a
     bearer token is set), so the client carries no default ``Authorization``.
     """
-    return _create_sync(base_url=base_url, headers={}, timeout=timeout, max_retries=max_retries)
+    return _create_sync(base_url=base_url, headers={}, timeout=timeout, max_retries=max_retries, transport=transport)
 
 
 def create_async_client(
@@ -47,6 +48,7 @@ def create_async_client(
     base_url: str,
     timeout: float | None = None,
     max_retries: int | None = None,
+    transport: "httpx.AsyncBaseTransport | None" = None,
 ) -> "httpx.AsyncClient":
     """Create an async httpx client for the Bedrock runtime endpoint."""
-    return _create_async(base_url=base_url, headers={}, timeout=timeout, max_retries=max_retries)
+    return _create_async(base_url=base_url, headers={}, timeout=timeout, max_retries=max_retries, transport=transport)

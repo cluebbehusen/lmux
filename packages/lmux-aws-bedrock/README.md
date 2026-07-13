@@ -128,5 +128,7 @@ BedrockProvider(
     use_fips=...,      # bool, default False: target the FIPS 140-3 endpoint (bedrock-runtime-fips.<region>.amazonaws.com)
     timeout=...,       # request timeout in seconds
     max_retries=...,   # retry count for transient failures
+    transport=...,        # Optional httpx.BaseTransport for the sync client (proxies, testing)
+    async_transport=...,  # Optional httpx.AsyncBaseTransport for the async client
 )
 ```

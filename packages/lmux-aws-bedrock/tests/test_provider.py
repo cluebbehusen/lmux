@@ -851,14 +851,14 @@ class TestClientManagement:
         provider = BedrockProvider(auth=fake_auth, timeout=30.0, max_retries=5)
         provider._get_sync_client()
         mock_create_sync.assert_called_once_with(
-            base_url="https://bedrock-runtime.us-east-1.amazonaws.com", timeout=30.0, max_retries=5
+            base_url="https://bedrock-runtime.us-east-1.amazonaws.com", timeout=30.0, max_retries=5, transport=None
         )
 
     async def test_async_timeout_and_retries_forwarded(self, fake_auth: FakeAuth, mock_create_async: MagicMock) -> None:
         provider = BedrockProvider(auth=fake_auth, timeout=30.0, max_retries=5)
         await provider._get_async_client()
         mock_create_async.assert_called_once_with(
-            base_url="https://bedrock-runtime.us-east-1.amazonaws.com", timeout=30.0, max_retries=5
+            base_url="https://bedrock-runtime.us-east-1.amazonaws.com", timeout=30.0, max_retries=5, transport=None
         )
 
     def test_no_credentials_raises_auth_error(
@@ -900,6 +900,32 @@ class TestClientManagement:
         with pytest.raises(ProviderError, match="client init failed"):
             provider.chat(MODEL, [UserMessage(content="Hi")])
         sync_create_raises.assert_called_once()
+
+    def test_custom_transport_used(self, fake_auth: FakeAuth, converse_response: dict[str, Any]) -> None:
+        # The injected transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=converse_response)
+
+        provider = BedrockProvider(auth=fake_auth, transport=httpx.MockTransport(handler))
+        resp = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "aws-bedrock"
+
+    async def test_custom_async_transport_used(self, fake_auth: FakeAuth, converse_response: dict[str, Any]) -> None:
+        # The injected async transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=converse_response)
+
+        provider = BedrockProvider(auth=fake_auth, async_transport=httpx.MockTransport(handler))
+        resp = await provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "aws-bedrock"
 
 
 # MARK: SigV4 Auth
