@@ -43,6 +43,7 @@ from lmux_anthropic._wire import (
     WireMessage,
     WireMessageDeltaEvent,
     WireMessageStartEvent,
+    WireOutputTokensDetails,
     WireTextBlock,
     WireTextDelta,
     WireThinkingBlock,
@@ -328,7 +329,13 @@ def _map_usage(usage: WireUsage) -> Usage:
         cache_read_tokens=cache_read or None,
         cache_creation_tokens=cache_creation or None,
         cache_creation_tokens_by_ttl=_map_cache_creation_breakdown(usage.cache_creation),
+        reasoning_tokens=_thinking_tokens(usage.output_tokens_details),
     )
+
+
+def _thinking_tokens(details: WireOutputTokensDetails | None) -> int | None:
+    """Extended-thinking tokens (a subset of output_tokens), or None when absent/zero."""
+    return (details.thinking_tokens if details else None) or None
 
 
 def _map_cache_creation_breakdown(cache_creation: WireCacheCreation | None) -> dict[str, int] | None:
@@ -404,4 +411,5 @@ def _map_delta_usage(delta_usage: WireDeltaUsage, start_usage: Usage) -> Usage:
         cache_read_tokens=start_usage.cache_read_tokens,
         cache_creation_tokens=start_usage.cache_creation_tokens,
         cache_creation_tokens_by_ttl=start_usage.cache_creation_tokens_by_ttl,
+        reasoning_tokens=_thinking_tokens(delta_usage.output_tokens_details),
     )

@@ -708,6 +708,29 @@ class TestMapMessageResponse:
         assert result.usage is not None
         assert result.usage.cache_creation_tokens_by_ttl is None
 
+    def test_thinking_tokens_populate_reasoning(self) -> None:
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Hello"}],
+            "usage": self._usage(output_tokens=140, output_tokens_details={"thinking_tokens": 121}),
+        }
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", lambda _m, _u: None)
+        assert result.usage is not None
+        assert result.usage.output_tokens == 140  # includes the thinking subset
+        assert result.usage.reasoning_tokens == 121
+
+    def test_zero_thinking_tokens_is_none(self) -> None:
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Hello"}],
+            "usage": self._usage(output_tokens_details={"thinking_tokens": 0}),
+        }
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", lambda _m, _u: None)
+        assert result.usage is not None
+        assert result.usage.reasoning_tokens is None
+
 
 class TestMapMessageStart:
     def test_extracts_model_and_usage(self) -> None:
@@ -804,6 +827,18 @@ class TestMapMessageDelta:
             cache_creation_tokens=2000,
             cache_creation_tokens_by_ttl={"1h": 2000},
         )
+
+    def test_delta_usage_carries_thinking_tokens(self) -> None:
+        start_usage = Usage(input_tokens=51, output_tokens=0)
+        event = {
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn"},
+            "usage": {"output_tokens": 66, "output_tokens_details": {"thinking_tokens": 51}},
+        }
+        chunk = map_message_delta(WireMessageDeltaEvent.model_validate(event), start_usage)
+        assert chunk.usage is not None
+        assert chunk.usage.output_tokens == 66  # includes the thinking subset
+        assert chunk.usage.reasoning_tokens == 51
 
 
 class TestMapToolChoice:
