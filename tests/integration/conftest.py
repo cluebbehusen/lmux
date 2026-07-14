@@ -20,8 +20,9 @@ import base64
 import json
 import math
 import os
+import re
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,11 @@ _ALL_MODES = frozenset({"offline", "live", "record"})
 
 _FINISH_REASONS = {"stop", "length", "content_filter", "tool_calls"}
 _SECRET_KEYS = {"authorization", "api_key", "api-key", "openai-organization", "openai-project", "x-api-key"}
+
+# Vertex bakes the GCP project id into the URL path (/projects/<id>/locations/...). Recorded
+# cassettes store a fixed placeholder instead so no project-scoped identifier is committed; the
+# offline provider is built with this same literal so the endpoint-path assertion still matches.
+_VERTEX_PROJECT_PLACEHOLDER = "lmux-integration"
 
 
 # MARK: Gating
@@ -220,8 +226,13 @@ def _replay_transport(cassette: dict[str, Any], sink: list[httpx.Request]) -> ht
     return httpx.MockTransport(_handler)
 
 
+def _normalize_endpoint(endpoint: str) -> str:
+    """Swap the GCP project id in a Vertex URL for a placeholder (only Vertex URLs match)."""
+    return re.sub(r"(/projects/)[^/]+(/locations/)", rf"\g<1>{_VERTEX_PROJECT_PLACEHOLDER}\g<2>", endpoint)
+
+
 def _write_captured_cassette(cassette_path: Path, request: httpx.Request, response: httpx.Response) -> None:
-    endpoint = str(request.url).split("?", 1)[0]
+    endpoint = _normalize_endpoint(str(request.url).split("?", 1)[0])
     req_body = json.loads(request.content) if request.content else {}
     base: dict[str, Any] = {"endpoint": endpoint, "request": _scrub(req_body)}
     content_type = response.headers.get("content-type", "")
@@ -246,9 +257,9 @@ def scenario() -> Callable[..., Any]:
     transport live. offline replays the cassette and asserts the provider called the
     recorded endpoint; live hits the API; record hits the API *through the provider*,
     captures the exchange, and writes the cassette.
-    ``requires`` names the env var live/record need (those modes skip if it's absent).
-    ``offline_auth`` overrides the fake auth used offline — the default is a generic
-    key-based stub; providers with a different auth shape (e.g. Bedrock's boto3 session)
+    ``requires`` names the env var(s) live/record need — a single name or several; those modes
+    skip if any is absent. ``offline_auth`` overrides the fake auth used offline — the default is a
+    generic key-based stub; providers with a different auth shape (e.g. Bedrock's boto3 session)
     pass their own."""
     captured: list[tuple[httpx.Request, httpx.Response]] = []
     recorded: set[Path] = set()
@@ -257,7 +268,7 @@ def scenario() -> Callable[..., Any]:
         cassette_path: Path,
         call: Callable[..., Any],
         *,
-        requires: str | None = None,
+        requires: str | Sequence[str] | None = None,
         offline_auth: Any = _OFFLINE_AUTH,  # noqa: ANN401
     ) -> Any:  # noqa: ANN401
         if _MODE == "offline":
@@ -272,8 +283,10 @@ def scenario() -> Callable[..., Any]:
                 f"replayed request hit {seen[0].url.path}, cassette recorded {recorded_path}"
             )
             return resp
-        if requires and not os.environ.get(requires):
-            pytest.skip(f"{requires} not set")
+        required = [requires] if isinstance(requires, str) else (requires or [])
+        missing = [name for name in required if not os.environ.get(name)]
+        if missing:
+            pytest.skip(f"{', '.join(missing)} not set")
         if _MODE == "record":
             start = len(captured)
             resp = call(None, _RecordingTransport(captured))
@@ -296,3 +309,9 @@ def cosine_similarity() -> Callable[[list[float], list[float]], float]:
         return dot / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
 
     return _cos
+
+
+@pytest.fixture
+def vertex_project_placeholder() -> str:
+    """The placeholder project id baked into recorded Vertex cassettes (see ``_normalize_endpoint``)."""
+    return _VERTEX_PROJECT_PLACEHOLDER

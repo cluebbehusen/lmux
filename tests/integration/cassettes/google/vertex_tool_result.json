@@ -1,0 +1,107 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-2.5-flash:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is the weather in Paris? Use the tool, then tell me in one sentence."
+          }
+        ]
+      },
+      {
+        "role": "model",
+        "parts": [
+          {
+            "functionCall": {
+              "name": "get_weather",
+              "args": {
+                "location": "Paris"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "parts": [
+          {
+            "functionResponse": {
+              "name": "get_weather",
+              "response": {
+                "temperature_c": 15,
+                "conditions": "sunny"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "get_weather",
+            "description": "Get the current weather for a location.",
+            "parametersJsonSchema": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 128,
+      "thinkingConfig": {
+        "thinkingBudget": 0
+      }
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "The weather in Paris is sunny with a temperature of 15 degrees Celsius."
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "avgLogprobs": -0.00210473220795393
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 43,
+      "candidatesTokenCount": 16,
+      "totalTokenCount": 59,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 43
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 16
+        }
+      ]
+    },
+    "modelVersion": "gemini-2.5-flash",
+    "createTime": "2026-07-14T21:34:56.345696Z",
+    "responseId": "gKtWauCMFcrvj8MP85qlmAY"
+  }
+}

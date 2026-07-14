@@ -1,0 +1,93 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-2.5-flash:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is the weather in Paris?"
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "get_weather",
+            "description": "Get the current weather for a location.",
+            "parametersJsonSchema": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "toolConfig": {
+      "functionCallingConfig": {
+        "mode": "ANY",
+        "allowedFunctionNames": [
+          "get_weather"
+        ]
+      }
+    },
+    "generationConfig": {
+      "maxOutputTokens": 128,
+      "thinkingConfig": {
+        "thinkingBudget": 0
+      }
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "functionCall": {
+                "name": "get_weather",
+                "args": {
+                  "location": "Paris"
+                }
+              }
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "avgLogprobs": -0.01798446923494339
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 18,
+      "candidatesTokenCount": 5,
+      "totalTokenCount": 23,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 18
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 5
+        }
+      ]
+    },
+    "modelVersion": "gemini-2.5-flash",
+    "createTime": "2026-07-14T21:34:55.603801Z",
+    "responseId": "f6tWapntJISfitUPu6bpiQM"
+  }
+}

@@ -79,6 +79,7 @@ def _response(  # noqa: PLR0913
     prompt_tokens: int = 10,
     output_tokens: int = 5,
     cached_tokens: int | None = None,
+    thoughts_tokens: int | None = None,
     usage: bool = True,
 ) -> Json:
     """Build a raw generateContent JSON body."""
@@ -92,6 +93,8 @@ def _response(  # noqa: PLR0913
         meta: Json = {"promptTokenCount": prompt_tokens, "candidatesTokenCount": output_tokens}
         if cached_tokens is not None:
             meta["cachedContentTokenCount"] = cached_tokens
+        if thoughts_tokens is not None:
+            meta["thoughtsTokenCount"] = thoughts_tokens
         response["usageMetadata"] = meta
     return response
 
@@ -164,7 +167,7 @@ class TestMapMessages:
                 "role": "model",
                 "parts": [
                     {"text": "Let me check."},
-                    {"functionCall": {"id": "tc1", "name": "get_weather", "args": {"city": "NYC"}}},
+                    {"functionCall": {"name": "get_weather", "args": {"city": "NYC"}}},
                 ],
             }
         ]
@@ -172,7 +175,7 @@ class TestMapMessages:
     def test_assistant_message_tool_calls_no_content(self) -> None:
         tc = ToolCall(id="tc1", function=FunctionCallResult(name="f", arguments="{}"))
         _system, contents = map_messages([AssistantMessage(content=None, tool_calls=[tc])])
-        assert contents == [{"role": "model", "parts": [{"functionCall": {"id": "tc1", "name": "f", "args": {}}}]}]
+        assert contents == [{"role": "model", "parts": [{"functionCall": {"name": "f", "args": {}}}]}]
 
     def test_tool_message_json_content(self) -> None:
         tc = ToolCall(id="tc1", function=FunctionCallResult(name="get_weather", arguments="{}"))
@@ -184,7 +187,7 @@ class TestMapMessages:
         )
         assert contents[1] == {
             "role": "user",
-            "parts": [{"functionResponse": {"id": "tc1", "name": "get_weather", "response": {"temperature": "72F"}}}],
+            "parts": [{"functionResponse": {"name": "get_weather", "response": {"temperature": "72F"}}}],
         }
 
     def test_tool_message_plain_text_content(self) -> None:
@@ -200,6 +203,21 @@ class TestMapMessages:
     def test_tool_message_unknown_id_uses_id_as_name(self) -> None:
         _system, contents = map_messages([ToolMessage(content='{"result": "ok"}', tool_call_id="unknown_id")])
         assert contents[0]["parts"][0]["functionResponse"]["name"] == "unknown_id"
+
+    def test_tool_call_ids_included_when_enabled(self) -> None:
+        # The Developer API (v1beta) keeps the tool-call id on both functionCall and functionResponse.
+        tc = ToolCall(id="tc1", function=FunctionCallResult(name="get_weather", arguments="{}"))
+        _system, contents = map_messages(
+            [
+                AssistantMessage(content=None, tool_calls=[tc]),
+                ToolMessage(content='{"ok": true}', tool_call_id="tc1"),
+            ],
+            include_tool_call_ids=True,
+        )
+        call = contents[0]["parts"][0]["functionCall"]
+        response = contents[1]["parts"][0]["functionResponse"]
+        assert call == {"name": "get_weather", "args": {}, "id": "tc1"}
+        assert response == {"name": "get_weather", "response": {"ok": True}, "id": "tc1"}
 
     def test_no_system_returns_none(self) -> None:
         system, _contents = map_messages([UserMessage(content="hi")])
@@ -367,6 +385,17 @@ class TestMapGenerateContentResponse:
         )
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 50
+
+    def test_thinking_tokens_folded_into_output(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        # Gemini bills thoughtsTokenCount at the output rate, so output_tokens is candidates + thoughts,
+        # while reasoning_tokens keeps the thinking sub-count.
+        response = _response(parts=[{"text": "Answer"}], output_tokens=3, thoughts_tokens=64)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.0-flash", "google", noop_cost_fn
+        )
+        assert result.usage is not None
+        assert result.usage.output_tokens == 67
+        assert result.usage.reasoning_tokens == 64
 
     def test_no_usage(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"text": "Hi"}], usage=False)

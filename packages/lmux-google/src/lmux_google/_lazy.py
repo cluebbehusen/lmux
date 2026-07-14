@@ -117,9 +117,12 @@ def create_sync_client(
     headers: Mapping[str, str],
     timeout: float | None = None,
     max_retries: int | None = None,
+    transport: "httpx.BaseTransport | None" = None,
 ) -> "httpx.Client":
     """Create an httpx client for the Gemini REST API."""
-    return _create_sync(base_url=base_url, headers=headers, timeout=timeout, max_retries=max_retries)
+    return _create_sync(
+        base_url=base_url, headers=headers, timeout=timeout, max_retries=max_retries, transport=transport
+    )
 
 
 def create_async_client(
@@ -128,6 +131,9 @@ def create_async_client(
     headers: Mapping[str, str],
     timeout: float | None = None,
     max_retries: int | None = None,
+    transport: "httpx.AsyncBaseTransport | None" = None,
 ) -> "httpx.AsyncClient":
     """Create an async httpx client for the Gemini REST API."""
-    return _create_async(base_url=base_url, headers=headers, timeout=timeout, max_retries=max_retries)
+    return _create_async(
+        base_url=base_url, headers=headers, timeout=timeout, max_retries=max_retries, transport=transport
+    )

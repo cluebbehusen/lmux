@@ -753,6 +753,32 @@ class TestClientManagement:
         loop1.close()
         loop2.close()
 
+    def test_custom_transport_used(self, api_auth: FakeAPIKeyAuth, gen_response: dict[str, Any]) -> None:
+        # The injected transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=gen_response)
+
+        provider = GoogleProvider(auth=api_auth, vertexai=False, transport=httpx.MockTransport(handler))
+        resp = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "google"
+
+    async def test_custom_async_transport_used(self, api_auth: FakeAPIKeyAuth, gen_response: dict[str, Any]) -> None:
+        # The injected async transport must be the one that serves the request.
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=gen_response)
+
+        provider = GoogleProvider(auth=api_auth, vertexai=False, async_transport=httpx.MockTransport(handler))
+        resp = await provider.achat(MODEL, [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "google"
+
 
 # MARK: Register Pricing
 

@@ -117,5 +117,9 @@ GoogleProvider(
     project=...,    # GCP project ID
     location=...,   # GCP region
     vertexai=...,   # Use Vertex AI (default: True) vs. AI Studio
+    timeout=...,    # request timeout in seconds
+    max_retries=..., # retry count for transient failures
+    transport=...,        # Optional httpx.BaseTransport for the sync client (proxies, testing)
+    async_transport=...,  # Optional httpx.AsyncBaseTransport for the async client
 )
 ```

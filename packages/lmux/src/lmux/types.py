@@ -233,6 +233,8 @@ class Usage(BaseModel):
     their mappers. ``cache_read_tokens`` and ``cache_creation_tokens`` are
     subsets of ``input_tokens``.
 
+    ``reasoning_tokens``, when reported, is a subset of ``output_tokens``.
+
     ``cache_creation_tokens_by_ttl`` breaks down cache writes by TTL (e.g.
     ``{"5m": 1200, "1h": 50000}``) for providers that report it; cache-write
     rates can differ per TTL, so cost calculation prefers this breakdown over

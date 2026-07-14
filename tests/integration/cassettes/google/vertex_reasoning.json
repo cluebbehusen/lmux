@@ -1,0 +1,64 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-2.5-flash:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is 17 times 23? Reply with just the number."
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 2048,
+      "thinkingConfig": {
+        "thinkingBudget": 1024,
+        "includeThoughts": true
+      }
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Okay, I've received your request. You're asking for the product of 17 and 23. My immediate thought process is to perform that calculation. I'll break it down mentally: first, I'll multiply 17 by 20, which gives me 340. Then, I'll multiply 17 by the remaining 3, which results in 51. Finally, I'll add those two intermediate results together: 340 plus 51, leading me to the final answer of 391.",
+              "thought": true
+            },
+            {
+              "text": "391"
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "avgLogprobs": -1.7295287450154622
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 16,
+      "candidatesTokenCount": 3,
+      "totalTokenCount": 83,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 16
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 3
+        }
+      ],
+      "thoughtsTokenCount": 64
+    },
+    "modelVersion": "gemini-2.5-flash",
+    "createTime": "2026-07-14T21:34:53.037581Z",
+    "responseId": "fatWas2lAtLMj8MPvLGhmAE"
+  }
+}
