@@ -44,13 +44,13 @@ def test_cold_write_then_warm_read(
     def _chat(auth: Any, transport: Any) -> ChatResponse:  # noqa: ANN401 — harness-supplied per mode
         return vertex_provider(auth, transport).chat(_MODEL, [UserMessage(content=_PROMPT)], max_tokens=_MAX_TOKENS)
 
-    cold = scenario(_WRITE_CASSETTE, _chat, requires="VERTEXAI_API_KEY")
+    cold = scenario(_WRITE_CASSETTE, _chat, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     assert_chat(cold, provider="google")
     assert cold.usage is not None
     assert cold.usage.cache_read_tokens is None  # a cold call reads nothing from cache
     assert_cost(cold, **_RATES)
 
-    warm = scenario(_READ_CASSETTE, _chat, requires="VERTEXAI_API_KEY")
+    warm = scenario(_READ_CASSETTE, _chat, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     assert_chat(warm, provider="google")
     assert warm.usage is not None
     read = warm.usage.cache_read_tokens

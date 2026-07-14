@@ -30,10 +30,14 @@ def test_reasoning(
             _MODEL, [UserMessage(content=_PROMPT)], max_tokens=_MAX_TOKENS, reasoning_effort="low"
         )
 
-    resp = scenario(_CASSETTE, _chat, requires="VERTEXAI_API_KEY")
+    resp = scenario(_CASSETTE, _chat, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     assert_chat(resp, provider="google")
     assert "391" in (resp.content or "")
     assert resp.usage is not None
     assert resp.usage.reasoning_tokens is not None
     assert resp.usage.reasoning_tokens > 0
+    # output_tokens folds in the thinking tokens (Gemini bills them at the output rate), so it exceeds
+    # the reasoning sub-count; before the fix output_tokens was just the few visible tokens. This makes
+    # assert_cost bill the thinking tokens. (Live-safe: pins the invariant, not the exact thought count.)
+    assert resp.usage.output_tokens > resp.usage.reasoning_tokens
     assert_cost(resp, **_RATES)

@@ -33,13 +33,13 @@ def test_embeddings_predict_fanout(
     def _embed(auth: Any, transport: Any) -> EmbeddingResponse:  # noqa: ANN401 — harness-supplied per mode
         return vertex_provider(auth, transport).embed(_FANOUT_MODEL, ["alpha", "beta", "gamma"], dimensions=_DIMENSIONS)
 
-    resp = scenario(_FANOUT_CASSETTE, _embed, requires="VERTEXAI_API_KEY")
+    resp = scenario(_FANOUT_CASSETTE, _embed, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     assert resp.provider == "google"
     assert len(resp.embeddings) == 3
     assert all(len(v) == _DIMENSIONS for v in resp.embeddings)
     assert resp.usage is not None
     assert resp.usage.output_tokens == 0
-    assert resp.usage.input_tokens > 0
+    assert resp.usage.input_tokens == 3  # one token per input, summed across the three fan-out requests
     assert_cost(resp, **_FANOUT_RATES)
 
 
@@ -55,7 +55,7 @@ def test_embeddings_predict_batch(
     def _embed(auth: Any, transport: Any) -> EmbeddingResponse:  # noqa: ANN401 — harness-supplied per mode
         return vertex_provider(auth, transport).embed(_BATCH_MODEL, ["alpha", "beta"], dimensions=_DIMENSIONS)
 
-    resp = scenario(_BATCH_CASSETTE, _embed, requires="VERTEXAI_API_KEY")
+    resp = scenario(_BATCH_CASSETTE, _embed, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     assert resp.provider == "google"
     assert len(resp.embeddings) == 2
     assert all(len(v) == _DIMENSIONS for v in resp.embeddings)

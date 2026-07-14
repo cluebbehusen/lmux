@@ -59,7 +59,7 @@ def test_tool_calls(
             provider_params=_NO_THINK,
         )
 
-    resp = scenario(_CALLS_CASSETTE, _chat, requires="VERTEXAI_API_KEY")
+    resp = scenario(_CALLS_CASSETTE, _chat, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     assert resp.provider == "google"
     assert resp.finish_reason == "tool_calls"
     assert resp.tool_calls is not None
@@ -92,7 +92,7 @@ def test_tool_result_round_trip(
             _MODEL, history, tools=[_WEATHER_TOOL], max_tokens=_MAX_TOKENS, provider_params=_NO_THINK
         )
 
-    resp = scenario(_RESULT_CASSETTE, _chat, requires="VERTEXAI_API_KEY")
+    resp = scenario(_RESULT_CASSETTE, _chat, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     assert_chat(resp, provider="google")
     content = (resp.content or "").lower()
     assert "15" in content or "sunny" in content

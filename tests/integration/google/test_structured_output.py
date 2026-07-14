@@ -44,7 +44,7 @@ def test_structured_output(
             provider_params=_NO_THINK,
         )
 
-    resp = scenario(_CASSETTE, _chat, requires="VERTEXAI_API_KEY")
+    resp = scenario(_CASSETTE, _chat, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     assert_chat(resp, provider="google")
     assert resp.content is not None
     assert MathAnswer.model_validate_json(resp.content).answer == 391

@@ -37,7 +37,7 @@ def test_achat(
 
         return asyncio.run(_run())
 
-    resp = scenario(_CASSETTE, _achat, requires="VERTEXAI_API_KEY")
+    resp = scenario(_CASSETTE, _achat, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     assert_chat(resp, provider="google")
     assert "pong" in (resp.content or "").lower()
     assert_cost(resp, **_RATES)

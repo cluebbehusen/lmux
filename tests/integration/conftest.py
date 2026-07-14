@@ -22,7 +22,7 @@ import math
 import os
 import re
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -257,9 +257,9 @@ def scenario() -> Callable[..., Any]:
     transport live. offline replays the cassette and asserts the provider called the
     recorded endpoint; live hits the API; record hits the API *through the provider*,
     captures the exchange, and writes the cassette.
-    ``requires`` names the env var live/record need (those modes skip if it's absent).
-    ``offline_auth`` overrides the fake auth used offline — the default is a generic
-    key-based stub; providers with a different auth shape (e.g. Bedrock's boto3 session)
+    ``requires`` names the env var(s) live/record need — a single name or several; those modes
+    skip if any is absent. ``offline_auth`` overrides the fake auth used offline — the default is a
+    generic key-based stub; providers with a different auth shape (e.g. Bedrock's boto3 session)
     pass their own."""
     captured: list[tuple[httpx.Request, httpx.Response]] = []
     recorded: set[Path] = set()
@@ -268,7 +268,7 @@ def scenario() -> Callable[..., Any]:
         cassette_path: Path,
         call: Callable[..., Any],
         *,
-        requires: str | None = None,
+        requires: str | Sequence[str] | None = None,
         offline_auth: Any = _OFFLINE_AUTH,  # noqa: ANN401
     ) -> Any:  # noqa: ANN401
         if _MODE == "offline":
@@ -283,8 +283,10 @@ def scenario() -> Callable[..., Any]:
                 f"replayed request hit {seen[0].url.path}, cassette recorded {recorded_path}"
             )
             return resp
-        if requires and not os.environ.get(requires):
-            pytest.skip(f"{requires} not set")
+        required = [requires] if isinstance(requires, str) else (requires or [])
+        missing = [name for name in required if not os.environ.get(name)]
+        if missing:
+            pytest.skip(f"{', '.join(missing)} not set")
         if _MODE == "record":
             start = len(captured)
             resp = call(None, _RecordingTransport(captured))

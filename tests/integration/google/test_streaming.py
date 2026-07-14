@@ -33,7 +33,7 @@ def test_streaming(
             )
         )
 
-    chunks = scenario(_CASSETTE, _stream, requires="VERTEXAI_API_KEY")
+    chunks = scenario(_CASSETTE, _stream, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     content = "".join(c.delta or "" for c in chunks)
     assert "pong" in content.lower()
     assert any(c.finish_reason for c in chunks)

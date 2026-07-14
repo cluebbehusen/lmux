@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from lmux.types import ChatResponse, UserMessage
+from lmux.types import ChatResponse, Usage, UserMessage
 from lmux_google.params import GoogleParams
 
 _MODEL = "gemini-2.5-flash"
@@ -33,7 +33,9 @@ def test_chat(
             _MODEL, [UserMessage(content=_PROMPT)], max_tokens=_MAX_TOKENS, provider_params=_NO_THINK
         )
 
-    resp = scenario(_CASSETTE, _chat, requires="VERTEXAI_API_KEY")
+    resp = scenario(_CASSETTE, _chat, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     assert_chat(resp, provider="google")
     assert "pong" in (resp.content or "").lower()
+    # Pin the wire->Usage mapping so assert_cost isn't merely self-consistent with resp.usage.
+    assert resp.usage == Usage(input_tokens=7, output_tokens=1)
     assert_cost(resp, **_RATES)

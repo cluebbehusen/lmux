@@ -43,7 +43,7 @@ def test_multimodal(
             _MODEL, [UserMessage(content=content)], max_tokens=_MAX_TOKENS, provider_params=_NO_THINK
         )
 
-    resp = scenario(_CASSETTE, _chat, requires="VERTEXAI_API_KEY")
+    resp = scenario(_CASSETTE, _chat, requires=("VERTEXAI_API_KEY", "GOOGLE_CLOUD_PROJECT"))
     assert_chat(resp, provider="google")
     assert "red" in (resp.content or "").lower() or "crimson" in (resp.content or "").lower()
     assert_cost(resp, **_RATES)
