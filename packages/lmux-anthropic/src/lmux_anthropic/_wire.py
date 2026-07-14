@@ -18,18 +18,27 @@ class WireCacheCreation(BaseModel):
     ephemeral_1h_input_tokens: int | None = None
 
 
+class WireOutputTokensDetails(BaseModel):
+    """Breakdown of ``output_tokens``; ``thinking_tokens`` is the extended-thinking subset."""
+
+    thinking_tokens: int | None = None
+
+
 class WireUsage(BaseModel):
     input_tokens: int
     output_tokens: int
     cache_read_input_tokens: int | None = None
     cache_creation_input_tokens: int | None = None
     cache_creation: WireCacheCreation | None = None
+    output_tokens_details: WireOutputTokensDetails | None = None
 
 
 class WireDeltaUsage(BaseModel):
-    """The message_delta ``usage`` object carries only output tokens; input usage came in message_start."""
+    """The message_delta ``usage`` object carries output tokens (and their thinking breakdown);
+    input usage came in message_start."""
 
     output_tokens: int
+    output_tokens_details: WireOutputTokensDetails | None = None
 
 
 # MARK: Content blocks (response ``content[]`` and content_block_start)

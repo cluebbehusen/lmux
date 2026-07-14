@@ -33,4 +33,7 @@ def test_thinking(
     assert_chat(resp, provider="anthropic")
     assert resp.reasoning
     assert "391" in resp.content  # the thinking produced the correct answer (17 * 23)
+    assert resp.usage is not None
+    assert resp.usage.reasoning_tokens is not None
+    assert resp.usage.reasoning_tokens > 0  # thinking tokens surfaced (subset of output_tokens)
     assert_cost(resp, **_RATES)
