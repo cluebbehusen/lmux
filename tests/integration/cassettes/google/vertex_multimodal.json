@@ -1,0 +1,68 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-2.5-flash:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What color is this square? Answer with one word."
+          },
+          {
+            "inlineData": {
+              "data": "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAAaElEQVR4nM3OQQEAIBCAMCSDceyfwjD+r4AswdbdhxKJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRiJkRh/B6YHEOMBjO65d3oAAAAASUVORK5CYII=",
+              "mimeType": "image/png"
+            }
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 16,
+      "thinkingConfig": {
+        "thinkingBudget": 0
+      }
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Red"
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "avgLogprobs": -0.0005362938973121345
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 269,
+      "candidatesTokenCount": 1,
+      "totalTokenCount": 270,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 11
+        },
+        {
+          "modality": "IMAGE",
+          "tokenCount": 258
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 1
+        }
+      ]
+    },
+    "modelVersion": "gemini-2.5-flash",
+    "createTime": "2026-07-14T21:34:52.157114Z",
+    "responseId": "fKtWarrLCfaUq7UPwdT9sA4"
+  }
+}

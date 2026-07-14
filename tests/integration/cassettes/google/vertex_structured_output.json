@@ -1,0 +1,72 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-2.5-flash:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is 17 times 23?"
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 64,
+      "responseMimeType": "application/json",
+      "responseJsonSchema": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "answer"
+        ],
+        "title": "MathAnswer",
+        "type": "object"
+      },
+      "thinkingConfig": {
+        "thinkingBudget": 0
+      }
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "{\"answer\": 391}"
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "avgLogprobs": -0.08713793754577637
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 10,
+      "candidatesTokenCount": 8,
+      "totalTokenCount": 18,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 10
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 8
+        }
+      ]
+    },
+    "modelVersion": "gemini-2.5-flash",
+    "createTime": "2026-07-14T21:34:54.911919Z",
+    "responseId": "fqtWaq_UN9ih3tMP7bmoiQw"
+  }
+}

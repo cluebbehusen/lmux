@@ -20,6 +20,7 @@ import base64
 import json
 import math
 import os
+import re
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -40,6 +41,11 @@ _ALL_MODES = frozenset({"offline", "live", "record"})
 
 _FINISH_REASONS = {"stop", "length", "content_filter", "tool_calls"}
 _SECRET_KEYS = {"authorization", "api_key", "api-key", "openai-organization", "openai-project", "x-api-key"}
+
+# Vertex bakes the GCP project id into the URL path (/projects/<id>/locations/...). Recorded
+# cassettes store a fixed placeholder instead so no project-scoped identifier is committed; the
+# offline provider is built with this same literal so the endpoint-path assertion still matches.
+_VERTEX_PROJECT_PLACEHOLDER = "lmux-integration"
 
 
 # MARK: Gating
@@ -220,8 +226,13 @@ def _replay_transport(cassette: dict[str, Any], sink: list[httpx.Request]) -> ht
     return httpx.MockTransport(_handler)
 
 
+def _normalize_endpoint(endpoint: str) -> str:
+    """Swap the GCP project id in a Vertex URL for a placeholder (only Vertex URLs match)."""
+    return re.sub(r"(/projects/)[^/]+(/locations/)", rf"\g<1>{_VERTEX_PROJECT_PLACEHOLDER}\g<2>", endpoint)
+
+
 def _write_captured_cassette(cassette_path: Path, request: httpx.Request, response: httpx.Response) -> None:
-    endpoint = str(request.url).split("?", 1)[0]
+    endpoint = _normalize_endpoint(str(request.url).split("?", 1)[0])
     req_body = json.loads(request.content) if request.content else {}
     base: dict[str, Any] = {"endpoint": endpoint, "request": _scrub(req_body)}
     content_type = response.headers.get("content-type", "")
@@ -296,3 +307,9 @@ def cosine_similarity() -> Callable[[list[float], list[float]], float]:
         return dot / (math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b)))
 
     return _cos
+
+
+@pytest.fixture
+def vertex_project_placeholder() -> str:
+    """The placeholder project id baked into recorded Vertex cassettes (see ``_normalize_endpoint``)."""
+    return _VERTEX_PROJECT_PLACEHOLDER

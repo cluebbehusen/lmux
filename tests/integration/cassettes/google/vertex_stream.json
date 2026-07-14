@@ -1,0 +1,22 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-2.5-flash:streamGenerateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Reply with exactly the word: pong"
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 16,
+      "thinkingConfig": {
+        "thinkingBudget": 0
+      }
+    }
+  },
+  "response_sse": "data: {\"candidates\": [{\"content\": {\"role\": \"model\",\"parts\": [{\"text\": \"pong\"}]},\"finishReason\": \"STOP\"}],\"usageMetadata\": {\"promptTokenCount\": 7,\"candidatesTokenCount\": 1,\"totalTokenCount\": 8,\"trafficType\": \"ON_DEMAND\",\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 7}],\"candidatesTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 1}]},\"modelVersion\": \"gemini-2.5-flash\",\"createTime\": \"2026-07-14T21:34:54.296048Z\",\"responseId\": \"fqtWavCIEr-6jNsPwIGmgQc\"}\r\n\r\n"
+}

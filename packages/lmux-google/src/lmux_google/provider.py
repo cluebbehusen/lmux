@@ -86,6 +86,8 @@ class GoogleProvider(
         vertexai: bool = True,
         timeout: float | None = None,
         max_retries: int | None = None,
+        transport: "httpx.BaseTransport | None" = None,
+        async_transport: "httpx.AsyncBaseTransport | None" = None,
     ) -> None:
         self._auth: GoogleAuth = auth or GoogleADCAuthProvider()
         self._project: str | None = project
@@ -93,6 +95,8 @@ class GoogleProvider(
         self._vertexai: bool = vertexai
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
+        self._transport: httpx.BaseTransport | None = transport
+        self._async_transport: httpx.AsyncBaseTransport | None = async_transport
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -156,6 +160,7 @@ class GoogleProvider(
                 headers=self._static_headers(auth_result),
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                transport=self._transport,
             )
         return self._sync_client
 
@@ -169,6 +174,7 @@ class GoogleProvider(
                 headers=self._static_headers(auth_result),
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                transport=self._async_transport,
             )
             self._async_loop = loop
         return self._async_client
@@ -201,6 +207,7 @@ class GoogleProvider(
         body = self._build_body(
             messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
+            vertexai=self._vertexai,
         )  # fmt: skip
         path = self._path(model, "generateContent")
         try:
@@ -232,6 +239,7 @@ class GoogleProvider(
         body = self._build_body(
             messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
+            vertexai=self._vertexai,
         )  # fmt: skip
         path = self._path(model, "generateContent")
         try:
@@ -263,6 +271,7 @@ class GoogleProvider(
         body = self._build_body(
             messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
+            vertexai=self._vertexai,
         )  # fmt: skip
         path = self._path(model, "streamGenerateContent", sse=True)
         try:
@@ -304,6 +313,7 @@ class GoogleProvider(
         body = self._build_body(
             messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
+            vertexai=self._vertexai,
         )  # fmt: skip
         path = self._path(model, "streamGenerateContent", sse=True)
         try:
@@ -530,8 +540,10 @@ class GoogleProvider(
         response_format: ResponseFormat | None,
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: GoogleParams | None,
+        *,
+        vertexai: bool,
     ) -> Json:
-        system, contents = map_messages(messages)
+        system, contents = map_messages(messages, include_tool_call_ids=not vertexai)
         body: Json = {"contents": contents}
         if system is not None:
             body["systemInstruction"] = {"parts": [{"text": system}]}

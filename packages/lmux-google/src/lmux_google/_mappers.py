@@ -72,12 +72,16 @@ _FINISH_REASON_MAP: dict[str, str] = {
 # MARK: Input Mappers (lmux -> Gemini JSON)
 
 
-def map_messages(messages: Sequence[Message]) -> tuple[str | None, list[Json]]:
+def map_messages(messages: Sequence[Message], *, include_tool_call_ids: bool = False) -> tuple[str | None, list[Json]]:
     """Convert lmux Messages to Gemini REST format.
 
     Returns ``(system_instruction, contents)`` where ``system_instruction`` is a
     concatenated string (the caller wraps it in a Content object), and ``contents``
     is the conversation history in Gemini Content dict format.
+
+    ``include_tool_call_ids`` emits the tool-call ``id`` on ``functionCall``/``functionResponse``:
+    the Developer API (v1beta) supports it for correlating parallel calls, while Vertex (v1) rejects
+    the field, so the provider passes ``not vertexai``.
     """
     system_parts: list[str] = []
     contents: list[Json] = []
@@ -98,9 +102,9 @@ def map_messages(messages: Sequence[Message]) -> tuple[str | None, list[Json]]:
                 continue  # message held only cache points, which this provider has no representation for
             contents.append({"role": "user", "parts": parts})
         elif isinstance(msg, AssistantMessage):
-            contents.append(_map_assistant_message(msg))
+            contents.append(_map_assistant_message(msg, include_ids=include_tool_call_ids))
         else:
-            contents.append(_map_tool_message(msg, tool_call_names))
+            contents.append(_map_tool_message(msg, tool_call_names, include_id=include_tool_call_ids))
 
     system = "\n".join(system_parts) if system_parts else None
     return system, contents
@@ -129,42 +133,31 @@ def _map_image_content(img: ImageContent) -> Json:
     return {"fileData": {"fileUri": img.url, "mimeType": "image/*"}}
 
 
-def _map_assistant_message(msg: AssistantMessage) -> Json:
+def _map_assistant_message(msg: AssistantMessage, *, include_ids: bool) -> Json:
     parts: list[Json] = []
     if msg.content is not None:
         parts.append({"text": msg.content})
     if msg.tool_calls:
-        parts.extend(
-            {
-                "functionCall": {
-                    "id": tc.id,
-                    "name": tc.function.name,
-                    "args": json.loads(tc.function.arguments),
-                }
-            }
-            for tc in msg.tool_calls
-        )
+        # Vertex (v1) has no ``id`` field on functionCall and rejects one ("Unknown name \"id\""); the
+        # Developer API (v1beta) accepts it for parallel-call correlation. Emit it only when supported.
+        for tc in msg.tool_calls:
+            call: Json = {"name": tc.function.name, "args": json.loads(tc.function.arguments)}
+            if include_ids:
+                call["id"] = tc.id
+            parts.append({"functionCall": call})
     return {"role": "model", "parts": parts}
 
 
-def _map_tool_message(msg: ToolMessage, tool_call_names: dict[str, str]) -> Json:
+def _map_tool_message(msg: ToolMessage, tool_call_names: dict[str, str], *, include_id: bool) -> Json:
     name = tool_call_names.get(msg.tool_call_id, msg.tool_call_id)
     try:
         response_data = json.loads(msg.content)
     except (json.JSONDecodeError, TypeError):
         response_data = {"result": msg.content}
-    return {
-        "role": "user",
-        "parts": [
-            {
-                "functionResponse": {
-                    "id": msg.tool_call_id,
-                    "name": name,
-                    "response": response_data,
-                }
-            }
-        ],
-    }
+    response: Json = {"name": name, "response": response_data}
+    if include_id:
+        response["id"] = msg.tool_call_id
+    return {"role": "user", "parts": [{"functionResponse": response}]}
 
 
 def map_tools(tools: list[Tool]) -> list[Json]:
@@ -413,9 +406,13 @@ def _map_finish_reason(reason: str | None, has_tool_calls: bool) -> str | None:
 def _map_usage(usage_metadata: WireUsageMetadata | None) -> Usage | None:
     if usage_metadata is None:
         return None
+    # Gemini reports thinking tokens (thoughtsTokenCount) separately from candidatesTokenCount, but
+    # bills them at the output rate. Fold them into output_tokens (the total billable output, as
+    # OpenAI/Anthropic do) and keep reasoning_tokens as the informational sub-count.
+    thoughts = usage_metadata.thoughts_token_count or 0
     return Usage(
         input_tokens=usage_metadata.prompt_token_count or 0,
-        output_tokens=usage_metadata.candidates_token_count or 0,
+        output_tokens=(usage_metadata.candidates_token_count or 0) + thoughts,
         cache_read_tokens=usage_metadata.cached_content_token_count or None,
         reasoning_tokens=usage_metadata.thoughts_token_count or None,
     )

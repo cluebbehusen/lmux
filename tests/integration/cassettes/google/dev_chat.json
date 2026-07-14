@@ -1,0 +1,50 @@
+{
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is 17 times 23? Reply with just the number."
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 2048
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "391",
+              "thoughtSignature": "EtgBCtUBARFNMg+IvAO+9h6HBR4Mk3MHQQyYVQVMLro52gzUuo6DYJBVJvg4AJZsOZAGvuh0EStC/zjRIoTMARDVztZdqRUUHwtubrlWUrdVz911zkLWrC8JZGGbfQyVopA3JxREDuIuuGO7EMRhsoyvHe4YOn3jW6O2/46vY040kX90bra4d8zfYoPAXG9CqGYsf6LPvGGvbrsaVjUtkM0ZAMK6JpCjWhrs2MRHe67FvDNhrK95K+7xFvGOCvhFEjP0h5F6geL5YxPC/ukPVo4kIxljt/+NPDdP"
+            }
+          ],
+          "role": "model"
+        },
+        "finishReason": "STOP",
+        "index": 0
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 17,
+      "candidatesTokenCount": 3,
+      "totalTokenCount": 99,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 17
+        }
+      ],
+      "thoughtsTokenCount": 79,
+      "serviceTier": "standard"
+    },
+    "modelVersion": "gemini-3-flash-preview",
+    "responseId": "d6tWauCnKfHP_uMPuaCK0Ag"
+  }
+}
