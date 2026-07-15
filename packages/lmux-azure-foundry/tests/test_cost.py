@@ -138,6 +138,18 @@ class TestCalculateAzureFoundryCost:
         assert cost.input_cost == pytest.approx(300_000 * 10.00 / 1_000_000)
         assert cost.output_cost == pytest.approx(1000 * 45.00 / 1_000_000)
 
+    def test_phi_4_multimodal_does_not_fall_back_to_base(self) -> None:
+        """Phi-4-multimodal-instruct must price at the multimodal (text/image) rate, not the broad Phi-4 key."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        multimodal = calculate_azure_foundry_cost("Phi-4-multimodal-instruct", usage)
+        base = calculate_azure_foundry_cost("Phi-4", usage)
+        assert multimodal is not None
+        assert base is not None
+        assert multimodal.input_cost == pytest.approx(0.08)
+        assert multimodal.output_cost == pytest.approx(0.32)
+        assert base.input_cost == pytest.approx(0.125)
+        assert base.output_cost == pytest.approx(0.50)
+
 
 class TestApplyCostMultiplier:
     def test_applies_multiplier_to_all_fields(self) -> None:
