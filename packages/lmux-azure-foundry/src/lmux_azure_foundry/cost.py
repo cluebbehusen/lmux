@@ -6,7 +6,7 @@ deployments apply a multiplier on top of these base rates.
 Use ``register_pricing()`` on ``AzureFoundryProvider`` for provisioned
 deployments or models not listed here.
 
-Pricing source: https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/
+Pricing source: https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/ AND https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/
 """
 
 from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
