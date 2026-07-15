@@ -18,7 +18,15 @@ premium as US_INFERENCE_MULTIPLIER.
 
 from datetime import date
 
-from lmux.cost import ModelPricing, PricingSchedule, PricingTier, calculate_cost, per_million_tokens
+from lmux.cost import (
+    ModelPricing,
+    PricingSchedule,
+    PricingTier,
+    build_pricing_index,
+    calculate_cost,
+    per_million_tokens,
+    resolve_pricing,
+)
 from lmux.types import Cost, Usage
 
 # Standard (global) pricing. Cache writes default to the 5-minute rate (1.25x
@@ -268,7 +276,8 @@ _PRICING: dict[str, ModelPricing] = {
     ),
 }
 
-_PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
+# Case-insensitive, longest-prefix index (see lmux.cost.resolve_pricing).
+_PRICING_BY_PREFIX = build_pricing_index(_PRICING)
 
 US_INFERENCE_MULTIPLIER = 1.1
 
@@ -315,8 +324,9 @@ def has_vertex_regional_premium(model: str) -> bool:
     Unknown models default to True — the premium applies to all models newer
     than the fixed set of exempt older models.
     """
+    model_lower = model.lower()
     for prefix, premium in _VERTEX_PREMIUM_BY_PREFIX:
-        if model.startswith(prefix):
+        if model_lower.startswith(prefix):
             return premium
     return True
 
@@ -328,12 +338,7 @@ def calculate_anthropic_cost(model: str, usage: Usage, as_of: date | None = None
     (e.g. Claude Sonnet 5's introductory period); it defaults to the latest
     schedule. See ``lmux.cost.calculate_cost``.
     """
-    pricing = _PRICING.get(model)
-    if pricing is None:
-        for prefix, p in _PRICING_BY_PREFIX:
-            if model.startswith(prefix):
-                pricing = p
-                break
+    pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:
         return None
     return calculate_cost(usage, pricing, as_of)

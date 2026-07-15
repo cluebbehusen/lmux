@@ -26,20 +26,47 @@ already validated via `lmux-google`.
 
 Build a list of `(provider_name, cost_py_path, pricing_url)` tuples.
 
-### Step 2: Select providers
-
-Create the scratch output directory:
-
-```
-tmp/update-pricing/YYYY-MM-DD/
-```
-
-Use today's date. If the directory already exists from a prior run, files will
-be overwritten.
+### Step 2: Select providers and reserve an isolated run directory
 
 Present a multi-select form to the user using `AskUserQuestion` listing all
 discovered providers. All providers should be selected by default. The user can
 deselect providers they don't want to check.
+
+After provider selection, determine a stable lowercase, kebab-case
+`runner_slug` for the coding agent coordinating the run:
+
+- Codex: `codex`
+- Claude Code: `claude`
+- Other coding agents: their short product name (for example, `cursor`)
+
+Use the coordinating agent's identity, not a provider subagent's identity. All
+subagents launched by one invocation MUST share the same runner slug and run
+directory.
+
+Capture the local date and time once at the start of the run as `RUN_DATE`
+(`YYYY-MM-DD`) and `RUN_TIME` (`HHMMSS`). Do not recalculate either value
+later, including if the run crosses midnight.
+
+Atomically reserve a new scratch directory under:
+
+```
+tmp/update-pricing/<RUN_DATE>/<runner-slug>/<RUN_TIME>/
+```
+
+For example, concurrent runs may use
+`tmp/update-pricing/2026-07-15/codex/091145/` and
+`tmp/update-pricing/2026-07-15/claude/091146/`. Create the date and runner
+parents if needed, then reserve the time directory with an atomic create. If
+that exact time directory already exists, NEVER reuse or overwrite it.
+Atomically try `<RUN_TIME>-2`, then `<RUN_TIME>-3`, and so on until
+directory creation succeeds. Do not use a separate existence check followed by
+creation, because concurrent invocations of the same coding agent can start in
+the same second. Only parent creation may use `mkdir -p`; reserve each
+candidate time directory with plain `mkdir` so the create itself is the
+collision check.
+
+Call the successfully reserved path `RUN_DIR` and use it unchanged for the
+rest of the workflow.
 
 ### Step 3: Launch parallel subagents
 
@@ -52,7 +79,9 @@ Each agent MUST receive the following in its prompt:
 3. The pricing source URL
 4. The complete "Subagent Instructions" section below (copy it verbatim)
 5. The complete "Report Format" section below (copy it verbatim)
-6. The scratch output path: `tmp/update-pricing/YYYY-MM-DD/<provider>.md`
+6. The runner slug, `RUN_DATE`, `RUN_TIME`, `RUN_DIR`, exact report path
+   `<RUN_DIR>/<provider>.md`, and provider work directory
+   `<RUN_DIR>/work/<provider>/` (call this `WORK_DIR`)
 7. If the provider has a subsection under "Provider-specific instructions"
    below, copy that subsection verbatim too — it overrides the generic
    instructions where they conflict
@@ -62,13 +91,24 @@ Each agent MUST:
 1. Read the provider's `cost.py` file
 2. Use the web to retrieve the pricing page
 3. Compare every model and price in the cost.py against the source
-4. Write a detailed findings report to the scratch file
-5. Return ONLY a single-line summary (no other output)
+4. Create its assigned provider work directory, then keep every downloaded
+   page, browser capture, API response, generated diff, stdout/stderr capture,
+   and other intermediate artifact inside it
+5. Write a detailed findings report to the exact report path
+6. Return ONLY a single-line summary (no other output)
+
+Never assign the same report path or `WORK_DIR` to two live subagents. If a
+provider must be retried, wait for or stop the first attempt, then allocate
+new `<provider>-retry-N.md` and `work/<provider>-retry-N/` paths. Preserve
+the first attempt for diagnosis and record which retry report is authoritative.
 
 ### Step 4: Review findings
 
-After ALL agents complete, read each `tmp/update-pricing/YYYY-MM-DD/<provider>.md`
-file. Present a consolidated summary to the user showing:
+After ALL agents complete, read each `<RUN_DIR>/<provider>.md` file. Do not
+discover reports by taking the newest date directory or globbing across sibling
+runner directories; another coding agent may be writing there concurrently.
+Present a consolidated summary to the user, including the exact `RUN_DIR`,
+showing:
 
 - Which providers have discrepancies
 - Which providers have new models available
@@ -80,16 +120,23 @@ file. Present a consolidated summary to the user showing:
 Do NOT automatically apply changes. Ask the user whether to proceed. If
 approved:
 
-1. Update each provider's `cost.py` with corrected prices and new models
-2. Follow existing code patterns exactly:
+1. Re-read every target `cost.py` and confirm it is identical to the version
+   the corresponding subagent audited. Also confirm repository `HEAD` has not
+   moved. If either changed, STOP and reconcile the newer state before editing.
+   Never apply a report against stale source.
+2. Do not enter this mutation phase concurrently with another pricing run in
+   the same worktree. Audits may run concurrently because their `RUN_DIR`
+   values are isolated; tracked-file updates may not.
+3. Update each provider's `cost.py` with corrected prices and new models
+4. Follow existing code patterns exactly:
    - Use `per_million_tokens()` for all per-token prices
    - Maintain alphabetical grouping by model family with comment headers
    - Maintain the `_PRICING_BY_PREFIX` sorted list after `_PRICING`
    - Keep multi-tier pricing for providers that use it (anthropic, google)
    - Keep `cache_creation_cost_per_token` for anthropic models
    - Preserve multiplier constants and `apply_cost_multiplier()` functions
-3. Run verification per AGENTS.md
-4. Fix any issues and re-run verification until all four checks pass
+5. Run verification per AGENTS.md
+6. Fix any issues and re-run verification until all four checks pass
 
 ---
 
@@ -99,13 +146,14 @@ Some pricing pages (notably GCP Vertex AI) are too large for `WebFetch` to
 return in full — it truncates before reaching partner/embedding model sections.
 
 For these pages, subagents should use `curl` via Bash to download the full HTML
-to a temp file, then extract relevant sections with `sed`/`grep`/`python`. For
-example:
+inside their assigned `WORK_DIR`, then extract relevant sections with
+`sed`/`grep`/`python`. Never use a shared path in `/tmp` or the repository
+root. For example:
 
 ```bash
-curl -s 'https://cloud.google.com/vertex-ai/generative-ai/pricing' > /tmp/vertex-pricing.html
+curl -s 'https://cloud.google.com/vertex-ai/generative-ai/pricing' > "{WORK_DIR}/vertex-pricing.html"
 # Extract partner models section (Claude, Mistral, Llama, etc.)
-sed -n '28100,28800p' /tmp/vertex-pricing.html | python3 -c "
+sed -n '28100,28800p' "{WORK_DIR}/vertex-pricing.html" | python3 -c "
 import sys, html, re
 content = sys.stdin.read()
 content = re.sub(r'<tr[^>]*>', '\n|ROW|', content)
@@ -151,7 +199,7 @@ Prefer **structured data over scraping pixels**, in this order:
    playwright-cli open '<pricing_url>'
    # click any toggle that reveals more columns/rows first, e.g.:
    #   playwright-cli find "Long context"; playwright-cli click <ref>
-   playwright-cli --raw eval "JSON.stringify([...document.querySelectorAll('table')].map(t=>({head:[...t.querySelectorAll('tr:first-child th')].map(c=>c.textContent.trim()),rows:[...t.querySelectorAll('tbody tr')].map(r=>[...r.querySelectorAll('th,td')].map(c=>c.textContent.trim()))})))" > tables.json
+   playwright-cli --raw eval "JSON.stringify([...document.querySelectorAll('table')].map(t=>({head:[...t.querySelectorAll('tr:first-child th')].map(c=>c.textContent.trim()),rows:[...t.querySelectorAll('tbody tr')].map(r=>[...r.querySelectorAll('th,td')].map(c=>c.textContent.trim()))})))" > "{WORK_DIR}/tables.json"
    playwright-cli close
    ```
 
@@ -270,9 +318,12 @@ You are a pricing validation subagent for the **{provider}** provider.
 5. Check for any pricing complexities (regional differences, deployment-type
    multipliers, tiered pricing) that the code doesn't handle. Report these
    in "Caveats".
-6. Write your findings to the scratch file path provided using the exact
-   report format below.
-7. Return ONLY a single-line summary in one of these formats:
+6. Keep every local intermediate artifact in the assigned `WORK_DIR`. Do not
+   write generic filenames in the repository root or shared `/tmp`, and do
+   not read artifacts from a sibling runner directory.
+7. Write your findings only to the exact report path provided. Do not select or
+   reuse a sibling runner directory. Use the exact report format below.
+8. Return ONLY a single-line summary in one of these formats:
    - `"openai: 3 price updates, 2 new models"`
    - `"anthropic: all 14 models verified"`
    - `"aws-bedrock: FETCH_FAILED — could not retrieve pricing page"`
@@ -290,17 +341,20 @@ that the code doesn't account for, report it in Caveats.
 
 ## Report Format
 
-Write findings to `tmp/update-pricing/YYYY-MM-DD/{provider}.md` using exactly
-this format:
+Write findings to `{RUN_DIR}/{provider}.md` using exactly this format:
 
 ```markdown
 # Status: {DISCREPANCIES_FOUND | ALL_VERIFIED | FETCH_FAILED | PARTIAL_VERIFICATION}
 
 # Provider: {provider-name}
 
+# Runner: {runner-slug}
+
+# Run directory: {RUN_DIR}
+
 # Pricing source: {url}
 
-# Date: {YYYY-MM-DD}
+# Date: {RUN_DATE}
 
 # Models checked: {N}
 

@@ -1,5 +1,6 @@
 """Cost calculation utility functions."""
 
+from collections.abc import Mapping
 from datetime import date
 
 from pydantic import BaseModel, model_validator
@@ -10,6 +11,36 @@ from lmux.types import Cost, Usage
 def per_million_tokens(price: float) -> float:
     """Convert a per-million-token price to a per-token price."""
     return price / 1_000_000
+
+
+def build_pricing_index(pricing: Mapping[str, "ModelPricing"]) -> list[tuple[str, "ModelPricing"]]:
+    """Build a case-folded, longest-first prefix index for ``resolve_pricing``.
+
+    Keys are lowercased so lookup is case-insensitive — provider ``model`` fields vary in
+    capitalization (e.g. Azure returns ``Cohere-command-a`` and ``Phi-4`` but ``deepseek-r1``
+    and ``grok-4``). Entries are sorted by lowercased-key length descending so the longest
+    prefix wins; an exact match is just the longest possible prefix (a key as long as the id).
+    Two keys that lowercase to the same string must carry the same pricing.
+    """
+    return sorted(
+        ((key.lower(), value) for key, value in pricing.items()),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+
+
+def resolve_pricing(model: str, index: list[tuple[str, "ModelPricing"]]) -> "ModelPricing | None":
+    """Resolve a model id to its pricing via case-insensitive longest-prefix matching.
+
+    ``index`` comes from ``build_pricing_index``. The id is lowercased and matched against the
+    lowercased keys; the first (longest) prefix hit wins, which yields the exact entry when one
+    exists. Returns ``None`` when nothing matches.
+    """
+    model_lower = model.lower()
+    for prefix, pricing in index:
+        if model_lower.startswith(prefix):
+            return pricing
+    return None
 
 
 class PricingTier(BaseModel):

@@ -3,7 +3,14 @@
 Pricing source: https://groq.com/pricing/
 """
 
-from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
+from lmux.cost import (
+    ModelPricing,
+    PricingTier,
+    build_pricing_index,
+    calculate_cost,
+    per_million_tokens,
+    resolve_pricing,
+)
 from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
@@ -22,6 +29,7 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.075),
                 output_cost_per_token=per_million_tokens(0.30),
+                cache_read_cost_per_token=per_million_tokens(0.0375),
             )
         ],
     ),
@@ -64,6 +72,17 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(input_cost_per_token=per_million_tokens(0.20), output_cost_per_token=per_million_tokens(0.60))
         ],
     ),
+    # Llama Prompt Guard 2 (preview classifiers; evaluation-only per Groq)
+    "meta-llama/llama-prompt-guard-2-22m": ModelPricing(
+        tiers=[
+            PricingTier(input_cost_per_token=per_million_tokens(0.03), output_cost_per_token=per_million_tokens(0.03))
+        ],
+    ),
+    "meta-llama/llama-prompt-guard-2-86m": ModelPricing(
+        tiers=[
+            PricingTier(input_cost_per_token=per_million_tokens(0.04), output_cost_per_token=per_million_tokens(0.04))
+        ],
+    ),
     # Qwen family
     "qwen/qwen3-32b": ModelPricing(
         tiers=[
@@ -88,18 +107,13 @@ _PRICING: dict[str, ModelPricing] = {
     ),
 }
 
-# Pre-sorted by key length descending for prefix matching (longest match first)
-_PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
+# Case-insensitive, longest-prefix index (see lmux.cost.resolve_pricing).
+_PRICING_BY_PREFIX = build_pricing_index(_PRICING)
 
 
 def calculate_groq_cost(model: str, usage: Usage) -> Cost | None:
     """Calculate cost for a Groq API call. Returns None if model pricing is unknown."""
-    pricing = _PRICING.get(model)
-    if pricing is None:
-        for prefix, p in _PRICING_BY_PREFIX:
-            if model.startswith(prefix):
-                pricing = p
-                break
+    pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:
         return None
     return calculate_cost(usage, pricing)

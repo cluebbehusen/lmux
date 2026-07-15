@@ -12,7 +12,14 @@ Models pages, e.g. https://azure.microsoft.com/en-us/pricing/details/ai-foundry-
 swap the trailing path segment for the vendor (/deepseek, /grok, /llama, /mistral-ai, /cohere, /kimi).
 """
 
-from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
+from lmux.cost import (
+    ModelPricing,
+    PricingTier,
+    build_pricing_index,
+    calculate_cost,
+    per_million_tokens,
+    resolve_pricing,
+)
 from lmux.types import Cost, Usage
 
 # MARK: Deployment-type multipliers
@@ -63,6 +70,72 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(0.40),
                 cache_read_cost_per_token=per_million_tokens(0.005),
             )
+        ],
+    ),
+    # --- OpenAI: GPT-5.6 family (sol/terra/luna) ---
+    # Azure had not published gpt-5.6 retail meters at the time of writing (GA on Azure but
+    # unpriced), so these mirror OpenAI's Global Standard rates, which Azure AOAI meters match
+    # for every other GPT-5.x model. Cache-write is intentionally omitted: Azure does not meter
+    # cache writes for any AOAI model (unlike OpenAI, which bills gpt-5.6+ cache writes). Replace
+    # with the -glbl meters once Azure publishes them. The bare "gpt-5.6" alias routes to Sol.
+    "gpt-5.6": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(45.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-5.6-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(45.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-5.6-terra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.25),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(22.50),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-5.6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.00),
+                output_cost_per_token=per_million_tokens(6.00),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(9.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+                min_input_tokens=272_000,
+            ),
         ],
     ),
     # --- OpenAI: GPT-5.5 family ---
@@ -168,6 +241,16 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # gpt-5.2-pro is ~12x gpt-5.2 on Azure and has no cached-input meter; explicit key
+    # stops it inheriting the far cheaper "gpt-5.2" prefix (and its spurious cache rate).
+    "gpt-5.2-pro": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(21.00),
+                output_cost_per_token=per_million_tokens(168.00),
+            )
+        ],
+    ),
     "gpt-5.2-chat": ModelPricing(
         tiers=[
             PricingTier(
@@ -239,6 +322,16 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # Preview chat alias (replacement for the retired gpt-5.1/5.2/5.3-chat models).
+    "gpt-chat-latest": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
     # --- OpenAI: GPT-4.1 family ---
     "gpt-4.1": ModelPricing(
         tiers=[
@@ -293,6 +386,16 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(15.00),
                 output_cost_per_token=per_million_tokens(60.00),
                 cache_read_cost_per_token=per_million_tokens(7.50),
+            )
+        ],
+    ),
+    # o1-pro is 10x o1 on Azure; explicit key stops it inheriting the cheaper "o1" prefix.
+    "o1-pro": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(150.00),
+                output_cost_per_token=per_million_tokens(600.00),
+                cache_read_cost_per_token=per_million_tokens(75.00),
             )
         ],
     ),
@@ -424,6 +527,7 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(1.74),
                 output_cost_per_token=per_million_tokens(3.48),
+                cache_read_cost_per_token=per_million_tokens(0.145),
             )
         ],
     ),
@@ -432,6 +536,7 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.19),
                 output_cost_per_token=per_million_tokens(0.51),
+                cache_read_cost_per_token=per_million_tokens(0.028),
             )
         ],
     ),
@@ -469,6 +574,17 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     "grok-4-fast": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
+    # "Grok 4.1 Fast" GA (replaces the retired grok-4-fast). Runtime ids are the dash form
+    # grok-4-1-fast-reasoning / grok-4-1-fast-non-reasoning, which the dot-form "grok-4.1" key
+    # never matches; without this key they fall through to "grok-4" (3/15) and overcharge ~30x.
+    "grok-4-1-fast": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.20),
@@ -534,6 +650,25 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # Mistral-Large-3 — same Global Standard rate as the family; explicit key documents the
+    # current GA id (matched case-insensitively, so casing here is cosmetic).
+    "Mistral-Large-3": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.50),
+                output_cost_per_token=per_million_tokens(1.50),
+            )
+        ],
+    ),
+    # Mistral Medium 3.5 (Preview). Billed via the "MM3.5" Global meter (0.0015/0.0075 per 1K).
+    "mistral-medium-3-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.50),
+                output_cost_per_token=per_million_tokens(7.50),
+            )
+        ],
+    ),
     "codestral": ModelPricing(
         tiers=[
             PricingTier(
@@ -551,8 +686,18 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # --- Cohere ---
-    "cohere-command-a": ModelPricing(
+    # --- Cohere. Lookup is case-insensitive, so the base id resolves regardless of Azure's
+    # runtime casing. "Cohere-command-a-plus" is a version-agnostic prefix so future dated
+    # snapshots keep the Plus rate instead of falling through to the (pricier) base key. ---
+    "Cohere-command-a-plus": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.80),
+                output_cost_per_token=per_million_tokens(3.20),
+            )
+        ],
+    ),
+    "Cohere-command-a": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(2.50),
@@ -560,8 +705,45 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # --- Phi (Microsoft). Keys match Azure's response `model` casing (capitalized), unlike the
-    # lowercase DeepSeek/Grok/etc. keys; the cost lookup is case-sensitive. ---
+    # Cohere Embed v4 text-input rate; image-input is metered separately and not modeled.
+    "embed-v-4-0": ModelPricing(
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.12), output_cost_per_token=0.0)]
+    ),
+    # --- MoonshotAI Kimi. Runtime `model` ids per the Azure model catalog are Kimi-K2.5 /
+    # Kimi-K2.6 / Kimi-K2.7-Code (the "FW-"/"FW Kimi" form is only the Fireworks billing meter,
+    # not the deployable id). Azure offers these only as Data Zone deployments; the base rates below
+    # are the DZ meter / 1.1, keeping the base-is-global convention used by every other model. Pass
+    # deployment_type="data_zone" to bill the exact DZ rate — the default, unqualified call
+    # deliberately under-reports ~9% (there is no global tier to fall back to). ---
+    "Kimi-K2.5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.60),
+                output_cost_per_token=per_million_tokens(3.00),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+            )
+        ],
+    ),
+    "Kimi-K2.6": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.95),
+                output_cost_per_token=per_million_tokens(4.00),
+                cache_read_cost_per_token=per_million_tokens(0.16),
+            )
+        ],
+    ),
+    "Kimi-K2.7-Code": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.95),
+                output_cost_per_token=per_million_tokens(4.00),
+                cache_read_cost_per_token=per_million_tokens(0.19),
+            )
+        ],
+    ),
+    # --- Phi (Microsoft). Keys mirror Azure's `model` casing for readability; lookup is
+    # case-insensitive (see resolve_pricing), so the capitalization here is cosmetic. ---
     "Phi-4-mini-reasoning": ModelPricing(
         tiers=[
             PricingTier(
@@ -614,18 +796,21 @@ _PRICING: dict[str, ModelPricing] = {
     ),
 }
 
-# Pre-sorted by key length descending for longest-prefix matching
-_PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
+# Case-insensitive, longest-prefix index. Azure's `model` casing varies by vendor
+# (capital Cohere/Phi/Mistral/Kimi ids, lowercase deepseek/grok/gpt), so lookup folds case.
+_PRICING_BY_PREFIX = build_pricing_index(_PRICING)
+
+# Known Azure models with no published Global Standard rate (e.g. the grok-4-20 Preview
+# variants). Returning None is correct — do NOT let them fall through to a broad prefix
+# (e.g. "grok-4") and inherit a fabricated rate. Add real rates once Azure publishes meters.
+_UNPRICED_MODELS = frozenset({"grok-4-20-reasoning", "grok-4-20-non-reasoning"})
 
 
 def calculate_azure_foundry_cost(model: str, usage: Usage) -> Cost | None:
     """Calculate cost for an Azure AI Foundry API call. Returns None if model pricing is unknown."""
-    pricing = _PRICING.get(model)
-    if pricing is None:
-        for prefix, p in _PRICING_BY_PREFIX:
-            if model.startswith(prefix):
-                pricing = p
-                break
+    if model.lower() in _UNPRICED_MODELS:
+        return None
+    pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:
         return None
     return calculate_cost(usage, pricing)

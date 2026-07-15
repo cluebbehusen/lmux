@@ -80,6 +80,15 @@ class TestCalculateAnthropicCost:
         # Both are $15 input, so same price, but they should resolve to different prefixes
         assert cost_41.input_cost == cost_4.input_cost
 
+    def test_case_insensitive_lookup(self) -> None:
+        """A capitalized model id resolves identically to its lowercase form."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        upper = calculate_anthropic_cost("Claude-Sonnet-4-6", usage)
+        lower = calculate_anthropic_cost("claude-sonnet-4-6", usage)
+        assert upper is not None
+        assert lower is not None
+        assert upper.total_cost == pytest.approx(lower.total_cost)
+
     def test_long_context_pricing_at_high_token_count(self) -> None:
         """Claude Sonnet 4 uses long-context pricing above 200K input tokens."""
         usage = Usage(input_tokens=250_000, output_tokens=1000)
@@ -176,3 +185,8 @@ class TestHasVertexRegionalPremium:
 
     def test_unknown_future_models_default_to_premium(self) -> None:
         assert has_vertex_regional_premium("claude-sonnet-6") is True
+
+    def test_case_insensitive(self) -> None:
+        """Premium classification folds case, like the pricing lookup."""
+        assert has_vertex_regional_premium("Claude-Opus-4-8") is True
+        assert has_vertex_regional_premium("CLAUDE-3-5-HAIKU") is False

@@ -1,6 +1,14 @@
 """lmux — Modular Python language model multiplexer."""
 
-from lmux.cost import ModelPricing, PricingSchedule, PricingTier, calculate_cost, per_million_tokens
+from lmux.cost import (
+    ModelPricing,
+    PricingSchedule,
+    PricingTier,
+    build_pricing_index,
+    calculate_cost,
+    per_million_tokens,
+    resolve_pricing,
+)
 from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
@@ -119,6 +127,8 @@ __all__ = [
     "UnsupportedFeatureError",
     "Usage",
     "UserMessage",
+    "build_pricing_index",
     "calculate_cost",
     "per_million_tokens",
+    "resolve_pricing",
 ]

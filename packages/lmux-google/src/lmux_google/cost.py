@@ -5,7 +5,14 @@ the Gemini Developer API paid tier uses the same per-token rates.
 Pricing source: https://cloud.google.com/vertex-ai/generative-ai/pricing
 """
 
-from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
+from lmux.cost import (
+    ModelPricing,
+    PricingTier,
+    build_pricing_index,
+    calculate_cost,
+    per_million_tokens,
+    resolve_pricing,
+)
 from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
@@ -52,6 +59,17 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    # GA IDs and their shut-down -preview aliases share the same base rates. The
+    # -preview keys are retained for historical cost lookups; new calls use the GA ids.
+    "gemini-3.1-flash-lite": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.25),
+                output_cost_per_token=per_million_tokens(1.50),
+                cache_read_cost_per_token=per_million_tokens(0.025),
+            ),
+        ],
+    ),
     "gemini-3.1-flash-lite-preview": ModelPricing(
         tiers=[
             PricingTier(
@@ -61,31 +79,9 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
-    "gemini-3.1-flash-image-preview": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(0.50),
-                output_cost_per_token=per_million_tokens(3.00),
-            ),
-        ],
-    ),
-    # Text I/O rates only; image-output tokens are billed separately and not modeled.
-    "gemini-3.1-flash-lite-image-preview": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(0.25),
-                output_cost_per_token=per_million_tokens(1.50),
-            ),
-        ],
-    ),
-    "gemini-3-pro-image-preview": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(2.0),
-                output_cost_per_token=per_million_tokens(12.0),
-            ),
-        ],
-    ),
+    # Image-output models (gemini-*-image) are intentionally NOT priced — see _UNPRICED_IMAGE_PREFIXES
+    # below. Google bills generated-image output far higher than text output ($30-$120/M vs
+    # $1.50-$12/M), which a single output rate cannot represent, so they return None.
     "gemini-3-flash-preview": ModelPricing(
         tiers=[
             PricingTier(
@@ -178,15 +174,20 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # ── Google Gemini (additional) ────────────────────────────
-    "gemini-2.5-flash-image": ModelPricing(
+    # gemini-2.5-flash-image is intentionally unpriced (see _UNPRICED_IMAGE_PREFIXES) — its image output
+    # is billed far above the modeled text-output rate.
+    # Robotics-ER 1.6: text/image/video input $1; audio input ($2) is higher and not modeled.
+    "gemini-robotics-er-1.6-preview": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(0.30),
-                output_cost_per_token=per_million_tokens(2.50),
+                input_cost_per_token=per_million_tokens(1.00),
+                output_cost_per_token=per_million_tokens(5.00),
             ),
         ],
     ),
-    "gemini-2.5-pro-computer-use-preview": ModelPricing(
+    # Real runtime id is gemini-2.5-computer-use-preview-10-2025 (not "...-pro-...");
+    # base rate <=200k, premium rate >200k, no context caching.
+    "gemini-2.5-computer-use-preview-10-2025": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(1.25),
@@ -200,6 +201,16 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # ── Embedding models ───────────────────────────────────────
+    # Text-input rate only; image/audio/video embedding inputs are billed at separate
+    # rates not modeled by the text embedding path. The -preview key is retained for history.
+    "gemini-embedding-2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=0.0,
+            ),
+        ],
+    ),
     "gemini-embedding-2-preview": ModelPricing(
         tiers=[
             PricingTier(
@@ -242,18 +253,29 @@ _PRICING: dict[str, ModelPricing] = {
     ),
 }
 
-# Pre-sorted by key length descending for prefix matching (longest match first)
-_PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
+# Case-insensitive, longest-prefix index (see lmux.cost.resolve_pricing).
+_PRICING_BY_PREFIX = build_pricing_index(_PRICING)
+
+# Image-output model families: Google bills generated-image output tokens far higher than text
+# output (e.g. $30-$120/M vs $1.50-$12/M), but the provider collapses all output into one token
+# count, so a single output rate would underprice image generation ~10-20x. Return None (unknown)
+# rather than a confidently-wrong cost until modality-aware costing exists. Matched as *prefixes*
+# (case-insensitively) so every dated/`-preview` variant — e.g. gemini-2.5-flash-image-preview — is
+# covered, not just the bare id; a bare prefix would otherwise fall through to the text-priced base.
+_UNPRICED_IMAGE_PREFIXES = (
+    "gemini-2.5-flash-image",
+    "gemini-3.1-flash-image",
+    "gemini-3.1-flash-lite-image",
+    "gemini-3-pro-image",
+)
 
 
 def calculate_google_cost(model: str, usage: Usage) -> Cost | None:
     """Calculate cost for a Google API call. Returns None if model pricing is unknown."""
-    pricing = _PRICING.get(model)
-    if pricing is None:
-        for prefix, p in _PRICING_BY_PREFIX:
-            if model.startswith(prefix):
-                pricing = p
-                break
+    model_lower = model.lower()
+    if any(model_lower.startswith(prefix) for prefix in _UNPRICED_IMAGE_PREFIXES):
+        return None
+    pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:
         return None
     return calculate_cost(usage, pricing)

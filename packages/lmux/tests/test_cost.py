@@ -4,7 +4,15 @@ from datetime import date
 
 import pytest
 
-from lmux.cost import ModelPricing, PricingSchedule, PricingTier, calculate_cost, per_million_tokens
+from lmux.cost import (
+    ModelPricing,
+    PricingSchedule,
+    PricingTier,
+    build_pricing_index,
+    calculate_cost,
+    per_million_tokens,
+    resolve_pricing,
+)
 from lmux.types import Usage
 
 
@@ -532,3 +540,38 @@ class TestCalculateCost:
         assert calculate_cost(usage, pricing, as_of=date(2027, 6, 1)).input_cost == pytest.approx(5.00)
         # No as_of -> latest schedule ($5).
         assert calculate_cost(usage, pricing).input_cost == pytest.approx(5.00)
+
+
+class TestBuildPricingIndexAndResolvePricing:
+    @staticmethod
+    def _pricing(rate: float) -> ModelPricing:
+        return ModelPricing(tiers=[PricingTier(input_cost_per_token=rate, output_cost_per_token=0.0)])
+
+    def test_index_sorted_longest_first(self) -> None:
+        p = self._pricing(1.0)
+        index = build_pricing_index({"a": p, "aaa": p, "aa": p})
+        assert [key for key, _ in index] == ["aaa", "aa", "a"]
+
+    def test_index_lowercases_keys(self) -> None:
+        p = self._pricing(1.0)
+        index = build_pricing_index({"Cohere-Command-A": p})
+        assert index == [("cohere-command-a", p)]
+
+    def test_exact_and_prefix_resolution(self) -> None:
+        base = self._pricing(1.0)
+        mini = self._pricing(2.0)
+        index = build_pricing_index({"gpt-4o": base, "gpt-4o-mini": mini})
+        assert resolve_pricing("gpt-4o", index) is base  # exact
+        assert resolve_pricing("gpt-4o-2024-11-20", index) is base  # prefix fallback
+        assert resolve_pricing("gpt-4o-mini-2024-07-18", index) is mini  # longest prefix wins
+
+    def test_case_insensitive_exact_and_prefix(self) -> None:
+        p = self._pricing(1.0)
+        index = build_pricing_index({"Cohere-command-a": p})
+        assert resolve_pricing("cohere-command-a", index) is p
+        assert resolve_pricing("COHERE-COMMAND-A", index) is p
+        assert resolve_pricing("Cohere-Command-A-plus-05-2026", index) is p  # mixed-case prefix
+
+    def test_no_match_returns_none(self) -> None:
+        index = build_pricing_index({"gpt-4o": self._pricing(1.0)})
+        assert resolve_pricing("claude-opus-4-8", index) is None

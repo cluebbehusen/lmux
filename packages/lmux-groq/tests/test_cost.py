@@ -49,6 +49,20 @@ class TestCalculateGroqCost:
         assert cost.input_cost == pytest.approx(1000 * 0.20 / 1_000_000)
         assert cost.output_cost == pytest.approx(500 * 0.60 / 1_000_000)
 
+    @pytest.mark.parametrize(
+        ("model", "rate"),
+        [
+            ("meta-llama/llama-prompt-guard-2-22m", 0.03),
+            ("meta-llama/llama-prompt-guard-2-86m", 0.04),
+        ],
+    )
+    def test_prompt_guard_pricing(self, model: str, rate: float) -> None:
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_groq_cost(model, usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1000 * rate / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * rate / 1_000_000)
+
     def test_llama31_8b_pricing(self) -> None:
         usage = Usage(input_tokens=1000, output_tokens=500)
         cost = calculate_groq_cost("llama-3.1-8b-instant", usage)
@@ -72,6 +86,15 @@ class TestCalculateGroqCost:
         # These should resolve to different prefixes with different pricing
         assert cost_maverick.input_cost != cost_scout.input_cost
 
+    def test_case_insensitive_lookup(self) -> None:
+        """A capitalized model id resolves identically to its lowercase form."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        upper = calculate_groq_cost("LLAMA-3.3-70B-VERSATILE", usage)
+        lower = calculate_groq_cost("llama-3.3-70b-versatile", usage)
+        assert upper is not None
+        assert lower is not None
+        assert upper.total_cost == pytest.approx(lower.total_cost)
+
     def test_qwen_pricing(self) -> None:
         usage = Usage(input_tokens=1000, output_tokens=500)
         cost = calculate_groq_cost("qwen/qwen3-32b", usage)
@@ -85,6 +108,13 @@ class TestCalculateGroqCost:
         assert cost is not None
         # 200 cached tokens at 50% discount ($0.0375/M), 800 regular input at $0.075/M
         assert cost.cache_read_cost is not None
+        assert cost.cache_read_cost == pytest.approx(200 * 0.0375 / 1_000_000)
+        assert cost.input_cost == pytest.approx(800 * 0.075 / 1_000_000)
+
+    def test_with_cache_tokens_safeguard(self) -> None:
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)
+        cost = calculate_groq_cost("openai/gpt-oss-safeguard-20b", usage)
+        assert cost is not None
         assert cost.cache_read_cost == pytest.approx(200 * 0.0375 / 1_000_000)
         assert cost.input_cost == pytest.approx(800 * 0.075 / 1_000_000)
 

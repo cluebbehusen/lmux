@@ -3,7 +3,14 @@
 Pricing source: https://developers.openai.com/api/docs/pricing
 """
 
-from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
+from lmux.cost import (
+    ModelPricing,
+    PricingTier,
+    build_pricing_index,
+    calculate_cost,
+    per_million_tokens,
+    resolve_pricing,
+)
 from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
@@ -57,6 +64,25 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(9.00),
                 cache_read_cost_per_token=per_million_tokens(0.20),
                 cache_creation_cost_per_token=per_million_tokens(2.50),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    # The bare "gpt-5.6" alias routes to gpt-5.6-sol; mirror Sol's rates so it does not
+    # fall through to the broad "gpt-5" prefix and get under-priced at 1.25/10.
+    "gpt-5.6": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(45.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
                 min_input_tokens=272_000,
             ),
         ],
@@ -344,6 +370,35 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # The 2024-05-13 snapshot is priced higher than the current gpt-4o (5/15 vs 2.50/10) and
+    # has no cached-input rate; an explicit key stops it inheriting the cheaper gpt-4o prefix.
+    "gpt-4o-2024-05-13": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(15.00),
+            )
+        ],
+    ),
+    # Search-preview models: same input/output as their base family but OpenAI publishes NO
+    # cached-input price, so an explicit key drops the spurious cache rate the prefix would add.
+    # (Per-tool-call web-search fees are separate and not modeled here.)
+    "gpt-4o-search-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(10.00),
+            )
+        ],
+    ),
+    "gpt-4o-mini-search-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.15),
+                output_cost_per_token=per_million_tokens(0.60),
+            )
+        ],
+    ),
     "chatgpt-4o-latest": ModelPricing(
         tiers=[
             PricingTier(
@@ -471,8 +526,13 @@ _PRICING: dict[str, ModelPricing] = {
     ),
 }
 
-# Pre-sorted by key length descending for prefix matching (longest match first)
-_PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
+# Case-insensitive, longest-prefix index (see lmux.cost.resolve_pricing).
+_PRICING_BY_PREFIX = build_pricing_index(_PRICING)
+
+# Models OpenAI lists without a published token price (e.g. gpt-5.4-cyber, shown with blank
+# pricing columns). Returning None is correct — do NOT let them fall through to a broad family
+# prefix (e.g. gpt-5.4) and inherit a fabricated rate, and do not report a regional uplift for them.
+_UNPRICED_MODELS = frozenset({"gpt-5.4-cyber"})
 
 # 10% uplift for regional processing (data residency) endpoints. Per OpenAI, this
 # applies to the gpt-5.4 family (gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-pro),
@@ -483,12 +543,9 @@ _REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4", "gpt-5.5", "gpt-5.6")
 
 def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:
     """Calculate cost for an OpenAI API call. Returns None if model pricing is unknown."""
-    pricing = _PRICING.get(model)
-    if pricing is None:
-        for prefix, p in _PRICING_BY_PREFIX:
-            if model.startswith(prefix):
-                pricing = p
-                break
+    if model.lower() in _UNPRICED_MODELS:
+        return None
+    pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:
         return None
     return calculate_cost(usage, pricing)
@@ -496,7 +553,10 @@ def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:
 
 def regional_uplift_applies(model: str) -> bool:
     """Whether the regional processing (data residency) uplift applies to this model."""
-    return any(model.startswith(prefix) for prefix in _REGIONAL_UPLIFT_PREFIXES)
+    model_lower = model.lower()
+    if model_lower in _UNPRICED_MODELS:
+        return False
+    return any(model_lower.startswith(prefix) for prefix in _REGIONAL_UPLIFT_PREFIXES)
 
 
 def apply_cost_multiplier(cost: Cost, multiplier: float) -> Cost:
