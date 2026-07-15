@@ -111,7 +111,7 @@ For fine-grained control, use provider-specific params instead (e.g., `Anthropic
 
 ### Cost
 
-Every response includes a `.cost` field when the model's pricing is known. Unknown models return `None`, not an error. Built-in pricing is matched by longest key prefix — case-insensitively for every provider except AWS Bedrock — so dated or capitalized model ids (e.g. `gpt-4o-2024-11-20`, `Cohere-command-a`) resolve to their family's rate.
+Every response includes a `.cost` field when the model's pricing is known. Unknown models return `None`, not an error.
 
 Register custom pricing for models not in the built-in tables:
 
