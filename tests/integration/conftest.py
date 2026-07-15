@@ -42,10 +42,12 @@ _ALL_MODES = frozenset({"offline", "live", "record"})
 _FINISH_REASONS = {"stop", "length", "content_filter", "tool_calls"}
 _SECRET_KEYS = {"authorization", "api_key", "api-key", "openai-organization", "openai-project", "x-api-key"}
 
-# Vertex bakes the GCP project id into the URL path (/projects/<id>/locations/...). Recorded
-# cassettes store a fixed placeholder instead so no project-scoped identifier is committed; the
-# offline provider is built with this same literal so the endpoint-path assertion still matches.
+# Vertex bakes the GCP project id into the URL path (/projects/<id>/locations/...) and Azure Foundry
+# the resource name into the host (<resource>.openai.azure.com). Recorded cassettes store a fixed
+# placeholder for each so no account-scoped identifier is committed; the offline provider is built with
+# the same literals so the endpoint-path assertion still matches.
 _VERTEX_PROJECT_PLACEHOLDER = "lmux-integration"
+_AZURE_RESOURCE_PLACEHOLDER = "lmux-integration"
 
 
 # MARK: Gating
@@ -227,8 +229,14 @@ def _replay_transport(cassette: dict[str, Any], sink: list[httpx.Request]) -> ht
 
 
 def _normalize_endpoint(endpoint: str) -> str:
-    """Swap the GCP project id in a Vertex URL for a placeholder (only Vertex URLs match)."""
-    return re.sub(r"(/projects/)[^/]+(/locations/)", rf"\g<1>{_VERTEX_PROJECT_PLACEHOLDER}\g<2>", endpoint)
+    """Swap account-scoped identifiers for placeholders: the Vertex project id in the path and the
+    Azure Foundry resource name in the host (each pattern only matches its own provider's URLs)."""
+    endpoint = re.sub(r"(/projects/)[^/]+(/locations/)", rf"\g<1>{_VERTEX_PROJECT_PLACEHOLDER}\g<2>", endpoint)
+    return re.sub(
+        r"https://[^.]+\.(openai\.azure\.com|services\.ai\.azure\.com)",
+        rf"https://{_AZURE_RESOURCE_PLACEHOLDER}.\g<1>",
+        endpoint,
+    )
 
 
 def _write_captured_cassette(cassette_path: Path, request: httpx.Request, response: httpx.Response) -> None:
@@ -315,3 +323,9 @@ def cosine_similarity() -> Callable[[list[float], list[float]], float]:
 def vertex_project_placeholder() -> str:
     """The placeholder project id baked into recorded Vertex cassettes (see ``_normalize_endpoint``)."""
     return _VERTEX_PROJECT_PLACEHOLDER
+
+
+@pytest.fixture
+def azure_resource_placeholder() -> str:
+    """The placeholder resource name baked into recorded Azure Foundry cassettes (see ``_normalize_endpoint``)."""
+    return _AZURE_RESOURCE_PLACEHOLDER
