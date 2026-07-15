@@ -69,16 +69,16 @@ class TestCalculateGoogleCost:
         be non-zero.
         """
         usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)
-        cost = calculate_google_cost("gemini-2.5-pro-computer-use-preview", usage)
+        cost = calculate_google_cost("gemini-2.5-computer-use-preview-10-2025", usage)
         assert cost is not None
         assert cost.input_cost == pytest.approx((1000 - 200) * 1.25 / 1_000_000)
         assert cost.output_cost == pytest.approx(500 * 10.00 / 1_000_000)
         assert cost.cache_read_cost == pytest.approx(0.0)
 
     def test_computer_use_long_context_tier(self) -> None:
-        """gemini-2.5-pro-computer-use-preview uses the >200K tier above 200K input tokens."""
+        """gemini-2.5-computer-use-preview-10-2025 uses the >200K tier above 200K input tokens."""
         usage = Usage(input_tokens=250_000, output_tokens=1000)
-        cost = calculate_google_cost("gemini-2.5-pro-computer-use-preview", usage)
+        cost = calculate_google_cost("gemini-2.5-computer-use-preview-10-2025", usage)
         assert cost is not None
         assert cost.input_cost == pytest.approx(250_000 * 2.50 / 1_000_000)
         assert cost.output_cost == pytest.approx(1000 * 15.00 / 1_000_000)
@@ -98,8 +98,78 @@ class TestCalculateGoogleCost:
         assert cost_flash is not None
         assert cost_lite.input_cost < cost_flash.input_cost
 
+    def test_case_insensitive_lookup(self) -> None:
+        """A capitalized model id resolves identically to its lowercase form."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        upper = calculate_google_cost("GEMINI-2.5-PRO", usage)
+        lower = calculate_google_cost("gemini-2.5-pro", usage)
+        assert upper is not None
+        assert lower is not None
+        assert upper.total_cost == pytest.approx(lower.total_cost)
+
     def test_partner_model_not_priced(self) -> None:
         """Partner models (Claude, Mistral, ...) are not servable by this provider, so they have no pricing."""
         usage = Usage(input_tokens=1000, output_tokens=500)
         assert calculate_google_cost("claude-sonnet-4-6", usage) is None
         assert calculate_google_cost("mistral-medium-3", usage) is None
+
+    def test_computer_use_real_id_priced_at_base_rate(self) -> None:
+        """The real computer-use id resolves to the dedicated (no-cache) rate.
+
+        The old mis-named key gemini-2.5-pro-computer-use-preview was never a real runtime id;
+        it now harmlessly prefix-matches gemini-2.5-pro, so it is not asserted here.
+        """
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        real = calculate_google_cost("gemini-2.5-computer-use-preview-10-2025", usage)
+        assert real is not None
+        assert real.input_cost == pytest.approx(1000 * 1.25 / 1_000_000)
+        assert real.output_cost == pytest.approx(500 * 10.00 / 1_000_000)
+
+    @pytest.mark.parametrize(
+        ("ga", "preview", "input_rate"),
+        [
+            ("gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview", 0.25),
+            ("gemini-embedding-2", "gemini-embedding-2-preview", 0.20),
+        ],
+    )
+    def test_ga_ids_match_shutdown_previews_and_pin_rate(self, ga: str, preview: str, input_rate: float) -> None:
+        """GA ids resolve to the same rates as their shut-down -preview aliases, pinned to reality."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        ga_cost = calculate_google_cost(ga, usage)
+        preview_cost = calculate_google_cost(preview, usage)
+        assert ga_cost is not None
+        assert preview_cost is not None
+        assert ga_cost.input_cost == pytest.approx(1000 * input_rate / 1_000_000)
+        assert ga_cost.total_cost == pytest.approx(preview_cost.total_cost)
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "gemini-2.5-flash-image",
+            "gemini-3.1-flash-image",
+            "gemini-3.1-flash-image-preview",
+            "gemini-3.1-flash-lite-image",
+            "gemini-3.1-flash-lite-image-preview",
+            "gemini-3-pro-image",
+            "gemini-3-pro-image-preview",
+        ],
+    )
+    def test_image_output_models_unpriced(self, model: str) -> None:
+        """Image-output models return None: their image output is billed far above the text rate,
+        which a single output rate would underprice ~10-20x. Checked case-insensitively too."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        assert calculate_google_cost(model, usage) is None
+        assert calculate_google_cost(model.upper(), usage) is None
+
+    def test_robotics_er_priced(self) -> None:
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        cost = calculate_google_cost("gemini-robotics-er-1.6-preview", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1000 * 1.00 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 5.00 / 1_000_000)
+
+    def test_gemini_3_1_flash_lite_cache_rate(self) -> None:
+        usage = Usage(input_tokens=1000, output_tokens=0, cache_read_tokens=500)
+        cost = calculate_google_cost("gemini-3.1-flash-lite", usage)
+        assert cost is not None
+        assert cost.cache_read_cost == pytest.approx(500 * 0.025 / 1_000_000)

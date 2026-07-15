@@ -663,7 +663,7 @@ wheels = [
 
 [[package]]
 name = "lmux"
-version = "0.10.0"
+version = "0.11.0"
 source = { editable = "packages/lmux" }
 dependencies = [
     { name = "pydantic" },
@@ -674,7 +674,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.11.0"
+version = "0.12.0"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "httpx" },
@@ -720,7 +720,7 @@ provides-extras = ["async"]
 
 [[package]]
 name = "lmux-azure-foundry"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "packages/lmux-azure-foundry" }
 dependencies = [
     { name = "httpx" },
@@ -753,7 +753,7 @@ requires-dist = [{ name = "lmux-google", editable = "packages/lmux-google" }]
 
 [[package]]
 name = "lmux-google"
-version = "0.9.0"
+version = "0.10.0"
 source = { editable = "packages/lmux-google" }
 dependencies = [
     { name = "google-auth" },
@@ -770,7 +770,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-groq"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "packages/lmux-groq" }
 dependencies = [
     { name = "httpx" },
@@ -796,7 +796,7 @@ requires-dist = [{ name = "lmux", editable = "packages/lmux" }]
 
 [[package]]
 name = "lmux-openai"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "packages/lmux-openai" }
 dependencies = [
     { name = "httpx" },

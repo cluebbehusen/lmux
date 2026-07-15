@@ -92,12 +92,163 @@ class TestCalculateAzureFoundryCost:
         assert cost.input_cost == pytest.approx(0.50)
         assert cost.output_cost == pytest.approx(1.50)
 
-    def test_cohere_model(self) -> None:
+    @pytest.mark.parametrize("model", ["Cohere-command-a", "cohere-command-a", "COHERE-COMMAND-A"])
+    def test_cohere_command_a_case_insensitive(self, model: str) -> None:
+        # Lookup is case-insensitive, so the base id prices regardless of Azure's runtime casing.
         usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
-        cost = calculate_azure_foundry_cost("cohere-command-a", usage)
+        cost = calculate_azure_foundry_cost(model, usage)
         assert cost is not None
         assert cost.input_cost == pytest.approx(2.50)
         assert cost.output_cost == pytest.approx(10.00)
+
+    @pytest.mark.parametrize("model", ["Cohere-command-a-plus-05-2026", "Cohere-command-a-plus-06-2026"])
+    def test_cohere_command_a_plus_version_agnostic(self, model: str) -> None:
+        # Any dated Plus snapshot must keep the Plus rate, not fall through to the pricier base.
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost(model, usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(0.80)
+        assert cost.output_cost == pytest.approx(3.20)
+
+    def test_embed_v4(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=0)
+        cost = calculate_azure_foundry_cost("embed-v-4-0", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(0.12)
+        assert cost.output_cost == 0.0
+
+    def test_mistral_large_3_capitalized(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("Mistral-Large-3", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(0.50)
+        assert cost.output_cost == pytest.approx(1.50)
+
+    def test_mistral_medium_3_5(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("mistral-medium-3-5", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1.50)
+        assert cost.output_cost == pytest.approx(7.50)
+
+    @pytest.mark.parametrize(
+        ("model", "input_rate", "output_rate", "cache_rate"),
+        [
+            ("Kimi-K2.5", 0.60, 3.00, 0.10),
+            ("Kimi-K2.6", 0.95, 4.00, 0.16),
+            ("Kimi-K2.7-Code", 0.95, 4.00, 0.19),
+        ],
+    )
+    def test_kimi_family(self, model: str, input_rate: float, output_rate: float, cache_rate: float) -> None:
+        rates = calculate_azure_foundry_cost(model, Usage(input_tokens=1_000_000, output_tokens=1_000_000))
+        cache = calculate_azure_foundry_cost(
+            model, Usage(input_tokens=1_000_000, output_tokens=0, cache_read_tokens=1_000_000)
+        )
+        assert rates is not None
+        assert cache is not None
+        assert rates.input_cost == pytest.approx(input_rate)
+        assert rates.output_cost == pytest.approx(output_rate)
+        assert cache.cache_read_cost == pytest.approx(cache_rate)
+
+    def test_o1_pro_not_o1_prefix(self) -> None:
+        """o1-pro must use its own 10x rate, not inherit the cheaper o1 prefix."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        pro = calculate_azure_foundry_cost("o1-pro", usage)
+        base = calculate_azure_foundry_cost("o1", usage)
+        assert pro is not None
+        assert base is not None
+        assert pro.input_cost == pytest.approx(150.00)
+        assert pro.output_cost == pytest.approx(600.00)
+        assert pro.input_cost > base.input_cost
+        cache = calculate_azure_foundry_cost(
+            "o1-pro", Usage(input_tokens=1_000_000, output_tokens=0, cache_read_tokens=1_000_000)
+        )
+        assert cache is not None
+        assert cache.cache_read_cost == pytest.approx(75.00)
+
+    def test_gpt_5_2_pro_not_gpt_5_2_prefix(self) -> None:
+        """gpt-5.2-pro uses its own ~12x rate with no cache meter, not the gpt-5.2 prefix."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("gpt-5.2-pro", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(21.00)
+        assert cost.output_cost == pytest.approx(168.00)
+
+    def test_gpt_chat_latest(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        cost = calculate_azure_foundry_cost("gpt-chat-latest", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(5.00)
+        assert cost.output_cost == pytest.approx(30.00)
+
+    def test_grok_4_1_fast_dash_ids(self) -> None:
+        """Dash-form grok-4-1-fast-* ids match grok-4-1-fast (0.20/0.50), not grok-4 (3/15)."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        for model in ("grok-4-1-fast-reasoning", "grok-4-1-fast-non-reasoning"):
+            cost = calculate_azure_foundry_cost(model, usage)
+            assert cost is not None
+            assert cost.input_cost == pytest.approx(0.20)
+            assert cost.output_cost == pytest.approx(0.50)
+
+    def test_grok_4_20_preview_unpriced_returns_none(self) -> None:
+        """grok-4-20-* Preview ids have no published rate and must return None, not fall through to grok-4."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        assert calculate_azure_foundry_cost("grok-4-20-reasoning", usage) is None
+        assert calculate_azure_foundry_cost("grok-4-20-non-reasoning", usage) is None
+
+    def test_deepseek_v4_cache_reads(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=0, cache_read_tokens=1_000_000)
+        flash = calculate_azure_foundry_cost("deepseek-v4-flash", usage)
+        pro = calculate_azure_foundry_cost("deepseek-v4-pro", usage)
+        assert flash is not None
+        assert pro is not None
+        assert flash.cache_read_cost == pytest.approx(0.028)
+        assert pro.cache_read_cost == pytest.approx(0.145)
+
+    @pytest.mark.parametrize(
+        ("model", "base_rates", "hi_rates"),
+        [
+            ("gpt-5.6-sol", (5.00, 30.00, 0.50), (10.00, 45.00, 1.00)),
+            ("gpt-5.6-terra", (2.50, 15.00, 0.25), (5.00, 22.50, 0.50)),
+            ("gpt-5.6-luna", (1.00, 6.00, 0.10), (2.00, 9.00, 0.20)),
+        ],
+    )
+    def test_gpt_5_6_family_mirrors_openai_without_cache_write(
+        self,
+        model: str,
+        base_rates: tuple[float, float, float],
+        hi_rates: tuple[float, float, float],
+    ) -> None:
+        """Azure gpt-5.6-* mirror OpenAI input/output/cache-read on both tiers but bill no cache write."""
+        in_base, out_base, cr_base = base_rates
+        in_hi, out_hi, cr_hi = hi_rates
+        base = calculate_azure_foundry_cost(
+            model, Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=100, cache_creation_tokens=200)
+        )
+        assert base is not None
+        assert base.input_cost == pytest.approx((1000 - 100 - 200) * in_base / 1_000_000)
+        assert base.output_cost == pytest.approx(500 * out_base / 1_000_000)
+        assert base.cache_read_cost == pytest.approx(100 * cr_base / 1_000_000)
+        assert base.cache_creation_cost == pytest.approx(0.0)  # Azure meters no cache write for AOAI
+        hi = calculate_azure_foundry_cost(model, Usage(input_tokens=300_000, output_tokens=1000))
+        assert hi is not None
+        assert hi.input_cost == pytest.approx(300_000 * in_hi / 1_000_000)
+        assert hi.output_cost == pytest.approx(1000 * out_hi / 1_000_000)
+        cache_hi = calculate_azure_foundry_cost(
+            model, Usage(input_tokens=300_000, output_tokens=0, cache_read_tokens=300_000)
+        )
+        assert cache_hi is not None
+        assert cache_hi.cache_read_cost == pytest.approx(300_000 * cr_hi / 1_000_000)
+
+    def test_gpt_5_6_bare_alias_matches_sol(self) -> None:
+        """The bare gpt-5.6 alias resolves to Sol rates, not the gpt-5 prefix (1.25/10)."""
+        usage = Usage(input_tokens=100_000, output_tokens=100_000)
+        bare = calculate_azure_foundry_cost("gpt-5.6", usage)
+        sol = calculate_azure_foundry_cost("gpt-5.6-sol", usage)
+        assert bare is not None
+        assert sol is not None
+        assert bare.input_cost == pytest.approx(100_000 * 5.00 / 1_000_000)
+        assert bare.total_cost == pytest.approx(sol.total_cost)
 
     def test_grok_4_2_corrected_pricing(self) -> None:
         usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)

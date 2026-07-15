@@ -62,6 +62,15 @@ class TestCalculateOpenAICost:
         assert mini_cost is not None
         assert cost.total_cost == pytest.approx(mini_cost.total_cost)
 
+    def test_case_insensitive_lookup(self) -> None:
+        """A capitalized model id resolves identically to its lowercase form."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        upper = calculate_openai_cost("GPT-4O", usage)
+        lower = calculate_openai_cost("gpt-4o", usage)
+        assert upper is not None
+        assert lower is not None
+        assert upper.total_cost == pytest.approx(lower.total_cost)
+
     def test_gpt_5_5_cyber_has_dedicated_pricing(self) -> None:
         """gpt-5.5-cyber must use its own (pricier) rate, not prefix-match gpt-5.5."""
         usage = Usage(input_tokens=1000, output_tokens=500)
@@ -107,6 +116,45 @@ class TestCalculateOpenAICost:
         assert cost.input_cost == pytest.approx(300_000 * 10.00 / 1_000_000)
         assert cost.output_cost == pytest.approx(1000 * 45.00 / 1_000_000)
 
+    def test_gpt_5_6_bare_alias_matches_sol(self) -> None:
+        """The bare gpt-5.6 alias mirrors gpt-5.6-sol, not the cheaper gpt-5 prefix."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        bare = calculate_openai_cost("gpt-5.6", usage)
+        sol = calculate_openai_cost("gpt-5.6-sol", usage)
+        assert bare is not None
+        assert sol is not None
+        assert bare.input_cost == pytest.approx(1000 * 5.00 / 1_000_000)
+        assert bare.total_cost == pytest.approx(sol.total_cost)
+
+    def test_gpt_4o_2024_05_13_snapshot(self) -> None:
+        """The 2024-05-13 snapshot is priced above current gpt-4o (5/15) with no cached-input rate."""
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=100)
+        cost = calculate_openai_cost("gpt-4o-2024-05-13", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx((1000 - 100) * 5.00 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 15.00 / 1_000_000)
+        assert cost.cache_read_cost == pytest.approx(0.0)
+
+    def test_search_preview_models_have_no_cached_input(self) -> None:
+        """search-preview models keep base input/output but publish no cached-input price."""
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=100)
+        full = calculate_openai_cost("gpt-4o-search-preview", usage)
+        mini = calculate_openai_cost("gpt-4o-mini-search-preview", usage)
+        assert full is not None
+        assert mini is not None
+        assert full.input_cost == pytest.approx((1000 - 100) * 2.50 / 1_000_000)
+        assert full.output_cost == pytest.approx(500 * 10.00 / 1_000_000)
+        assert full.cache_read_cost == pytest.approx(0.0)
+        assert mini.input_cost == pytest.approx((1000 - 100) * 0.15 / 1_000_000)
+        assert mini.cache_read_cost == pytest.approx(0.0)
+
+    def test_gpt_5_4_cyber_unpriced_returns_none(self) -> None:
+        """gpt-5.4-cyber is listed without a price; it must return None while its gpt-5.4 sibling stays priced."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        assert calculate_openai_cost("gpt-5.4-cyber", usage) is None
+        sibling = calculate_openai_cost("gpt-5.4", usage)
+        assert sibling is not None  # the sentinel is narrow: the family base must still price
+
 
 class TestRegionalUpliftApplies:
     @pytest.mark.parametrize(
@@ -122,9 +170,10 @@ class TestRegionalUpliftApplies:
 
     @pytest.mark.parametrize(
         "model",
-        ["gpt-4o", "gpt-5", "gpt-5.3-codex", "o3", "text-embedding-3-small", "unknown-model"],
+        ["gpt-4o", "gpt-5", "gpt-5.3-codex", "o3", "text-embedding-3-small", "unknown-model", "gpt-5.4-cyber"],
     )
     def test_does_not_apply_to_other_models(self, model: str) -> None:
+        # gpt-5.4-cyber starts with "gpt-5.4" but is unpriced, so the uplift must not apply.
         assert regional_uplift_applies(model) is False
 
 
