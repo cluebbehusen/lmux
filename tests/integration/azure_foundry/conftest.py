@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from lmux_azure_foundry.auth import AzureAdToken, AzureFoundryTokenAuthProvider
 from lmux_azure_foundry.provider import AzureFoundryProvider
 
 
@@ -45,5 +46,37 @@ def foundry_provider(azure_resource_placeholder: str) -> Callable[..., AzureFoun
         if async_:
             return AzureFoundryProvider(endpoint=endpoint, auth=resolved, async_transport=transport)
         return AzureFoundryProvider(endpoint=endpoint, auth=resolved, transport=transport)
+
+    return _build
+
+
+class _OfflineAdAuth:
+    """Offline auth for the AD smoke test: a static ``AzureAdToken`` so the provider builds the
+    ``Authorization: Bearer`` headers offline without Azure Identity or a network token fetch."""
+
+    def get_credentials(self) -> AzureAdToken:
+        return AzureAdToken(token="offline-token")  # noqa: S106 — dummy; the header is built offline but never sent
+
+    async def aget_credentials(self) -> AzureAdToken:
+        return AzureAdToken(token="offline-token")  # noqa: S106
+
+
+@pytest.fixture
+def offline_ad_auth() -> _OfflineAdAuth:
+    return _OfflineAdAuth()
+
+
+@pytest.fixture
+def foundry_ad_provider(azure_resource_placeholder: str) -> Callable[..., AzureFoundryProvider]:
+    """Build a provider that authenticates with Azure AD (Entra) bearer tokens live/record via
+    ``DefaultAzureCredential``. Offline uses the injected fake-token auth to exercise the bearer path."""
+
+    def _build(auth: Any, transport: Any) -> AzureFoundryProvider:  # noqa: ANN401
+        if auth is None:  # live / record
+            return AzureFoundryProvider(
+                endpoint=os.environ["AZURE_FOUNDRY_ENDPOINT"], auth=AzureFoundryTokenAuthProvider(), transport=transport
+            )
+        endpoint = f"https://{azure_resource_placeholder}.openai.azure.com"
+        return AzureFoundryProvider(endpoint=endpoint, auth=auth, transport=transport)
 
     return _build

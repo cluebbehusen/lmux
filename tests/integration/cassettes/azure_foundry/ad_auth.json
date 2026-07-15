@@ -1,0 +1,38 @@
+{
+  "endpoint": "https://lmux-integration.openai.azure.com/openai/deployments/Phi-4-mini/chat/completions",
+  "request": {
+    "model": "Phi-4-mini",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Reply with the word: pong"
+      }
+    ],
+    "max_tokens": 256,
+    "stream": false
+  },
+  "response": {
+    "choices": [
+      {
+        "finish_reason": "length",
+        "index": 0,
+        "message": {
+          "content": "<think>\nOkay, let me try to figure this out. So the user gave me a problem where I have to reply with the word \"pong\". But before that, they mentioned that my name is Phi, an AI math expert from Microsoft. Hmm, the instruction seems straightforward, but maybe there's a trick here.\n\nWait, the user is setting up a scenario where I receive a problem, think through it, and then respond with \"pong\" inside a box. But in this case, the problem itself wasn't provided. The user just stated the setup and then said to put the final answer in a box. Maybe the actual problem is missing? Let me check again.\n\nLooking back, the user's message starts with \"You will be given a problem. Please reason step by step, and put your final answer within \\boxed{}:\" followed by some context about Phi. Then the user writes: \"Reply with the word: pong\". So maybe the problem is to respond with \"pong\" regardless of the context? But why?\n\nWait, perhaps this is a trick question where the problem is implied. The classic \"ping-pong\" exchange where if I answer something, I have to respond with \"pong\". In some contexts, like internet protocols, when a server sends a ping",
+          "reasoning_content": null,
+          "role": "assistant",
+          "tool_calls": []
+        }
+      }
+    ],
+    "created": 1784112781,
+    "id": "chatcmpl-7a26600a-2b68-4e83-9ec3-58d666214966",
+    "model": "Phi-4-mini-reasoning",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 256,
+      "prompt_tokens": 24,
+      "prompt_tokens_details": null,
+      "total_tokens": 280
+    }
+  }
+}
