@@ -1,6 +1,6 @@
 [project]
 name = "lmux-load-balancer"
-version = "0.1.0"
+version = "0.1.1"
 description = "Weighted, sticky load balancing across lmux providers, with failover"
 requires-python = ">=3.13"
 license = "MIT"
@@ -14,7 +14,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "lmux~=0.9",
+  "lmux~=0.10",
 ]
 
 [project.urls]
