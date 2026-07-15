@@ -128,5 +128,7 @@ AzureFoundryProvider(
     api_version=...,   # API version (default: "2025-04-01-preview")
     timeout=...,       # Request timeout in seconds
     max_retries=...,   # Max retry attempts
+    transport=...,        # Optional httpx.BaseTransport for the sync client (proxies, testing)
+    async_transport=...,  # Optional httpx.AsyncBaseTransport for the async client
 )
 ```

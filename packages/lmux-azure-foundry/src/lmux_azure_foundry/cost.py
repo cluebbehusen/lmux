@@ -557,6 +557,48 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # --- Phi (Microsoft). Keys match Azure's response `model` casing (capitalized), unlike the
+    # lowercase DeepSeek/Grok/etc. keys; the cost lookup is case-sensitive. ---
+    "Phi-4-mini-reasoning": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.075),
+                output_cost_per_token=per_million_tokens(0.30),
+            )
+        ],
+    ),
+    "Phi-4-reasoning-plus": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.125),
+                output_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
+    "Phi-4-reasoning": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.125),
+                output_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
+    "Phi-4-mini": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.075),
+                output_cost_per_token=per_million_tokens(0.30),
+            )
+        ],
+    ),
+    "Phi-4": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.125),
+                output_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
 }
 
 # Pre-sorted by key length descending for longest-prefix matching

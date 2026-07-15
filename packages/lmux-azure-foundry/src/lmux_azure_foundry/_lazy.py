@@ -48,6 +48,7 @@ def create_sync_client(
     endpoint: str,
     timeout: float | None = None,
     max_retries: int | None = None,
+    transport: "httpx.BaseTransport | None" = None,
 ) -> "httpx.Client":
     """Create an httpx client for the Azure AI Foundry (OpenAI-compatible) API."""
     return _create_sync(
@@ -55,6 +56,7 @@ def create_sync_client(
         headers={"Content-Type": "application/json"},
         timeout=timeout,
         max_retries=max_retries,
+        transport=transport,
     )
 
 
@@ -63,6 +65,7 @@ def create_async_client(
     endpoint: str,
     timeout: float | None = None,
     max_retries: int | None = None,
+    transport: "httpx.AsyncBaseTransport | None" = None,
 ) -> "httpx.AsyncClient":
     """Create an async httpx client for the Azure AI Foundry (OpenAI-compatible) API."""
     return _create_async(
@@ -70,4 +73,5 @@ def create_async_client(
         headers={"Content-Type": "application/json"},
         timeout=timeout,
         max_retries=max_retries,
+        transport=transport,
     )

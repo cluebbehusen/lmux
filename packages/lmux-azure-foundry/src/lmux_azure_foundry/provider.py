@@ -90,7 +90,7 @@ class AzureFoundryProvider(
       callable is invoked on every request for a fresh bearer token.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         endpoint: str,
@@ -98,12 +98,16 @@ class AzureFoundryProvider(
         api_version: str = DEFAULT_API_VERSION,
         timeout: float | None = None,
         max_retries: int | None = None,
+        transport: "httpx.BaseTransport | None" = None,
+        async_transport: "httpx.AsyncBaseTransport | None" = None,
     ) -> None:
         self._auth: AuthProvider[AzureFoundryCredential] = auth or AzureFoundryKeyAuthProvider()
         self._endpoint: str = endpoint
         self._api_version: str = api_version
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
+        self._transport: httpx.BaseTransport | None = transport
+        self._async_transport: httpx.AsyncBaseTransport | None = async_transport
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -129,6 +133,7 @@ class AzureFoundryProvider(
                 endpoint=self._endpoint,
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                transport=self._transport,
             )
         return self._sync_client
 
@@ -139,6 +144,7 @@ class AzureFoundryProvider(
                 endpoint=self._endpoint,
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                transport=self._async_transport,
             )
             self._async_loop = loop
         return self._async_client
