@@ -799,6 +799,30 @@ class TestClientManagement:
         loop1.close()
         loop2.close()
 
+    def test_custom_transport_used(self, fake_auth: FakeAuth, completion: dict[str, Any]) -> None:
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=completion)
+
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth, transport=httpx.MockTransport(handler))
+        resp = provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "azure-foundry"
+
+    async def test_custom_async_transport_used(self, fake_auth: FakeAuth, completion: dict[str, Any]) -> None:
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json=completion)
+
+        provider = AzureFoundryProvider(endpoint=ENDPOINT, auth=fake_auth, async_transport=httpx.MockTransport(handler))
+        resp = await provider.achat("gpt-4o", [UserMessage(content="Hi")])
+        assert len(requests) == 1
+        assert resp.provider == "azure-foundry"
+
 
 # MARK: Provider Params Kwargs
 

@@ -6,7 +6,10 @@ deployments apply a multiplier on top of these base rates.
 Use ``register_pricing()`` on ``AzureFoundryProvider`` for provisioned
 deployments or models not listed here.
 
-Pricing source: https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/
+Pricing source: OpenAI (AOAI) models at https://azure.microsoft.com/en-us/pricing/details/azure-openai/.
+Models sold directly by Azure (DeepSeek, Grok, Llama, Mistral, Cohere, Phi) are on the per-vendor Foundry
+Models pages, e.g. https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/microsoft/ for Phi;
+swap the trailing path segment for the vendor (/deepseek, /grok, /llama, /mistral-ai, /cohere, /kimi).
 """
 
 from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
@@ -554,6 +557,58 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(2.50),
                 output_cost_per_token=per_million_tokens(10.00),
+            )
+        ],
+    ),
+    # --- Phi (Microsoft). Keys match Azure's response `model` casing (capitalized), unlike the
+    # lowercase DeepSeek/Grok/etc. keys; the cost lookup is case-sensitive. ---
+    "Phi-4-mini-reasoning": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.075),
+                output_cost_per_token=per_million_tokens(0.30),
+            )
+        ],
+    ),
+    "Phi-4-reasoning-plus": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.125),
+                output_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
+    "Phi-4-reasoning": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.125),
+                output_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
+    "Phi-4-mini": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.075),
+                output_cost_per_token=per_million_tokens(0.30),
+            )
+        ],
+    ),
+    # Text/image meter. Must precede the broad "Phi-4" key so multimodal ids do not fall back to it;
+    # the audio-input meter is priced separately by Azure and is not modeled here.
+    "Phi-4-multimodal": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.08),
+                output_cost_per_token=per_million_tokens(0.32),
+            )
+        ],
+    ),
+    "Phi-4": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.125),
+                output_cost_per_token=per_million_tokens(0.50),
             )
         ],
     ),
