@@ -79,7 +79,7 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
-    # Image-output models (gemini-*-image) are intentionally NOT priced — see _UNPRICED_MODELS
+    # Image-output models (gemini-*-image) are intentionally NOT priced — see _UNPRICED_IMAGE_PREFIXES
     # below. Google bills generated-image output far higher than text output ($30-$120/M vs
     # $1.50-$12/M), which a single output rate cannot represent, so they return None.
     "gemini-3-flash-preview": ModelPricing(
@@ -174,7 +174,7 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # ── Google Gemini (additional) ────────────────────────────
-    # gemini-2.5-flash-image is intentionally unpriced (see _UNPRICED_MODELS) — its image output
+    # gemini-2.5-flash-image is intentionally unpriced (see _UNPRICED_IMAGE_PREFIXES) — its image output
     # is billed far above the modeled text-output rate.
     # Robotics-ER 1.6: text/image/video input $1; audio input ($2) is higher and not modeled.
     "gemini-robotics-er-1.6-preview": ModelPricing(
@@ -256,26 +256,24 @@ _PRICING: dict[str, ModelPricing] = {
 # Case-insensitive, longest-prefix index (see lmux.cost.resolve_pricing).
 _PRICING_BY_PREFIX = build_pricing_index(_PRICING)
 
-# Image-output models: Google bills generated-image output tokens far higher than text output
-# (e.g. $30-$120/M vs $1.50-$12/M), but the provider collapses all output into one token count,
-# so a single output rate would underprice image generation ~10-20x. Return None (unknown) rather
-# than a confidently-wrong cost until modality-aware costing exists. (Checked case-insensitively.)
-_UNPRICED_MODELS = frozenset(
-    {
-        "gemini-2.5-flash-image",
-        "gemini-3.1-flash-image",
-        "gemini-3.1-flash-image-preview",
-        "gemini-3.1-flash-lite-image",
-        "gemini-3.1-flash-lite-image-preview",
-        "gemini-3-pro-image",
-        "gemini-3-pro-image-preview",
-    }
+# Image-output model families: Google bills generated-image output tokens far higher than text
+# output (e.g. $30-$120/M vs $1.50-$12/M), but the provider collapses all output into one token
+# count, so a single output rate would underprice image generation ~10-20x. Return None (unknown)
+# rather than a confidently-wrong cost until modality-aware costing exists. Matched as *prefixes*
+# (case-insensitively) so every dated/`-preview` variant — e.g. gemini-2.5-flash-image-preview — is
+# covered, not just the bare id; a bare prefix would otherwise fall through to the text-priced base.
+_UNPRICED_IMAGE_PREFIXES = (
+    "gemini-2.5-flash-image",
+    "gemini-3.1-flash-image",
+    "gemini-3.1-flash-lite-image",
+    "gemini-3-pro-image",
 )
 
 
 def calculate_google_cost(model: str, usage: Usage) -> Cost | None:
     """Calculate cost for a Google API call. Returns None if model pricing is unknown."""
-    if model.lower() in _UNPRICED_MODELS:
+    model_lower = model.lower()
+    if any(model_lower.startswith(prefix) for prefix in _UNPRICED_IMAGE_PREFIXES):
         return None
     pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:

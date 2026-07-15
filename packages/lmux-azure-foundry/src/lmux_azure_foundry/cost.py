@@ -711,8 +711,10 @@ _PRICING: dict[str, ModelPricing] = {
     ),
     # --- MoonshotAI Kimi. Runtime `model` ids per the Azure model catalog are Kimi-K2.5 /
     # Kimi-K2.6 / Kimi-K2.7-Code (the "FW-"/"FW Kimi" form is only the Fireworks billing meter,
-    # not the deployable id). Azure publishes only Data Zone meters; the base rates below are the
-    # DZ meter / 1.1 (the DATA_ZONE_MULTIPLIER applied at runtime reconstructs the DZ price). ---
+    # not the deployable id). Azure offers these only as Data Zone deployments; the base rates below
+    # are the DZ meter / 1.1, keeping the base-is-global convention used by every other model. Pass
+    # deployment_type="data_zone" to bill the exact DZ rate — the default, unqualified call
+    # deliberately under-reports ~9% (there is no global tier to fall back to). ---
     "Kimi-K2.5": ModelPricing(
         tiers=[
             PricingTier(

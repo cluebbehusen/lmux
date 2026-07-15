@@ -147,16 +147,19 @@ class TestCalculateGoogleCost:
         [
             "gemini-2.5-flash-image",
             "gemini-3.1-flash-image",
-            "gemini-3.1-flash-image-preview",
             "gemini-3.1-flash-lite-image",
-            "gemini-3.1-flash-lite-image-preview",
             "gemini-3-pro-image",
+            # -preview and dated variants must also be caught (prefix sentinel), or they would
+            # fall through to a text-priced base (e.g. gemini-2.5-flash) and mis-report image gen.
+            "gemini-2.5-flash-image-preview",
+            "gemini-3.1-flash-image-preview",
             "gemini-3-pro-image-preview",
+            "gemini-3-pro-image-001",
         ],
     )
     def test_image_output_models_unpriced(self, model: str) -> None:
-        """Image-output models return None: their image output is billed far above the text rate,
-        which a single output rate would underprice ~10-20x. Checked case-insensitively too."""
+        """Image-output models (and their dated/-preview variants) return None: image output is
+        billed far above the text rate, which a single output rate would underprice ~10-20x."""
         usage = Usage(input_tokens=1000, output_tokens=500)
         assert calculate_google_cost(model, usage) is None
         assert calculate_google_cost(model.upper(), usage) is None

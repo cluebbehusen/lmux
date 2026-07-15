@@ -134,6 +134,7 @@ class TestCalculateAzureFoundryCost:
     @pytest.mark.parametrize(
         ("model", "input_rate", "output_rate", "cache_rate"),
         [
+            # Base is DZ meter / 1.1 (base-is-global convention); DZ deployments reconstruct the DZ rate.
             ("Kimi-K2.5", 0.60, 3.00, 0.10),
             ("Kimi-K2.6", 0.95, 4.00, 0.16),
             ("Kimi-K2.7-Code", 0.95, 4.00, 0.19),
