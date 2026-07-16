@@ -12,9 +12,10 @@ uv workspace with a virtual root (`package = false`). All packages live under `p
 packages/
 ├── lmux/                  # Core: types, protocols, exceptions, cost utils, mock provider
 ├── lmux-openai/           # OpenAI provider
-├── lmux-anthropic/        # Anthropic provider
+├── lmux-anthropic/        # Anthropic provider (first-party; [vertex]/[bedrock] extras: Claude on Vertex/Bedrock)
 ├── lmux-azure-foundry/    # Azure AI Foundry provider
-├── lmux-aws-bedrock/      # AWS Bedrock provider
+├── lmux-aws-bedrock/      # AWS Bedrock provider (Converse API, all vendors)
+├── lmux-bedrock-shared/   # Shared Bedrock internals (SigV4, event-stream, Anthropic pricing) for the two Bedrock consumers
 ├── lmux-google/           # Google (Gemini) provider
 ├── lmux-gcp-vertex/       # DEPRECATED shim -> lmux-google
 └── lmux-groq/             # Groq provider
@@ -22,7 +23,7 @@ packages/
 
 Each package uses `src/` layout: `packages/<name>/src/<import_name>/` and `packages/<name>/tests/`.
 
-Core (`lmux`) depends only on `pydantic`. Provider packages depend on `lmux` + their SDK (e.g., `lmux-openai` depends on `lmux` + `openai`).
+Core (`lmux`) depends only on `pydantic`. Provider packages depend on `lmux` + their SDK (e.g., `lmux-openai` depends on `lmux` + `openai`). Core stays free of any provider-specific code: AWS-specific internals shared by the two Bedrock consumers (`lmux-aws-bedrock`'s Converse provider and `lmux-anthropic[bedrock]`'s native provider) live in `lmux-bedrock-shared`, not core.
 
 ## Installing dependencies
 
@@ -67,6 +68,8 @@ Provider SDKs load on first API call, not on import. The `_lazy.py` module conta
 ### Cost Ownership
 
 Each provider owns its pricing data and cost calculation. Core provides `ModelPricing`, `calculate_token_cost()`, and `calculate_cost_from_usage()` utilities — no pricing database. Unknown models return `None` for cost, not an error. Providers use longest-prefix matching (e.g., `gpt-4o-2024-11-20` matches `gpt-4o`).
+
+Exception: Anthropic-on-Bedrock pricing is shared, because both Bedrock consumers price Claude identically. `scripts/update_bedrock_pricing.py` dual-emits the generated table — the `anthropic.*` subset (with `calculate_bedrock_anthropic_cost`) into `lmux-bedrock-shared`, the rest into `lmux-aws-bedrock/cost.py`, which merges the shared subset back into its `_PRICING`. `lmux-anthropic[bedrock]` prices via the shared subset keyed by the request's region-prefixed Bedrock ID.
 
 ### Response Design
 

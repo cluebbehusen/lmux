@@ -1,12 +1,12 @@
 [project]
-name = "lmux-anthropic"
-version = "0.12.0"
-description = "Anthropic provider for lmux"
+name = "lmux-bedrock-shared"
+version = "0.1.0"
+description = "Shared AWS Bedrock internals (SigV4 signing, event-stream decoding, Anthropic pricing) for lmux"
 requires-python = ">=3.13"
 license = "MIT"
 readme = "README.md"
 authors = [{ name = "Connor Luebbehusen", email = "connor@luebbehusen.dev" }]
-keywords = ["llm", "ai", "anthropic", "claude", "language-model"]
+keywords = ["llm", "ai", "aws", "bedrock", "language-model"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python :: 3",
@@ -15,21 +15,16 @@ classifiers = [
 ]
 dependencies = [
   "lmux~=0.11",
-  "httpx~=0.28",
+  "boto3>=1.42.31,<2",
 ]
-
-[project.optional-dependencies]
-vertex = ["google-auth~=2.0"]
-bedrock = ["boto3>=1.42.31,<2", "lmux-bedrock-shared"]
 
 [project.urls]
 Homepage = "https://github.com/cluebbehusen/lmux"
-Source = "https://github.com/cluebbehusen/lmux/tree/main/packages/lmux-anthropic"
+Source = "https://github.com/cluebbehusen/lmux/tree/main/packages/lmux-bedrock-shared"
 Issues = "https://github.com/cluebbehusen/lmux/issues"
 
 [tool.uv.sources]
 lmux = { workspace = true }
-lmux-bedrock-shared = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.11.0,<0.12.0"]

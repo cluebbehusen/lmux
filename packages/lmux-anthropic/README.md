@@ -171,6 +171,48 @@ Any `AuthProvider` that returns an API key string or a `() -> str` token-provide
 
 Same as Vertex: `service_tier` and `inference_geo` are dropped from outgoing requests, and the `inference_geo` US cost multiplier never applies.
 
+## Claude on Amazon Bedrock
+
+Requires the `bedrock` extra, which pulls in `boto3` (for the AWS credential chain) and the shared `lmux-bedrock-shared` internals:
+
+```bash
+uv add "lmux-anthropic[bedrock]"
+```
+
+`AnthropicBedrockProvider` serves Claude through Bedrock's **native Anthropic Messages API** (`InvokeModel` / `InvokeModelWithResponseStream`) with the same chat/streaming interface — distinct from [`lmux-aws-bedrock`](../lmux-aws-bedrock), which speaks Bedrock's normalized Converse API across all vendors. Use this one when you want Claude on Bedrock with the exact first-party Messages semantics (thinking config, `cache_control`, `output_config` all pass through unchanged):
+
+```python
+from lmux_anthropic import AnthropicBedrockProvider
+
+provider = AnthropicBedrockProvider(region="us-east-1")
+response = provider.chat("anthropic.claude-opus-4-8", [UserMessage(content="Hello")])
+print(response.provider)  # "anthropic-bedrock"
+print(response.cost)
+```
+
+Model IDs are the Bedrock forms — a bare model ID (`anthropic.claude-opus-4-8`) or a cross-region inference-profile ID (`us.anthropic.claude-opus-4-8`, `eu.anthropic.…`). `region` falls back to the resolved AWS session's region, then `us-east-1`. `endpoint_url` overrides the endpoint; `use_fips=True` selects the FIPS 140-3 endpoint.
+
+Pricing comes from the generated Bedrock table (shared with `lmux-aws-bedrock` via `lmux-bedrock-shared`), keyed by the request's Bedrock ID — so a `us.`-profile request is billed at its regional rate, no multiplier involved.
+
+### Bedrock Auth
+
+Two modes, resolved once on first use:
+
+- **Bearer token** — set `AWS_BEARER_TOKEN_BEDROCK` and the request carries `Authorization: Bearer <token>`; nothing is signed.
+- **SigV4** — otherwise AWS credentials are resolved through boto3 (env vars, profile, SSO, instance metadata) and every request is signed. The default `AnthropicBedrockEnvAuthProvider` uses boto3's default credential chain; `AnthropicBedrockSessionAuthProvider` takes explicit `region_name`/`profile_name`/keys:
+
+```python
+from lmux_anthropic import AnthropicBedrockProvider, AnthropicBedrockSessionAuthProvider
+
+provider = AnthropicBedrockProvider(
+    auth=AnthropicBedrockSessionAuthProvider(profile_name="prod", region_name="us-east-1"),
+)
+```
+
+### Bedrock Params Caveat
+
+Same as Vertex/Foundry: `service_tier` and `inference_geo` are dropped from outgoing requests, and the `inference_geo` US cost multiplier never applies.
+
 ## Constructor Options
 
 ```python

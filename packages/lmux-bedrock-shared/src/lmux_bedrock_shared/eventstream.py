@@ -1,9 +1,9 @@
 """Minimal AWS event-stream (``vnd.amazon.eventstream``) decoder.
 
-Bedrock's Converse streaming responses use AWS's binary event-stream framing.
-This decodes the frames enough to recover each event's ``:event-type`` header and
-JSON payload, which is all the Converse stream needs. Unit-tested for parity with
-``botocore.eventstream`` (a dev-only dependency).
+Bedrock streaming responses use AWS's binary event-stream framing (both the
+Converse stream and the native InvokeModelWithResponseStream path). This decodes
+the frames enough to recover each event's headers and JSON payload. Unit-tested
+for parity with ``botocore.eventstream`` (a dev-only dependency).
 """
 
 import struct
@@ -15,7 +15,7 @@ _PRELUDE_DATA_LEN = 8  # total_length(4) + headers_length(4), the bytes the prel
 _MESSAGE_CRC_LEN = 4
 _HEADER_STRING_TYPE = 7
 _TOTAL_LENGTH_LEN = 4
-_MAX_FRAME_LEN = 32 * 1024 * 1024  # anti-DoS cap on per-frame buffering; real Converse frames are KB-scale
+_MAX_FRAME_LEN = 32 * 1024 * 1024  # anti-DoS cap on per-frame buffering; real Bedrock frames are KB-scale
 
 
 def _parse_headers(raw: bytes) -> dict[str, str]:

@@ -15,6 +15,7 @@ classifiers = [
 ]
 dependencies = [
   "lmux~=0.10",
+  "lmux-bedrock-shared",
   "httpx~=0.28",
   "boto3>=1.42.31,<2",
 ]
@@ -29,6 +30,7 @@ Issues = "https://github.com/cluebbehusen/lmux/issues"
 
 [tool.uv.sources]
 lmux = { workspace = true }
+lmux-bedrock-shared = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.11.0,<0.12.0"]

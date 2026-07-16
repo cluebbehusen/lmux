@@ -7,7 +7,7 @@ regressions without pulling botocore into the test path.
 
 import datetime
 
-from lmux_aws_bedrock._sigv4 import sign
+from lmux_bedrock_shared.sigv4 import sign
 
 _NOW = datetime.datetime(2026, 7, 11, 12, 0, 0, tzinfo=datetime.UTC)
 

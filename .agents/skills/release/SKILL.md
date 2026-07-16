@@ -100,7 +100,7 @@ gh release create lmux-<pkg>-v<version> \
 gh release create lmux-v<version> --title "lmux v<version>" --target main --notes-file <notes-file>
 ```
 
-This tags `main` and triggers `publish.yml` for that package. When releasing the core package alongside providers, release core first so providers resolving the new core version have it available.
+This tags `main` and triggers `publish.yml` for that package. Mind dependency order when releasing several at once: release `lmux` (core) first so providers resolving the new core version have it available, and release `lmux-bedrock-shared` before its dependents `lmux-aws-bedrock` and `lmux-anthropic`, which require it.
 
 ### Step 5: Confirm the publish
 

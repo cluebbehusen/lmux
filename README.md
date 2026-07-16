@@ -10,7 +10,7 @@ Provider packages include `lmux` as a dependency, so there's no need to install 
 
 ```bash
 uv add lmux-openai         # OpenAI
-uv add lmux-anthropic      # Anthropic ([vertex] extra: Claude on Vertex AI)
+uv add lmux-anthropic      # Anthropic ([vertex]: Claude on Vertex AI; [bedrock]: Claude on Bedrock)
 uv add lmux-azure-foundry  # Azure AI Foundry
 uv add lmux-aws-bedrock    # AWS Bedrock
 uv add lmux-google         # Google (Gemini)
@@ -134,6 +134,7 @@ provider.register_pricing("my-fine-tune", ModelPricing(tiers=[
 | [lmux-anthropic](packages/lmux-anthropic)           | Completion                       | `ANTHROPIC_API_KEY`                                  |
 | [lmux-anthropic\[vertex\]](packages/lmux-anthropic) | Completion                       | ADC, service account                                 |
 | [lmux-anthropic](packages/lmux-anthropic) (Foundry) | Completion                       | `ANTHROPIC_FOUNDRY_API_KEY`, Entra ID token provider |
+| [lmux-anthropic\[bedrock\]](packages/lmux-anthropic) | Completion                       | boto3 credential chain, `AWS_BEARER_TOKEN_BEDROCK`   |
 | [lmux-azure-foundry](packages/lmux-azure-foundry)   | Completion, Embedding, Responses | `AZURE_FOUNDRY_API_KEY`, Azure AD, token provider    |
 | [lmux-aws-bedrock](packages/lmux-aws-bedrock)       | Completion, Embedding            | boto3 credential chain                               |
 | [lmux-google](packages/lmux-google)                 | Completion, Embedding            | ADC, service account, `GOOGLE_API_KEY`               |
@@ -244,7 +245,7 @@ Checked with ruff, ty, and pytest with 100% branch coverage.
 
 ### Scripts
 
-- `scripts/update_bedrock_pricing.py`: generates Bedrock pricing from the AWS Pricing API
+- `scripts/update_bedrock_pricing.py`: generates Bedrock pricing from the AWS Pricing API — the Anthropic-on-Bedrock subset into `lmux-bedrock-shared`, the rest into `lmux-aws-bedrock`
 - `scripts/validate_pricing.py`: cross-references provider pricing against external databases (LiteLLM, OpenRouter, genai-prices)
 
 ## Requirements
