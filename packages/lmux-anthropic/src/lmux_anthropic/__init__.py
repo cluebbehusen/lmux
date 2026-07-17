@@ -1,6 +1,8 @@
 """lmux-anthropic — Anthropic provider for lmux."""
 
 from lmux_anthropic.auth import (
+    AnthropicBedrockEnvAuthProvider,
+    AnthropicBedrockSessionAuthProvider,
     AnthropicEnvAuthProvider,
     AnthropicFoundryEnvAuthProvider,
     AnthropicFoundryTokenAuthProvider,
@@ -9,9 +11,17 @@ from lmux_anthropic.auth import (
 )
 from lmux_anthropic.cost import calculate_anthropic_cost
 from lmux_anthropic.params import AnthropicParams
-from lmux_anthropic.provider import AnthropicFoundryProvider, AnthropicProvider, AnthropicVertexProvider
+from lmux_anthropic.provider import (
+    AnthropicBedrockProvider,
+    AnthropicFoundryProvider,
+    AnthropicProvider,
+    AnthropicVertexProvider,
+)
 
 __all__ = [
+    "AnthropicBedrockEnvAuthProvider",
+    "AnthropicBedrockProvider",
+    "AnthropicBedrockSessionAuthProvider",
     "AnthropicEnvAuthProvider",
     "AnthropicFoundryEnvAuthProvider",
     "AnthropicFoundryProvider",

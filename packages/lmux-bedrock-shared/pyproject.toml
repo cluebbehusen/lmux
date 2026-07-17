@@ -1,7 +1,7 @@
 [project]
-name = "lmux-aws-bedrock"
-version = "0.11.0"
-description = "AWS Bedrock provider for lmux"
+name = "lmux-bedrock-shared"
+version = "0.1.0"
+description = "Shared AWS Bedrock internals (SigV4 signing, event-stream decoding, Anthropic pricing) for lmux"
 requires-python = ">=3.13"
 license = "MIT"
 readme = "README.md"
@@ -14,23 +14,17 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "lmux~=0.10",
-  "lmux-bedrock-shared~=0.1",
-  "httpx~=0.28",
+  "lmux~=0.11",
   "boto3>=1.42.31,<2",
 ]
 
-[project.optional-dependencies]
-async = ["aiobotocore~=3.3.0"]
-
 [project.urls]
 Homepage = "https://github.com/cluebbehusen/lmux"
-Source = "https://github.com/cluebbehusen/lmux/tree/main/packages/lmux-aws-bedrock"
+Source = "https://github.com/cluebbehusen/lmux/tree/main/packages/lmux-bedrock-shared"
 Issues = "https://github.com/cluebbehusen/lmux/issues"
 
 [tool.uv.sources]
 lmux = { workspace = true }
-lmux-bedrock-shared = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.11.0,<0.12.0"]

@@ -7,7 +7,7 @@ import zlib
 import pytest
 from botocore.eventstream import EventStreamBuffer
 
-from lmux_aws_bedrock._eventstream import EventStreamDecoder, decode_messages
+from lmux_bedrock_shared.eventstream import EventStreamDecoder, decode_messages
 
 
 def _encode(headers: dict[str, str], payload: bytes) -> bytes:

@@ -242,3 +242,42 @@ def create_async_foundry_client(
         timeout=timeout,
         max_retries=max_retries,
     )
+
+
+# MARK: Amazon Bedrock (native Anthropic Messages API via InvokeModel)
+
+
+def bedrock_base_url(region: str, *, use_fips: bool = False) -> str:
+    """Return the bedrock-runtime endpoint for a region, optionally the FIPS 140-3 variant.
+
+    FIPS endpoints (``bedrock-runtime-fips.<region>.amazonaws.com``) force FIPS-validated
+    in-transit cryptography in the commercial and GovCloud regions where Bedrock runs.
+    """
+    service = "bedrock-runtime-fips" if use_fips else "bedrock-runtime"
+    return f"https://{service}.{region}.amazonaws.com"
+
+
+def create_sync_bedrock_client(
+    *,
+    base_url: str,
+    timeout: float | None = None,
+    max_retries: int | None = None,
+    transport: "httpx.BaseTransport | None" = None,
+) -> "httpx.Client":
+    """Create an httpx client for the Bedrock runtime endpoint.
+
+    Auth (SigV4 signature or a bearer token) and ``content-type`` are attached per request on the
+    fully built request, so the client carries no default headers.
+    """
+    return _create_sync(base_url=base_url, headers={}, timeout=timeout, max_retries=max_retries, transport=transport)
+
+
+def create_async_bedrock_client(
+    *,
+    base_url: str,
+    timeout: float | None = None,
+    max_retries: int | None = None,
+    transport: "httpx.AsyncBaseTransport | None" = None,
+) -> "httpx.AsyncClient":
+    """Create an async httpx client for the Bedrock runtime endpoint (auth is signed per request)."""
+    return _create_async(base_url=base_url, headers={}, timeout=timeout, max_retries=max_retries, transport=transport)

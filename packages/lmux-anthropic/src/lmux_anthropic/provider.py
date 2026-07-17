@@ -11,6 +11,12 @@ if TYPE_CHECKING:
     import httpx
     from google.auth.credentials import Credentials
 
+    from lmux_bedrock_shared.auth import BedrockAuthContext, BedrockCredentialSource
+
+
+import base64
+from urllib.parse import quote
+
 from lmux._http import aiter_sse, iter_sse
 from lmux.cost import ModelPricing, calculate_cost
 from lmux.exceptions import LmuxError, ProviderError
@@ -25,9 +31,12 @@ from lmux_anthropic._exceptions import (
 )
 from lmux_anthropic._lazy import (
     VERTEX_ANTHROPIC_VERSION,
+    bedrock_base_url,
+    create_async_bedrock_client,
     create_async_client,
     create_async_foundry_client,
     create_async_vertex_client,
+    create_sync_bedrock_client,
     create_sync_client,
     create_sync_foundry_client,
     create_sync_vertex_client,
@@ -54,6 +63,7 @@ from lmux_anthropic._wire import (
     WireMessageStartEvent,
 )
 from lmux_anthropic.auth import (
+    AnthropicBedrockEnvAuthProvider,
     AnthropicEnvAuthProvider,
     AnthropicFoundryEnvAuthProvider,
     AnthropicVertexADCAuthProvider,
@@ -70,9 +80,18 @@ from lmux_anthropic.params import AnthropicParams
 PROVIDER_NAME = "anthropic"
 VERTEX_PROVIDER_NAME = "anthropic-vertex"
 FOUNDRY_PROVIDER_NAME = "anthropic-foundry"
+BEDROCK_PROVIDER_NAME = "anthropic-bedrock"
 DEFAULT_MAX_TOKENS = 4096
 _MESSAGES_PATH = "v1/messages"
 _HTTP_ERROR = 400
+
+# AWS Bedrock InvokeModel: the native Anthropic body carries this instead of ``model``/``stream``.
+_BEDROCK_ANTHROPIC_VERSION = "bedrock-2023-05-31"
+_INVOKE = "invoke"
+_INVOKE_STREAM = "invoke-with-response-stream"
+_JSON_CONTENT_TYPE = "application/json"
+_EXCEPTION_MESSAGE_TYPE = "exception"
+_ERROR_MESSAGE_TYPE = "error"
 
 # Vertex auth providers may return bare credentials, or credentials together
 # with the project ID they resolved (e.g. from ADC or a service account file).
@@ -138,6 +157,15 @@ class AnthropicProvider(
             return calculate_cost(usage, pricing, as_of)
         return calculate_anthropic_cost(model, usage, as_of)
 
+    def _cost_model(self, request_model: str, response_model: str) -> str:  # noqa: ARG002
+        """The model ID used to price a response — the resolved model the API reports.
+
+        Bedrock overrides this to the request ID: its pricing table is keyed by region-prefixed
+        inference-profile IDs (e.g. ``us.anthropic.claude-opus-4-8``) that the region-less response
+        model would not resolve to.
+        """
+        return response_model
+
     # MARK: Client Management
 
     def _create_sync_client(self) -> "httpx.Client":
@@ -202,6 +230,55 @@ class AnthropicProvider(
         """
         return {}
 
+    # MARK: Transport dispatch hooks (overridden by Bedrock for SigV4 + event-stream framing)
+
+    def _post(self, client: "httpx.Client", path: str, body: dict[str, Any]) -> "httpx.Response":
+        """Send a non-streaming POST. Bedrock overrides this to SigV4-sign the request body."""
+        return client.post(path, json=body, headers=self._request_headers())
+
+    async def _apost(self, client: "httpx.AsyncClient", path: str, body: dict[str, Any]) -> "httpx.Response":
+        return await client.post(path, json=body, headers=await self._arequest_headers())
+
+    def _stream_events(self, model: str, body: dict[str, Any]) -> Iterator[dict[str, Any]]:
+        """Open the streaming request and yield raw event dicts (Anthropic SSE by default).
+
+        Bedrock overrides this to sign the request and decode AWS event-stream frames.
+        """
+        client = self._get_sync_client()
+        with client.stream(
+            "POST", self._request_path(model, stream=True), json=body, headers=self._request_headers()
+        ) as response:
+            if response.status_code >= _HTTP_ERROR:
+                response.read()
+                raise error_from_response(response, self._provider_name)
+            for _event, data in iter_sse(response):
+                payload = json.loads(data)
+                if payload.get("type") == "error":
+                    raise error_from_stream(payload, self._provider_name)
+                yield payload
+
+    async def _astream_events(self, model: str, body: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        client = await self._get_async_client()
+        async with client.stream(
+            "POST", self._request_path(model, stream=True), json=body, headers=await self._arequest_headers()
+        ) as response:
+            if response.status_code >= _HTTP_ERROR:
+                await response.aread()
+                raise error_from_response(response, self._provider_name)
+            async for _event, data in aiter_sse(response):
+                payload = json.loads(data)
+                if payload.get("type") == "error":
+                    raise error_from_stream(payload, self._provider_name)
+                yield payload
+
+    def _raise_for_status(self, response: "httpx.Response") -> None:
+        """Raise the mapped error for a non-stream error response. Bedrock overrides for the AWS format."""
+        raise_for_status(response, self._provider_name)
+
+    def _map_transport_error(self, error: Exception) -> LmuxError:
+        """Map a transport / client-creation failure to an lmux error. Bedrock overrides for botocore creds."""
+        return map_transport_error(error, self._provider_name)
+
     # MARK: Chat
 
     @override
@@ -226,15 +303,11 @@ class AnthropicProvider(
         )  # fmt: skip
         try:
             client = self._get_sync_client()
-            response = client.post(
-                self._request_path(model, stream=False),
-                json=self._transform_body(body, model),
-                headers=self._request_headers(),
-            )
+            response = self._post(client, self._request_path(model, stream=False), self._transform_body(body, model))
         except Exception as e:
-            raise map_transport_error(e, self._provider_name) from e
-        raise_for_status(response, self._provider_name)
-        return self._map_response(parse_message(response, self._provider_name), provider_params)
+            raise self._map_transport_error(e) from e
+        self._raise_for_status(response)
+        return self._map_response(model, parse_message(response, self._provider_name), provider_params)
 
     @override
     async def achat(
@@ -258,15 +331,13 @@ class AnthropicProvider(
         )  # fmt: skip
         try:
             client = await self._get_async_client()
-            response = await client.post(
-                self._request_path(model, stream=False),
-                json=self._transform_body(body, model),
-                headers=await self._arequest_headers(),
+            response = await self._apost(
+                client, self._request_path(model, stream=False), self._transform_body(body, model)
             )
         except Exception as e:
-            raise map_transport_error(e, self._provider_name) from e
-        raise_for_status(response, self._provider_name)
-        return self._map_response(parse_message(response, self._provider_name), provider_params)
+            raise self._map_transport_error(e) from e
+        self._raise_for_status(response)
+        return self._map_response(model, parse_message(response, self._provider_name), provider_params)
 
     @override
     def chat_stream(
@@ -288,32 +359,17 @@ class AnthropicProvider(
             model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params, stream=True,
         )  # fmt: skip
-        try:
-            client = self._get_sync_client()
-            path = self._request_path(model, stream=True)
-            body = self._transform_body(body, model)
-            headers = self._request_headers()
-        except Exception as e:
-            raise map_transport_error(e, self._provider_name) from e
-
         as_of = self._resolve_pricing_as_of(provider_params)
         stream = _StreamState(model)
         try:
-            with client.stream("POST", path, json=body, headers=headers) as response:
-                if response.status_code >= _HTTP_ERROR:
-                    response.read()
-                    raise error_from_response(response, self._provider_name)  # noqa: TRY301
-                for _event, data in iter_sse(response):
-                    payload = json.loads(data)
-                    if payload.get("type") == "error":
-                        raise error_from_stream(payload, self._provider_name)  # noqa: TRY301
-                    chunk = stream.feed(payload)
-                    if chunk is not None:
-                        yield self._finalize_chunk(chunk, stream, provider_params, as_of)
+            for payload in self._stream_events(model, self._transform_body(body, model)):
+                chunk = stream.feed(payload)
+                if chunk is not None:
+                    yield self._finalize_chunk(model, chunk, stream, provider_params, as_of)
         except LmuxError:
             raise
         except Exception as e:
-            raise map_transport_error(e, self._provider_name) from e
+            raise self._map_transport_error(e) from e
 
     @override
     async def achat_stream(
@@ -335,42 +391,31 @@ class AnthropicProvider(
             model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params, stream=True,
         )  # fmt: skip
-        try:
-            client = await self._get_async_client()
-            path = self._request_path(model, stream=True)
-            body = self._transform_body(body, model)
-            headers = await self._arequest_headers()
-        except Exception as e:
-            raise map_transport_error(e, self._provider_name) from e
-
         as_of = self._resolve_pricing_as_of(provider_params)
         stream = _StreamState(model)
         try:
-            async with client.stream("POST", path, json=body, headers=headers) as response:
-                if response.status_code >= _HTTP_ERROR:
-                    await response.aread()
-                    raise error_from_response(response, self._provider_name)  # noqa: TRY301
-                async for _event, data in aiter_sse(response):
-                    payload = json.loads(data)
-                    if payload.get("type") == "error":
-                        raise error_from_stream(payload, self._provider_name)  # noqa: TRY301
-                    chunk = stream.feed(payload)
-                    if chunk is not None:
-                        yield self._finalize_chunk(chunk, stream, provider_params, as_of)
+            async for payload in self._astream_events(model, self._transform_body(body, model)):
+                chunk = stream.feed(payload)
+                if chunk is not None:
+                    yield self._finalize_chunk(model, chunk, stream, provider_params, as_of)
         except LmuxError:
             raise
         except Exception as e:
-            raise map_transport_error(e, self._provider_name) from e
+            raise self._map_transport_error(e) from e
 
     # MARK: Internal Helpers
 
-    def _map_response(self, message: WireMessage, provider_params: AnthropicParams | None) -> ChatResponse:
+    def _map_response(self, model: str, message: WireMessage, provider_params: AnthropicParams | None) -> ChatResponse:
         as_of = self._resolve_pricing_as_of(provider_params)
-        response = map_message_response(message, self._provider_name, lambda m, u: self._calculate_cost(m, u, as_of))
+        cost_model = self._cost_model(model, message.model)
+        response = map_message_response(
+            message, self._provider_name, lambda _m, u: self._calculate_cost(cost_model, u, as_of)
+        )
         return self._apply_multipliers(response, provider_params)
 
     def _finalize_chunk(
         self,
+        model: str,
         chunk: ChatChunk,
         stream: "_StreamState",
         provider_params: AnthropicParams | None,
@@ -379,7 +424,7 @@ class AnthropicProvider(
         """Attach model/provider/cost to a message_delta chunk; pass others through."""
         if chunk.usage is None:
             return chunk
-        cost = self._calculate_cost(stream.model, chunk.usage, as_of)
+        cost = self._calculate_cost(self._cost_model(model, stream.model), chunk.usage, as_of)
         cost = self._apply_cost_multipliers(cost, stream.model, provider_params)
         return chunk.model_copy(update={"cost": cost, "model": stream.model, "provider": self._provider_name})
 
@@ -759,3 +804,223 @@ class AnthropicFoundryProvider(AnthropicProvider):
         multiplier here.
         """
         return 1.0
+
+
+class AnthropicBedrockProvider(AnthropicProvider):
+    """Claude on Amazon Bedrock via the native Anthropic Messages API (InvokeModel).
+
+    Reuses the Anthropic Messages request/response handling; only auth (SigV4, or a Bedrock bearer
+    token from ``AWS_BEARER_TOKEN_BEDROCK``), the endpoint path, the request body's
+    ``anthropic_version``, AWS event-stream framing, AWS error mapping, and Bedrock pricing differ.
+    ``service_tier`` and ``inference_geo`` are Anthropic-API-only parameters and are dropped from
+    outgoing requests; the US-inference cost multiplier never applies. Requires the ``[bedrock]``
+    extra — its ``lmux-bedrock-shared`` imports are deferred into the methods below (as with the
+    Vertex/Foundry providers' optional deps), so importing lmux-anthropic without the extra works.
+    Model IDs are the Bedrock forms (``anthropic.claude-opus-4-8`` or an inference-profile ID like
+    ``us.anthropic.claude-opus-4-8``).
+    """
+
+    _provider_name: ClassVar[str] = BEDROCK_PROVIDER_NAME
+
+    def __init__(  # noqa: PLR0913
+        self,
+        *,
+        auth: "BedrockCredentialSource | None" = None,
+        region: str | None = None,
+        endpoint_url: str | None = None,
+        use_fips: bool = False,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+        default_max_tokens: int = DEFAULT_MAX_TOKENS,
+        transport: "httpx.BaseTransport | None" = None,
+        async_transport: "httpx.AsyncBaseTransport | None" = None,
+    ) -> None:
+        super().__init__(
+            base_url=endpoint_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            default_max_tokens=default_max_tokens,
+            transport=transport,
+            async_transport=async_transport,
+        )
+        self._bedrock_auth: BedrockCredentialSource = auth or AnthropicBedrockEnvAuthProvider()
+        self._region: str | None = region
+        self._use_fips: bool = use_fips
+        self._auth_ctx: BedrockAuthContext | None = None
+
+    # MARK: Client & Auth Management
+
+    def _resolve_auth(self) -> "BedrockAuthContext":
+        from lmux_bedrock_shared.auth import resolve_auth_context  # noqa: PLC0415
+
+        if self._auth_ctx is None:
+            self._auth_ctx = resolve_auth_context(self._bedrock_auth, self._region)
+        return self._auth_ctx
+
+    def _bedrock_endpoint(self, auth: "BedrockAuthContext") -> str:
+        return self._base_url or bedrock_base_url(auth.region, use_fips=self._use_fips)
+
+    @override
+    def _create_sync_client(self) -> "httpx.Client":
+        auth = self._resolve_auth()
+        return create_sync_bedrock_client(
+            base_url=self._bedrock_endpoint(auth),
+            timeout=self._timeout,
+            max_retries=self._max_retries,
+            transport=self._transport,
+        )
+
+    @override
+    async def _create_async_client(self) -> "httpx.AsyncClient":
+        auth = self._resolve_auth()
+        return create_async_bedrock_client(
+            base_url=self._bedrock_endpoint(auth),
+            timeout=self._timeout,
+            max_retries=self._max_retries,
+            transport=self._async_transport,
+        )
+
+    def _build_signed_request(
+        self, client: "httpx.Client | httpx.AsyncClient", path: str, body: dict[str, Any]
+    ) -> "httpx.Request":
+        """Build a POST request with the JSON body and attach Bedrock auth (bearer header or SigV4)."""
+        request = client.build_request(
+            "POST", path, content=json.dumps(body).encode(), headers={"content-type": _JSON_CONTENT_TYPE}
+        )
+        self._resolve_auth().apply(request)
+        return request
+
+    # MARK: Request shaping
+
+    @override
+    def _request_path(self, model: str, *, stream: bool) -> str:
+        action = _INVOKE_STREAM if stream else _INVOKE
+        return f"/model/{quote(model, safe='')}/{action}"
+
+    @override
+    def _transform_body(self, body: dict[str, Any], model: str) -> dict[str, Any]:
+        # Bedrock InvokeModel selects the model by URL path and streaming by endpoint; the body
+        # carries anthropic_version instead of model/stream.
+        transformed = {key: value for key, value in body.items() if key not in ("model", "stream")}
+        transformed["anthropic_version"] = _BEDROCK_ANTHROPIC_VERSION
+        return transformed
+
+    @staticmethod
+    @override
+    def _provider_params_kwargs(params: AnthropicParams) -> dict[str, Any]:
+        """Convert AnthropicParams to body kwargs, dropping Anthropic-API-only parameters."""
+        kwargs = AnthropicProvider._provider_params_kwargs(params)  # noqa: SLF001
+        kwargs.pop("service_tier", None)
+        kwargs.pop("inference_geo", None)
+        return kwargs
+
+    # MARK: Cost
+
+    @override
+    def _calculate_cost(self, model: str, usage: Usage, as_of: date) -> Cost | None:
+        from lmux_bedrock_shared.pricing import calculate_bedrock_anthropic_cost  # noqa: PLC0415
+
+        pricing = self._custom_pricing.get(model)
+        if pricing is not None:
+            return calculate_cost(usage, pricing, as_of)
+        return calculate_bedrock_anthropic_cost(model, usage, as_of=as_of)
+
+    @override
+    def _cost_model(self, request_model: str, response_model: str) -> str:
+        """Price the Bedrock request ID (with its region profile), not the region-less response ID."""
+        return request_model
+
+    @override
+    def _cost_multiplier(self, model: str, provider_params: AnthropicParams | None) -> float:
+        """Bedrock prices (including regional inference profiles) are exact table entries — no multiplier."""
+        return 1.0
+
+    # MARK: Transport dispatch (SigV4-signed requests + AWS event-stream framing)
+
+    @override
+    def _post(self, client: "httpx.Client", path: str, body: dict[str, Any]) -> "httpx.Response":
+        return client.send(self._build_signed_request(client, path, body))
+
+    @override
+    async def _apost(self, client: "httpx.AsyncClient", path: str, body: dict[str, Any]) -> "httpx.Response":
+        return await client.send(self._build_signed_request(client, path, body))
+
+    @override
+    def _raise_for_status(self, response: "httpx.Response") -> None:
+        from lmux_bedrock_shared import exceptions as bedrock_exceptions  # noqa: PLC0415
+
+        bedrock_exceptions.raise_for_status(response, self._provider_name)
+
+    @override
+    def _map_transport_error(self, error: Exception) -> LmuxError:
+        from lmux_bedrock_shared import exceptions as bedrock_exceptions  # noqa: PLC0415
+
+        return bedrock_exceptions.map_transport_error(error, self._provider_name)
+
+    @override
+    def _stream_events(self, model: str, body: dict[str, Any]) -> Iterator[dict[str, Any]]:
+        from lmux_bedrock_shared import EventStreamDecoder  # noqa: PLC0415
+        from lmux_bedrock_shared import exceptions as bedrock_exceptions  # noqa: PLC0415
+
+        client = self._get_sync_client()
+        request = self._build_signed_request(client, self._request_path(model, stream=True), body)
+        response = client.send(request, stream=True)
+        try:
+            if response.is_error:
+                response.read()
+                bedrock_exceptions.raise_for_status(response, self._provider_name)
+            decoder = EventStreamDecoder()
+            for raw in response.iter_bytes():
+                for headers, payload in decoder.feed(raw):
+                    yield self._decode_stream_event(headers, payload)
+        finally:
+            response.close()
+
+    @override
+    async def _astream_events(self, model: str, body: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        from lmux_bedrock_shared import EventStreamDecoder  # noqa: PLC0415
+        from lmux_bedrock_shared import exceptions as bedrock_exceptions  # noqa: PLC0415
+
+        client = await self._get_async_client()
+        request = self._build_signed_request(client, self._request_path(model, stream=True), body)
+        response = await client.send(request, stream=True)
+        try:
+            if response.is_error:
+                await response.aread()
+                bedrock_exceptions.raise_for_status(response, self._provider_name)
+            decoder = EventStreamDecoder()
+            async for raw in response.aiter_bytes():
+                for headers, payload in decoder.feed(raw):
+                    yield self._decode_stream_event(headers, payload)
+        finally:
+            await response.aclose()
+
+    def _decode_stream_event(self, headers: dict[str, str], payload: bytes) -> dict[str, Any]:
+        """Decode one Bedrock event-stream frame into an Anthropic event dict; raise on error frames.
+
+        Chunk frames wrap the Anthropic streaming event as base64 under ``bytes`` (the returned dict is
+        fed to the shared stream state, which drops non-delta events); a modeled ``exception`` frame
+        (``:exception-type``) or unmodeled ``error`` frame (``:error-code``) is raised through the AWS
+        error hierarchy.
+
+        A mid-stream Anthropic ``error`` event (e.g. an overload once generation has begun) arrives as
+        an ordinary chunk frame on a 200 response, not as an AWS exception frame, so the decoded payload
+        is checked for it the same way the SSE transports check their events.
+        """
+        from lmux_bedrock_shared import exceptions as bedrock_exceptions  # noqa: PLC0415
+
+        data: dict[str, Any] = json.loads(payload) if payload else {}
+        message_type = headers.get(":message-type")
+        if message_type == _EXCEPTION_MESSAGE_TYPE:
+            exception_type = headers.get(":exception-type", "")
+            message = data.get("message") or data.get("Message") or exception_type
+            raise bedrock_exceptions.error_from_stream_exception(exception_type, str(message), self._provider_name)
+        if message_type == _ERROR_MESSAGE_TYPE:
+            error_code = headers.get(":error-code", "")
+            raise bedrock_exceptions.error_from_stream_exception(
+                error_code, headers.get(":error-message") or error_code, self._provider_name
+            )
+        decoded: dict[str, Any] = json.loads(base64.b64decode(data["bytes"]))
+        if decoded.get("type") == "error":
+            raise error_from_stream(decoded, self._provider_name)
+        return decoded

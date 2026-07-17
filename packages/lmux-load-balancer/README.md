@@ -62,11 +62,11 @@ On a retryable error (rate limit, timeout, or a provider/server error) the reque
 
 `LoadBalancerParams.failover` selects the behavior:
 
-| Value | Behavior |
-| --- | --- |
-| `"always"` (default) | Fall through to the next endpoint on a retryable error. |
-| `"never"` | Try only the selected endpoint; never fall through. |
-| `"unless_sticky"` | Fall through only for keyless calls; a sticky call stays pinned to its endpoint. |
+| Value                | Behavior                                                                         |
+| -------------------- | -------------------------------------------------------------------------------- |
+| `"always"` (default) | Fall through to the next endpoint on a retryable error.                          |
+| `"never"`            | Try only the selected endpoint; never fall through.                              |
+| `"unless_sticky"`    | Fall through only for keyless calls; a sticky call stays pinned to its endpoint. |
 
 For streaming, failover applies only before the first chunk is produced; once output has started it cannot switch endpoints.
 

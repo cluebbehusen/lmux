@@ -10,7 +10,7 @@ Provider packages include `lmux` as a dependency, so there's no need to install 
 
 ```bash
 uv add lmux-openai         # OpenAI
-uv add lmux-anthropic      # Anthropic ([vertex] extra: Claude on Vertex AI)
+uv add lmux-anthropic      # Anthropic ([vertex]: Claude on Vertex AI; [bedrock]: Claude on Bedrock)
 uv add lmux-azure-foundry  # Azure AI Foundry
 uv add lmux-aws-bedrock    # AWS Bedrock
 uv add lmux-google         # Google (Gemini)
@@ -99,13 +99,13 @@ print(response.usage.reasoning_tokens)  # reasoning token count (or None)
 
 Streaming returns reasoning in `chunk.reasoning_delta`. Each provider maps the effort level to its native API:
 
-| Provider | Mapping |
-|---|---|
-| OpenAI / Azure Foundry | `reasoning_effort` |
-| Anthropic | adaptive `thinking` + `output_config.effort` on Claude 4.6+; `thinking` with budget tokens (capped to `max_tokens - 1`) on 4.5 and older |
-| Google | `thinking_config` with `thinking_budget` and `include_thoughts` |
-| AWS Bedrock | `additionalModelRequestFields.thinking` — adaptive + `output_config.effort` on Claude 4.6+, budget tokens on 4.5 and older |
-| Groq | `reasoning_effort` + `include_reasoning` |
+| Provider               | Mapping                                                                                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenAI / Azure Foundry | `reasoning_effort`                                                                                                                       |
+| Anthropic              | adaptive `thinking` + `output_config.effort` on Claude 4.6+; `thinking` with budget tokens (capped to `max_tokens - 1`) on 4.5 and older |
+| Google                 | `thinking_config` with `thinking_budget` and `include_thoughts`                                                                          |
+| AWS Bedrock            | `additionalModelRequestFields.thinking` — adaptive + `output_config.effort` on Claude 4.6+, budget tokens on 4.5 and older               |
+| Groq                   | `reasoning_effort` + `include_reasoning`                                                                                                 |
 
 For fine-grained control, use provider-specific params instead (e.g., `AnthropicParams(thinking=...)`). Provider params always take precedence over the top-level `reasoning_effort`.
 
@@ -128,16 +128,17 @@ provider.register_pricing("my-fine-tune", ModelPricing(tiers=[
 
 ## Providers
 
-| Package                                             | Protocols                        | Auth                                                 |
-| --------------------------------------------------- | -------------------------------- | ---------------------------------------------------- |
-| [lmux-openai](packages/lmux-openai)                 | Completion, Embedding, Responses | `OPENAI_API_KEY`                                     |
-| [lmux-anthropic](packages/lmux-anthropic)           | Completion                       | `ANTHROPIC_API_KEY`                                  |
-| [lmux-anthropic\[vertex\]](packages/lmux-anthropic) | Completion                       | ADC, service account                                 |
-| [lmux-anthropic](packages/lmux-anthropic) (Foundry) | Completion                       | `ANTHROPIC_FOUNDRY_API_KEY`, Entra ID token provider |
-| [lmux-azure-foundry](packages/lmux-azure-foundry)   | Completion, Embedding, Responses | `AZURE_FOUNDRY_API_KEY`, Azure AD, token provider    |
-| [lmux-aws-bedrock](packages/lmux-aws-bedrock)       | Completion, Embedding            | boto3 credential chain                               |
-| [lmux-google](packages/lmux-google)                 | Completion, Embedding            | ADC, service account, `GOOGLE_API_KEY`               |
-| [lmux-groq](packages/lmux-groq)                     | Completion                       | `GROQ_API_KEY`                                       |
+| Package                                              | Protocols                        | Auth                                                 |
+| ---------------------------------------------------- | -------------------------------- | ---------------------------------------------------- |
+| [lmux-openai](packages/lmux-openai)                  | Completion, Embedding, Responses | `OPENAI_API_KEY`                                     |
+| [lmux-anthropic](packages/lmux-anthropic)            | Completion                       | `ANTHROPIC_API_KEY`                                  |
+| [lmux-anthropic\[vertex\]](packages/lmux-anthropic)  | Completion                       | ADC, service account                                 |
+| [lmux-anthropic](packages/lmux-anthropic) (Foundry)  | Completion                       | `ANTHROPIC_FOUNDRY_API_KEY`, Entra ID token provider |
+| [lmux-anthropic\[bedrock\]](packages/lmux-anthropic) | Completion                       | boto3 credential chain, `AWS_BEARER_TOKEN_BEDROCK`   |
+| [lmux-azure-foundry](packages/lmux-azure-foundry)    | Completion, Embedding, Responses | `AZURE_FOUNDRY_API_KEY`, Azure AD, token provider    |
+| [lmux-aws-bedrock](packages/lmux-aws-bedrock)        | Completion, Embedding            | boto3 credential chain                               |
+| [lmux-google](packages/lmux-google)                  | Completion, Embedding            | ADC, service account, `GOOGLE_API_KEY`               |
+| [lmux-groq](packages/lmux-groq)                      | Completion                       | `GROQ_API_KEY`                                       |
 
 ## Load balancing
 
@@ -229,6 +230,7 @@ response = registry.chat("my-provider/my-model", messages)
   import lmux_openai
   lmux_openai.preload()  # eagerly imports httpx and the provider's dependencies
   ```
+
 - **Protocols**: Providers implement `CompletionProvider`, `EmbeddingProvider`, `ResponsesProvider`, and/or `AsyncCloseable`. Check support at runtime with `isinstance()`.
 - **Standardized inputs and outputs**: Same message types and response shapes across all providers.
 - **Cost ownership**: Each provider owns its pricing data and calculation. Core provides utilities, not a database.
@@ -244,7 +246,7 @@ Checked with ruff, ty, and pytest with 100% branch coverage.
 
 ### Scripts
 
-- `scripts/update_bedrock_pricing.py`: generates Bedrock pricing from the AWS Pricing API
+- `scripts/update_bedrock_pricing.py`: generates Bedrock pricing from the AWS Pricing API — the Anthropic-on-Bedrock subset into `lmux-bedrock-shared`, the rest into `lmux-aws-bedrock`
 - `scripts/validate_pricing.py`: cross-references provider pricing against external databases (LiteLLM, OpenRouter, genai-prices)
 
 ## Requirements

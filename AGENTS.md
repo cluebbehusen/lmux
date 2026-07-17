@@ -12,9 +12,10 @@ uv workspace with a virtual root (`package = false`). All packages live under `p
 packages/
 ├── lmux/                  # Core: types, protocols, exceptions, cost utils, mock provider
 ├── lmux-openai/           # OpenAI provider
-├── lmux-anthropic/        # Anthropic provider
+├── lmux-anthropic/        # Anthropic provider (first-party; [vertex]/[bedrock] extras: Claude on Vertex/Bedrock)
 ├── lmux-azure-foundry/    # Azure AI Foundry provider
-├── lmux-aws-bedrock/      # AWS Bedrock provider
+├── lmux-aws-bedrock/      # AWS Bedrock provider (Converse API, all vendors)
+├── lmux-bedrock-shared/   # Shared Bedrock internals (SigV4, event-stream, Anthropic pricing) for the two Bedrock consumers
 ├── lmux-google/           # Google (Gemini) provider
 ├── lmux-gcp-vertex/       # DEPRECATED shim -> lmux-google
 └── lmux-groq/             # Groq provider
@@ -22,7 +23,7 @@ packages/
 
 Each package uses `src/` layout: `packages/<name>/src/<import_name>/` and `packages/<name>/tests/`.
 
-Core (`lmux`) depends only on `pydantic`. Provider packages depend on `lmux` + their SDK (e.g., `lmux-openai` depends on `lmux` + `openai`).
+Core (`lmux`) depends only on `pydantic`. Provider packages depend on `lmux` + their SDK (e.g., `lmux-openai` depends on `lmux` + `openai`). Core stays free of any provider-specific code: AWS-specific internals shared by the two Bedrock consumers (`lmux-aws-bedrock`'s Converse provider and `lmux-anthropic[bedrock]`'s native provider) live in `lmux-bedrock-shared`, not core.
 
 ## Installing dependencies
 
@@ -49,16 +50,16 @@ Providers implement only the protocols they support. `ParamsT` is a provider-spe
 
 Every provider package follows the same structure (see lmux-openai as reference):
 
-| File | Purpose |
-| --- | --- |
-| `provider.py` | Provider class implementing protocol(s) |
-| `auth.py` | `<Provider>EnvAuthProvider` — reads API key from env var |
-| `params.py` | `<Provider>Params(BaseModel)` — provider-specific parameters |
-| `cost.py` | `PRICING` dict + `calculate_<provider>_cost()` with prefix matching |
-| `_lazy.py` | `create_sync_client()` / `create_async_client()` factory functions |
-| `_mappers.py` | Convert between lmux types and SDK types |
-| `_exceptions.py` | Map SDK exceptions to `lmux.exceptions` hierarchy |
-| `__init__.py` | Re-exports + `preload()` function |
+| File             | Purpose                                                             |
+| ---------------- | ------------------------------------------------------------------- |
+| `provider.py`    | Provider class implementing protocol(s)                             |
+| `auth.py`        | `<Provider>EnvAuthProvider` — reads API key from env var            |
+| `params.py`      | `<Provider>Params(BaseModel)` — provider-specific parameters        |
+| `cost.py`        | `PRICING` dict + `calculate_<provider>_cost()` with prefix matching |
+| `_lazy.py`       | `create_sync_client()` / `create_async_client()` factory functions  |
+| `_mappers.py`    | Convert between lmux types and SDK types                            |
+| `_exceptions.py` | Map SDK exceptions to `lmux.exceptions` hierarchy                   |
+| `__init__.py`    | Re-exports + `preload()` function                                   |
 
 ### Lazy Loading
 
@@ -67,6 +68,8 @@ Provider SDKs load on first API call, not on import. The `_lazy.py` module conta
 ### Cost Ownership
 
 Each provider owns its pricing data and cost calculation. Core provides `ModelPricing`, `calculate_token_cost()`, and `calculate_cost_from_usage()` utilities — no pricing database. Unknown models return `None` for cost, not an error. Providers use longest-prefix matching (e.g., `gpt-4o-2024-11-20` matches `gpt-4o`).
+
+Exception: Anthropic-on-Bedrock pricing is shared, because both Bedrock consumers price Claude identically. `scripts/update_bedrock_pricing.py` dual-emits the generated table — the `anthropic.*` subset (with `calculate_bedrock_anthropic_cost`) into `lmux-bedrock-shared`, the rest into `lmux-aws-bedrock/cost.py`, which merges the shared subset back into its `_PRICING`. `lmux-anthropic[bedrock]` prices via the shared subset keyed by the request's region-prefixed Bedrock ID.
 
 ### Response Design
 
@@ -216,8 +219,8 @@ For non-mock value replacements (e.g., swapping module-level data), use `monkeyp
 - **One level deep only** (true unit testing). If `a` calls `b` which calls `c`, the test for `a` mocks `b` — never `c`. Each unit test exercises exactly one layer.
 - **Type mocks correctly**: `MagicMock` for sync functions, `AsyncMock` for async functions.
 - **Don't write test scaffolding that itself needs testing.** Keep test setup minimal — if a test file has large helper functions or complex builders, the test is testing its own scaffolding, not the library code.
-- **Test for 100% branch coverage but don't over-test.** Cover all branches in *our* code. Don't write tests that effectively exercise third-party library behavior — that's what mocks are for.
-- **Test positive and negative assertions** — verify that expected calls were made *and* that unexpected calls were not. This also avoids "unused argument" warnings from fixtures.
+- **Test for 100% branch coverage but don't over-test.** Cover all branches in _our_ code. Don't write tests that effectively exercise third-party library behavior — that's what mocks are for.
+- **Test positive and negative assertions** — verify that expected calls were made _and_ that unexpected calls were not. This also avoids "unused argument" warnings from fixtures.
 - Use `assert_called_once_with` / `assert_awaited_once_with` to verify mock calls — not `call_args`:
 
 ```python

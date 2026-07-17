@@ -6,7 +6,7 @@ is one of two modes, resolved once on first use:
 * **Bearer token** — if ``AWS_BEARER_TOKEN_BEDROCK`` is set, each request carries an
   ``Authorization: Bearer <token>`` header and nothing is signed.
 * **SigV4** — otherwise classic AWS credentials are resolved through boto3 (kept purely
-  for the credential chain) and each request is signed with :mod:`._sigv4`.
+  for the credential chain) and each request is signed with :func:`lmux_bedrock_shared.sign`.
 
 Credentials are resolved synchronously even on the async path — reimplementing the AWS
 credential chain asynchronously is out of scope, and boto3 stays a dependency only for
@@ -15,18 +15,15 @@ this step.
 
 import asyncio
 import json
-import os
 from collections.abc import AsyncIterator, Iterator, Sequence
-from dataclasses import dataclass
-from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING, Any, Literal, NoReturn, override
+from datetime import date
+from typing import TYPE_CHECKING, Any, Literal, override
 from urllib.parse import quote
 
 if TYPE_CHECKING:
     import boto3
     import httpx
     from aiobotocore.session import AioSession
-    from botocore.credentials import Credentials
 
 from lmux.cost import ModelPricing, calculate_cost
 from lmux.exceptions import LmuxError
@@ -42,7 +39,6 @@ from lmux.types import (
     ToolChoice,
     Usage,
 )
-from lmux_aws_bedrock._eventstream import EventStreamDecoder
 from lmux_aws_bedrock._exceptions import (
     PROVIDER,
     error_from_stream_exception,
@@ -50,7 +46,7 @@ from lmux_aws_bedrock._exceptions import (
     parse_body,
     raise_for_status,
 )
-from lmux_aws_bedrock._lazy import DEFAULT_REGION, bedrock_base_url, create_async_client, create_sync_client
+from lmux_aws_bedrock._lazy import bedrock_base_url, create_async_client, create_sync_client
 from lmux_aws_bedrock._mappers import (
     build_embedding_request_body,
     map_converse_response,
@@ -61,7 +57,6 @@ from lmux_aws_bedrock._mappers import (
     map_tools,
     model_uses_adaptive_thinking,
 )
-from lmux_aws_bedrock._sigv4 import sign
 from lmux_aws_bedrock._wire import (
     WireConverseResponse,
     WireEmbeddingResponse,
@@ -70,10 +65,10 @@ from lmux_aws_bedrock._wire import (
 from lmux_aws_bedrock.auth import BedrockEnvAuthProvider
 from lmux_aws_bedrock.cost import calculate_bedrock_cost
 from lmux_aws_bedrock.params import BedrockParams
+from lmux_bedrock_shared import EventStreamDecoder
+from lmux_bedrock_shared.auth import BedrockAuthContext, resolve_auth_context
 
 PROVIDER_NAME = PROVIDER
-_SERVICE = "bedrock"
-_BEARER_TOKEN_ENV = "AWS_BEARER_TOKEN_BEDROCK"  # noqa: S105
 _JSON_CONTENT_TYPE = "application/json"
 
 _CONVERSE = "converse"
@@ -87,84 +82,6 @@ _ERROR_MESSAGE_TYPE = "error"
 def _today() -> date:
     """Return today's date, indirected so tests can pin the pricing clock."""
     return date.today()
-
-
-@dataclass(frozen=True)
-class _AuthContext:
-    """Resolved per-provider auth: a region plus either a bearer token or a SigV4 credentials source."""
-
-    region: str
-    bearer_token: str | None = None
-    credentials: "Credentials | None" = None
-
-    def apply(self, request: "httpx.Request") -> None:
-        """Attach the auth header(s) to a fully built request."""
-        if self.bearer_token is not None:
-            request.headers["Authorization"] = f"Bearer {self.bearer_token}"
-            return
-        credentials = self.credentials
-        if credentials is None:  # pragma: no cover - always set when bearer_token is None
-            _raise_no_credentials()
-        # Freeze credentials per request: a refreshable source (SSO, assume-role, IMDS) rotates the
-        # keys over the provider's lifetime, so signing with a snapshot taken at client creation
-        # would start failing once the original token expires.
-        frozen = credentials.get_frozen_credentials()
-        signed = sign(
-            method=request.method,
-            url=str(request.url),
-            headers={"content-type": _JSON_CONTENT_TYPE},
-            body=request.content,
-            access_key=frozen.access_key or "",
-            secret_key=frozen.secret_key or "",
-            region=self.region,
-            service=_SERVICE,
-            now=datetime.now(UTC),
-            session_token=frozen.token,
-        )
-        request.headers.update(signed)
-
-
-def _resolve_auth_context(auth: "AuthProvider[boto3.Session, AioSession]", region_override: str | None) -> _AuthContext:
-    """Resolve the auth mode once: bearer token if present, else a SigV4 credentials source.
-
-    The region is resolved from the configured session (``AWS_DEFAULT_REGION``, a profile, or an
-    explicit ``region_name``) so a bearer token reaches the right regional endpoint instead of
-    silently defaulting to us-east-1. Bearer mode resolves the region best-effort and never *requires*
-    a constructable session — a stale ``AWS_PROFILE`` must not break bearer auth, which does not use
-    boto3 at all.
-    """
-    bearer = os.environ.get(_BEARER_TOKEN_ENV)
-    if bearer:
-        return _AuthContext(region=region_override or _session_region(auth), bearer_token=bearer)
-
-    session = auth.get_credentials()
-    region = region_override or session.region_name or DEFAULT_REGION
-    credentials = session.get_credentials()
-    if credentials is None:
-        _raise_no_credentials()
-    return _AuthContext(region=region, credentials=credentials)
-
-
-def _session_region(auth: "AuthProvider[boto3.Session, AioSession]") -> str:
-    """Best-effort region from the configured session for bearer mode.
-
-    ``region_name`` already reflects ``AWS_REGION``/``AWS_DEFAULT_REGION``/profile config; if the
-    session cannot be constructed (e.g. a missing ``AWS_PROFILE``), fall back to the default region
-    rather than failing a request that only needs a bearer token.
-    """
-    import botocore.exceptions  # noqa: PLC0415
-
-    try:
-        return auth.get_credentials().region_name or DEFAULT_REGION
-    except botocore.exceptions.BotoCoreError:
-        return DEFAULT_REGION
-
-
-def _raise_no_credentials() -> NoReturn:
-    """Raise botocore's ``NoCredentialsError`` so it maps to ``AuthenticationError``."""
-    import botocore.exceptions  # noqa: PLC0415
-
-    raise botocore.exceptions.NoCredentialsError
 
 
 class BedrockProvider(
@@ -194,7 +111,7 @@ class BedrockProvider(
         self._max_retries: int | None = max_retries
         self._transport: httpx.BaseTransport | None = transport
         self._async_transport: httpx.AsyncBaseTransport | None = async_transport
-        self._auth_ctx: _AuthContext | None = None
+        self._auth_ctx: BedrockAuthContext | None = None
         self._sync_client: httpx.Client | None = None
         self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
@@ -221,12 +138,12 @@ class BedrockProvider(
 
     # MARK: Client & Auth Management
 
-    def _resolve_auth(self) -> _AuthContext:
+    def _resolve_auth(self) -> BedrockAuthContext:
         if self._auth_ctx is None:
-            self._auth_ctx = _resolve_auth_context(self._auth, self._region)
+            self._auth_ctx = resolve_auth_context(self._auth, self._region)
         return self._auth_ctx
 
-    def _base_url(self, auth: _AuthContext) -> str:
+    def _base_url(self, auth: BedrockAuthContext) -> str:
         return self._endpoint_url or bedrock_base_url(auth.region, use_fips=self._use_fips)
 
     def _get_sync_client(self) -> "httpx.Client":

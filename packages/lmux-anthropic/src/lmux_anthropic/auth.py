@@ -2,11 +2,12 @@
 
 import os
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from lmux.exceptions import AuthenticationError
 
 if TYPE_CHECKING:
+    import boto3
     from google.auth.credentials import Credentials
 
 
@@ -113,3 +114,55 @@ class AnthropicFoundryTokenAuthProvider:
 
     async def aget_credentials(self) -> Callable[[], str]:
         return self._token_provider
+
+
+class AnthropicBedrockEnvAuthProvider:
+    """Default Bedrock auth provider — creates bare boto3 sessions that inherit from the environment.
+
+    Credentials are resolved by boto3's default credential chain: environment variables
+    (``AWS_BEARER_TOKEN_BEDROCK``, ``AWS_ACCESS_KEY_ID``, …), the default profile, instance
+    metadata, etc. Requires the ``[bedrock]`` extra. SigV4 credentials are resolved synchronously
+    even on the async request path, so ``aget_credentials`` returns the same sync session.
+    """
+
+    def get_credentials(self) -> "boto3.Session":
+        import boto3  # noqa: PLC0415
+
+        return boto3.Session()
+
+    async def aget_credentials(self) -> "boto3.Session":
+        return self.get_credentials()
+
+
+class AnthropicBedrockSessionAuthProvider:
+    """Bedrock auth provider that creates boto3 sessions with explicit configuration.
+
+    Accepts the same keyword arguments as ``boto3.Session`` (``region_name``, ``profile_name``,
+    ``aws_access_key_id``, ``aws_secret_access_key``, ``aws_session_token``). Requires the
+    ``[bedrock]`` extra.
+    """
+
+    def __init__(
+        self,
+        *,
+        region_name: str | None = None,
+        profile_name: str | None = None,
+        aws_access_key_id: str | None = None,
+        aws_secret_access_key: str | None = None,
+        aws_session_token: str | None = None,
+    ) -> None:
+        self._kwargs: dict[str, Any] = {
+            "region_name": region_name,
+            "profile_name": profile_name,
+            "aws_access_key_id": aws_access_key_id,
+            "aws_secret_access_key": aws_secret_access_key,
+            "aws_session_token": aws_session_token,
+        }
+
+    def get_credentials(self) -> "boto3.Session":
+        import boto3  # noqa: PLC0415
+
+        return boto3.Session(**self._kwargs)
+
+    async def aget_credentials(self) -> "boto3.Session":
+        return self.get_credentials()
