@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     import boto3
     from aiobotocore.session import AioSession
 
-from lmux.cost import ModelPricing, PricingTier
+from lmux.cost import ModelPricing, PricingTier, per_million_tokens
 from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
@@ -824,6 +824,37 @@ class TestClientManagement:
         provider = BedrockProvider(auth=FakeAuth(_Session(region_name="ap-south-1")))
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert route.called
+
+    def test_session_region_prices_regionally(
+        self, converse_response: dict[str, Any], respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cost follows the Region the request was sent to even when no ``region=`` was passed.
+
+        Leaving it unset and letting the session resolve it (AWS_DEFAULT_REGION, a profile) is the
+        common configuration, so pricing must read the resolved Region rather than the constructor
+        argument, which is None here.
+        """
+        regional = {
+            "ap-south-1": {
+                MODEL: ModelPricing(
+                    tiers=[
+                        PricingTier(
+                            input_cost_per_token=per_million_tokens(9.0),
+                            output_cost_per_token=per_million_tokens(9.0),
+                        )
+                    ],
+                ),
+            },
+        }
+        monkeypatch.setattr("lmux_aws_bedrock.cost._REGIONAL_PRICING", regional)
+        base = "https://bedrock-runtime.ap-south-1.amazonaws.com"
+        respx_mock.post(_url(MODEL, "converse", base=base)).mock(
+            return_value=httpx.Response(200, json=converse_response)
+        )
+        provider = BedrockProvider(auth=FakeAuth(_Session(region_name="ap-south-1")))
+        response = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert response.cost is not None
+        assert response.cost.input_cost == pytest.approx(10 * 9.0 / 1_000_000)
 
     def test_endpoint_url_override(
         self, fake_auth: FakeAuth, converse_response: dict[str, Any], respx_mock: respx.MockRouter

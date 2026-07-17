@@ -1,6 +1,6 @@
 [project]
 name = "lmux-bedrock-shared"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shared AWS Bedrock internals (SigV4 signing, event-stream decoding, Anthropic pricing) for lmux"
 requires-python = ">=3.13"
 license = "MIT"

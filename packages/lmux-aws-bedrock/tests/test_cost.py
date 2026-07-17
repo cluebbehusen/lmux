@@ -4,12 +4,13 @@ from datetime import date
 
 import pytest
 
-from lmux.cost import ModelPricing, PricingTier, per_million_tokens
+from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
 from lmux.types import Usage
 from lmux_aws_bedrock.cost import (
     _REGIONAL_PRICING,
     calculate_bedrock_cost,
 )
+from lmux_bedrock_shared.pricing import ANTHROPIC_REGIONAL_PRICING, calculate_bedrock_anthropic_cost
 
 
 class TestCalculateBedrockCost:
@@ -130,15 +131,48 @@ class TestCalculateBedrockCost:
         assert cost_default is not None
         assert cost.total_cost == pytest.approx(cost_default.total_cost)
 
-    def test_regional_pricing_empty_dict(self) -> None:
-        """With empty _REGIONAL_PRICING, all regions fall back to default."""
-        assert _REGIONAL_PRICING == {}
+    def test_regional_override_matches_versioned_request_id(self) -> None:
+        """A Region's override applies to the ID a request actually carries.
+
+        Table keys omit the ``:0`` version suffix that real Bedrock model IDs end with, so the
+        override has to survive prefix matching — the case that silently fell through to
+        us-east-1 pricing. Driven off the shipped table rather than a hardcoded rate, so a
+        pricing refresh doesn't churn the test.
+        """
+        region = next(r for r, models in _REGIONAL_PRICING.items() if models)
+        model, pricing = next(iter(_REGIONAL_PRICING[region].items()))
         usage = Usage(input_tokens=1000, output_tokens=500)
-        cost = calculate_bedrock_cost("meta.llama3-1-70b-instruct-v1", usage, region="eu-west-1")
-        cost_default = calculate_bedrock_cost("meta.llama3-1-70b-instruct-v1", usage)
+        cost = calculate_bedrock_cost(f"{model}:0", usage, region=region)
         assert cost is not None
-        assert cost_default is not None
-        assert cost.total_cost == pytest.approx(cost_default.total_cost)
+        assert cost.total_cost == pytest.approx(calculate_cost(usage, pricing, None).total_cost)
+
+    def test_no_regional_override_is_cheaper_than_us_east_1(self) -> None:
+        """Guard against the global-discount artifact re-entering the regional table.
+
+        Genuine Bedrock regional variation is a premium — niche Regions cost more, not less. The
+        only sub-baseline rate is the ~10% Global cross-Region discount, which belongs on the
+        ``global.`` keys, not a regional override. A generator that fills a Region's standard rate
+        from a Global-only meter re-creates that artifact, and it always lands below us-east-1. So
+        every override must be >= the default; a genuinely cheaper Region would trip this and want
+        a human to confirm it is real rather than another leak.
+        """
+        # Input/output only: a partial override omits cache rates and prices a cached call as None,
+        # which is not what this guard is about.
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        for region, models in _REGIONAL_PRICING.items():
+            for model in models:
+                # The premium premise is about standard rates. A per-Region Global rate is a
+                # separate axis that legitimately runs cheaper than us-east-1's Global rate.
+                if model.startswith("global."):
+                    continue
+                override = calculate_bedrock_cost(f"{model}:0", usage, region=region)
+                default = calculate_bedrock_cost(f"{model}:0", usage, region="us-east-1")
+                assert override is not None
+                # Some models are Region-exclusive (e.g. a model offered in GovCloud but not
+                # us-east-1), so there is no baseline to be cheaper than — nothing to check.
+                if default is None:
+                    continue
+                assert override.total_cost >= default.total_cost - 1e-9, f"{region}/{model} priced below us-east-1"
 
     def test_inference_profile_us_prefix(self) -> None:
         """us. prefixed inference profile IDs match and use non-global pricing."""
@@ -227,6 +261,118 @@ class TestCalculateBedrockCost:
         assert cost is not None
         assert cost.input_cost == pytest.approx(1000 * 2.0 / 1_000_000)
         assert cost.output_cost == pytest.approx(500 * 2.0 / 1_000_000)
+
+    def test_claude_prices_identically_to_the_native_bedrock_provider(self) -> None:
+        """The shared Anthropic table exists so the Converse and native Bedrock providers never
+        drift. Assert it holds for every Region that carries a Claude override, including the
+        Regions only the shared table knows about.
+        """
+        # Both a plain call and a cached one: the two providers share one table, so they must agree
+        # on the cost — including agreeing that a cached call against a cache-less override is
+        # unpriced (both return None).
+        for usage in (
+            Usage(input_tokens=1000, output_tokens=500),
+            Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=100),
+        ):
+            for region, models in ANTHROPIC_REGIONAL_PRICING.items():
+                for model in models:
+                    converse = calculate_bedrock_cost(f"{model}:0", usage, region=region)
+                    native = calculate_bedrock_anthropic_cost(f"{model}:0", usage, region=region)
+                    assert converse == native, f"{region}/{model} drifted"
+
+    def test_partial_override_prices_tokens_but_not_uncovered_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A Region that prices input/output but not cache keeps its token premium; a cached call
+        against the missing rate is unpriced (None) rather than billed for free."""
+        regional = {
+            "eu-west-1": {
+                "amazon.nova-pro-v1": ModelPricing(
+                    tiers=[
+                        PricingTier(
+                            input_cost_per_token=per_million_tokens(1.13),
+                            output_cost_per_token=per_million_tokens(4.52),
+                        )  # no cache rate
+                    ],
+                ),
+            },
+        }
+        monkeypatch.setattr("lmux_aws_bedrock.cost._REGIONAL_PRICING", regional)
+        plain = calculate_bedrock_cost(
+            "amazon.nova-pro-v1:0", Usage(input_tokens=1_000_000, output_tokens=0), region="eu-west-1"
+        )
+        assert plain is not None
+        assert plain.input_cost == pytest.approx(1.13)
+        cached = calculate_bedrock_cost(
+            "amazon.nova-pro-v1:0",
+            Usage(input_tokens=1_000_000, output_tokens=0, cache_read_tokens=1000),
+            region="eu-west-1",
+        )
+        assert cached is None
+
+    def test_regional_global_profile_uses_the_regions_global_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A global. call is billed by its source Region, and AWS publishes a per-Region global rate.
+        The regional global. override must win over the us-east-1 global key."""
+        regional = {
+            "ap-northeast-1": {
+                "global.amazon.nova-2-lite-v1": ModelPricing(
+                    tiers=[
+                        PricingTier(
+                            input_cost_per_token=per_million_tokens(0.36),
+                            output_cost_per_token=per_million_tokens(3.01),
+                        )
+                    ],
+                ),
+            },
+        }
+        monkeypatch.setattr("lmux_aws_bedrock.cost._REGIONAL_PRICING", regional)
+        usage = Usage(input_tokens=1_000_000, output_tokens=0)
+        cost = calculate_bedrock_cost("global.amazon.nova-2-lite-v1:0", usage, region="ap-northeast-1")
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(0.36)
+
+    def test_geo_profile_uses_the_regions_standard_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Bedrock bills a geo profile at the standard rate of the Region it is called from, so it
+        resolves to that Region's base-model override."""
+        regional = {
+            "eu-west-1": {
+                "meta.llama3-1-70b-instruct-v1": ModelPricing(
+                    tiers=[
+                        PricingTier(
+                            input_cost_per_token=per_million_tokens(3.0),
+                            output_cost_per_token=per_million_tokens(3.0),
+                        )
+                    ],
+                ),
+            },
+        }
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        monkeypatch.setattr("lmux_aws_bedrock.cost._REGIONAL_PRICING", regional)
+        cost = calculate_bedrock_cost("eu.meta.llama3-1-70b-instruct-v1", usage, region="eu-west-1")
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(1000 * 3.0 / 1_000_000)
+
+    def test_global_profile_never_takes_a_regional_standard_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``global.`` is priced separately (~10% below standard), so a Region carrying only a
+        standard override must not capture a global call — that would bill the discounted profile
+        at the Region's standard rate. Absent regionally means it matches the default table."""
+        regional = {
+            "eu-west-1": {
+                "meta.llama3-1-70b-instruct-v1": ModelPricing(
+                    tiers=[
+                        PricingTier(
+                            input_cost_per_token=per_million_tokens(50.0),
+                            output_cost_per_token=per_million_tokens(50.0),
+                        )
+                    ],
+                ),
+            },
+        }
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        monkeypatch.setattr("lmux_aws_bedrock.cost._REGIONAL_PRICING", regional)
+        cost = calculate_bedrock_cost("global.meta.llama3-1-70b-instruct-v1", usage, region="eu-west-1")
+        default = calculate_bedrock_cost("global.meta.llama3-1-70b-instruct-v1", usage)
+        assert cost is not None
+        assert default is not None
+        assert cost.total_cost == pytest.approx(default.total_cost)
 
     def test_regional_pricing_falls_back_to_default_for_unlisted_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A model not in regional overrides falls back to us-east-1 default."""

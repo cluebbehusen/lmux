@@ -1,7 +1,7 @@
 """AWS Bedrock pricing data and cost calculation.
 
 Prices are for the us-east-1 region (on-demand, cross-region global inference).
-Use register_pricing() on BedrockProvider for overrides or other regions.
+Regional pricing overrides are included for regions where prices differ.
 
 Anthropic Claude pricing lives in lmux_bedrock_shared.pricing (shared with the
 native lmux-anthropic Bedrock provider) and is merged into _PRICING below.
@@ -15,7 +15,15 @@ from datetime import date
 
 from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
 from lmux.types import Cost, Usage
-from lmux_bedrock_shared.pricing import ANTHROPIC_PRICING
+from lmux_bedrock_shared.pricing import (
+    ANTHROPIC_PRICING,
+    ANTHROPIC_REGIONAL_PRICING,
+    DEFAULT_PRICING_REGION,
+    INFERENCE_PROFILE_PREFIXES,
+    cost_or_none,
+    lookup_pricing,
+    lookup_regional_pricing,
+)
 
 _PRICING: dict[str, ModelPricing] = {
     # -- Amazon Nova / Titan -------------------------------------
@@ -1033,35 +1041,4636 @@ _PRICING: dict[str, ModelPricing] = {
     **ANTHROPIC_PRICING,
 }
 
-_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {}
+# Regional pricing overrides (only models that differ from us-east-1)
+_BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
+    "ap-east-2": {
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(3.01),
+                    cache_read_cost_per_token=per_million_tokens(0.09),
+                ),
+            ],
+        ),
+    },
+    "ap-northeast-1": {
+        "amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.396),
+                    output_cost_per_token=per_million_tokens(3.311),
+                    cache_read_cost_per_token=per_million_tokens(0.099),
+                ),
+            ],
+        ),
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.288),
+                    cache_read_cost_per_token=per_million_tokens(0.018),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.042),
+                    output_cost_per_token=per_million_tokens(0.168),
+                    cache_read_cost_per_token=per_million_tokens(0.0105),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.96),
+                    output_cost_per_token=per_million_tokens(3.84),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.029),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-text-express-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.275),
+                    output_cost_per_token=per_million_tokens(0.825),
+                ),
+            ],
+        ),
+        "deepseek.v3.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.701666),
+                    output_cost_per_token=per_million_tokens(2.032411),
+                ),
+            ],
+        ),
+        "deepseek.v3.2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.74),
+                    output_cost_per_token=per_million_tokens(2.22),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(3.01),
+                    cache_read_cost_per_token=per_million_tokens(0.09),
+                ),
+            ],
+        ),
+        "google.gemma-3-12b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.11),
+                    output_cost_per_token=per_million_tokens(0.35),
+                ),
+            ],
+        ),
+        "google.gemma-3-27b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.28),
+                    output_cost_per_token=per_million_tokens(0.46),
+                ),
+            ],
+        ),
+        "google.gemma-3-4b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.05),
+                    output_cost_per_token=per_million_tokens(0.1),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.45),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "mistral.devstral-2-123b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.48),
+                    output_cost_per_token=per_million_tokens(2.4),
+                ),
+            ],
+        ),
+        "mistral.magistral-small-2509": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.61),
+                    output_cost_per_token=per_million_tokens(1.82),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-14b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-3b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.12),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-8b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.18),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-3-675b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.61),
+                    output_cost_per_token=per_million_tokens(1.82),
+                ),
+            ],
+        ),
+        "mistral.voxtral-mini-3b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.05),
+                    output_cost_per_token=per_million_tokens(0.05),
+                ),
+            ],
+        ),
+        "mistral.voxtral-small-24b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.36),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2-thinking": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.73),
+                    output_cost_per_token=per_million_tokens(3.03),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.6),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2-vl": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.29),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.28),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.78),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-120b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-20b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.36),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-20b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "qwen.qwen3-235b-a22b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.27),
+                    output_cost_per_token=per_million_tokens(1.06),
+                ),
+            ],
+        ),
+        "qwen.qwen3-32b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-30b-a3b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-480b-a35b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.54),
+                    output_cost_per_token=per_million_tokens(2.18),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-next": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-next-80b-a3b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.168),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-vl-235b-a22b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.64),
+                    output_cost_per_token=per_million_tokens(3.22),
+                ),
+            ],
+        ),
+        "writer.palmyra-vision-7b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "zai.glm-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(2.64),
+                ),
+            ],
+        ),
+        "zai.glm-4.7-flash": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "zai.glm5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.2),
+                    output_cost_per_token=per_million_tokens(3.84),
+                ),
+            ],
+        ),
+    },
+    "ap-northeast-2": {
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.071),
+                    output_cost_per_token=per_million_tokens(0.284),
+                    cache_read_cost_per_token=per_million_tokens(0.01775),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.041),
+                    output_cost_per_token=per_million_tokens(0.164),
+                    cache_read_cost_per_token=per_million_tokens(0.01025),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.95),
+                    output_cost_per_token=per_million_tokens(3.8),
+                    cache_read_cost_per_token=per_million_tokens(0.2375),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.024592),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(2.96),
+                    cache_read_cost_per_token=per_million_tokens(0.09),
+                ),
+            ],
+        ),
+    },
+    "ap-northeast-3": {
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.027),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+    },
+    "ap-south-1": {
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.071),
+                    output_cost_per_token=per_million_tokens(0.284),
+                    cache_read_cost_per_token=per_million_tokens(0.01775),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.041),
+                    output_cost_per_token=per_million_tokens(0.164),
+                    cache_read_cost_per_token=per_million_tokens(0.01025),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.94),
+                    output_cost_per_token=per_million_tokens(3.76),
+                    cache_read_cost_per_token=per_million_tokens(0.235),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-image-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.0),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.024),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-text-express-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.0),
+                    output_cost_per_token=per_million_tokens(1.9),
+                ),
+            ],
+        ),
+        "amazon.titan-text-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.4),
+                    output_cost_per_token=per_million_tokens(0.5),
+                ),
+            ],
+        ),
+        "deepseek.v3.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.682424),
+                    output_cost_per_token=per_million_tokens(1.976678),
+                ),
+            ],
+        ),
+        "deepseek.v3.2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.74),
+                    output_cost_per_token=per_million_tokens(2.22),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.35),
+                    output_cost_per_token=per_million_tokens(2.95),
+                    cache_read_cost_per_token=per_million_tokens(0.0875),
+                ),
+            ],
+        ),
+        "google.gemma-3-12b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.11),
+                    output_cost_per_token=per_million_tokens(0.34),
+                ),
+            ],
+        ),
+        "google.gemma-3-27b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.27),
+                    output_cost_per_token=per_million_tokens(0.45),
+                ),
+            ],
+        ),
+        "google.gemma-3-4b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.05),
+                    output_cost_per_token=per_million_tokens(0.09),
+                ),
+            ],
+        ),
+        "meta.llama3-70b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.18),
+                    output_cost_per_token=per_million_tokens(4.2),
+                ),
+            ],
+        ),
+        "meta.llama3-8b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.35),
+                    output_cost_per_token=per_million_tokens(1.41),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "mistral.devstral-2-123b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.48),
+                    output_cost_per_token=per_million_tokens(2.4),
+                ),
+            ],
+        ),
+        "mistral.magistral-small-2509": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.59),
+                    output_cost_per_token=per_million_tokens(1.76),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-14b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-3b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.12),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-8b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.18),
+                ),
+            ],
+        ),
+        "mistral.mistral-7b-instruct-v0:2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-2402-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(4.8),
+                    output_cost_per_token=per_million_tokens(14.4),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-3-675b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.59),
+                    output_cost_per_token=per_million_tokens(1.76),
+                ),
+            ],
+        ),
+        "mistral.mixtral-8x7b-instruct-v0:1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.54),
+                    output_cost_per_token=per_million_tokens(0.84),
+                ),
+            ],
+        ),
+        "mistral.voxtral-mini-3b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.05),
+                    output_cost_per_token=per_million_tokens(0.05),
+                ),
+            ],
+        ),
+        "mistral.voxtral-small-24b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.35),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2-thinking": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.71),
+                    output_cost_per_token=per_million_tokens(2.94),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.6),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.71),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2-vl": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.71),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.28),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.27),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.78),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-120b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.71),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-20b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.35),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.71),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-20b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "qwen.qwen3-235b-a22b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.26),
+                    output_cost_per_token=per_million_tokens(1.04),
+                ),
+            ],
+        ),
+        "qwen.qwen3-32b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.71),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-30b-a3b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.71),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-480b-a35b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.53),
+                    output_cost_per_token=per_million_tokens(2.12),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-next": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-next-80b-a3b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.168),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-vl-235b-a22b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.62),
+                    output_cost_per_token=per_million_tokens(3.13),
+                ),
+            ],
+        ),
+        "writer.palmyra-vision-7b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "xai.grok-4.3": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.5),
+                    output_cost_per_token=per_million_tokens(3.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "zai.glm-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(2.64),
+                ),
+            ],
+        ),
+        "zai.glm-4.7-flash": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "zai.glm5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.2),
+                    output_cost_per_token=per_million_tokens(3.84),
+                ),
+            ],
+        ),
+    },
+    "ap-south-2": {
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.027),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+    },
+    "ap-southeast-1": {
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.081),
+                    output_cost_per_token=per_million_tokens(0.324),
+                    cache_read_cost_per_token=per_million_tokens(0.02025),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.047),
+                    output_cost_per_token=per_million_tokens(0.188),
+                    cache_read_cost_per_token=per_million_tokens(0.01175),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.08),
+                    output_cost_per_token=per_million_tokens(4.32),
+                    cache_read_cost_per_token=per_million_tokens(0.27),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.028),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.41),
+                    output_cost_per_token=per_million_tokens(3.39),
+                    cache_read_cost_per_token=per_million_tokens(0.1025),
+                ),
+            ],
+        ),
+    },
+    "ap-southeast-2": {
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.063),
+                    output_cost_per_token=per_million_tokens(0.252),
+                    cache_read_cost_per_token=per_million_tokens(0.01575),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.037),
+                    output_cost_per_token=per_million_tokens(0.148),
+                    cache_read_cost_per_token=per_million_tokens(0.00925),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.84),
+                    output_cost_per_token=per_million_tokens(3.36),
+                    cache_read_cost_per_token=per_million_tokens(0.21),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-image-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.0),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.026004),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-text-express-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.25),
+                    output_cost_per_token=per_million_tokens(0.788),
+                ),
+            ],
+        ),
+        "amazon.titan-text-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.25),
+                ),
+            ],
+        ),
+        "deepseek.v3.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.5974),
+                    output_cost_per_token=per_million_tokens(1.7304),
+                ),
+            ],
+        ),
+        "deepseek.v3.2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.64),
+                    output_cost_per_token=per_million_tokens(1.91),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.32),
+                    output_cost_per_token=per_million_tokens(2.63),
+                    cache_read_cost_per_token=per_million_tokens(0.08),
+                ),
+            ],
+        ),
+        "google.gemma-3-12b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.0927),
+                    output_cost_per_token=per_million_tokens(0.2987),
+                ),
+            ],
+        ),
+        "google.gemma-3-27b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2369),
+                    output_cost_per_token=per_million_tokens(0.3914),
+                ),
+            ],
+        ),
+        "google.gemma-3-4b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.0412),
+                    output_cost_per_token=per_million_tokens(0.0824),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.309),
+                    output_cost_per_token=per_million_tokens(1.236),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.31),
+                    output_cost_per_token=per_million_tokens(1.24),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.31),
+                    output_cost_per_token=per_million_tokens(1.24),
+                ),
+            ],
+        ),
+        "mistral.devstral-2-123b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.41),
+                    output_cost_per_token=per_million_tokens(2.06),
+                ),
+            ],
+        ),
+        "mistral.magistral-small-2509": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.515),
+                    output_cost_per_token=per_million_tokens(1.545),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-14b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.206),
+                    output_cost_per_token=per_million_tokens(0.206),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-3b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.103),
+                    output_cost_per_token=per_million_tokens(0.103),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-8b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.1545),
+                    output_cost_per_token=per_million_tokens(0.1545),
+                ),
+            ],
+        ),
+        "mistral.mistral-7b-instruct-v0:2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.26),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-2402-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(5.2),
+                    output_cost_per_token=per_million_tokens(15.6),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-3-675b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.515),
+                    output_cost_per_token=per_million_tokens(1.545),
+                ),
+            ],
+        ),
+        "mistral.mixtral-8x7b-instruct-v0:1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.59),
+                    output_cost_per_token=per_million_tokens(0.91),
+                ),
+            ],
+        ),
+        "mistral.voxtral-mini-3b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.0412),
+                    output_cost_per_token=per_million_tokens(0.0412),
+                ),
+            ],
+        ),
+        "mistral.voxtral-small-24b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.103),
+                    output_cost_per_token=per_million_tokens(0.309),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2-thinking": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.618),
+                    output_cost_per_token=per_million_tokens(2.575),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.62),
+                    output_cost_per_token=per_million_tokens(3.09),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.206),
+                    output_cost_per_token=per_million_tokens(0.618),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.0618),
+                    output_cost_per_token=per_million_tokens(0.2472),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.0618),
+                    output_cost_per_token=per_million_tokens(0.2369),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.15),
+                    output_cost_per_token=per_million_tokens(0.67),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-120b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.1545),
+                    output_cost_per_token=per_million_tokens(0.618),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-20b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.0721),
+                    output_cost_per_token=per_million_tokens(0.309),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.1545),
+                    output_cost_per_token=per_million_tokens(0.618),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-20b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.0721),
+                    output_cost_per_token=per_million_tokens(0.206),
+                ),
+            ],
+        ),
+        "qwen.qwen3-235b-a22b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2266),
+                    output_cost_per_token=per_million_tokens(0.9064),
+                ),
+            ],
+        ),
+        "qwen.qwen3-32b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.1545),
+                    output_cost_per_token=per_million_tokens(0.618),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-30b-a3b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.1545),
+                    output_cost_per_token=per_million_tokens(0.618),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-480b-a35b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.4635),
+                    output_cost_per_token=per_million_tokens(1.854),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-next": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.52),
+                    output_cost_per_token=per_million_tokens(1.24),
+                ),
+            ],
+        ),
+        "qwen.qwen3-next-80b-a3b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.1442),
+                    output_cost_per_token=per_million_tokens(1.236),
+                ),
+            ],
+        ),
+        "qwen.qwen3-vl-235b-a22b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.5459),
+                    output_cost_per_token=per_million_tokens(2.7398),
+                ),
+            ],
+        ),
+        "writer.palmyra-vision-7b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.15),
+                    output_cost_per_token=per_million_tokens(0.62),
+                ),
+            ],
+        ),
+        "zai.glm-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.62),
+                    output_cost_per_token=per_million_tokens(2.27),
+                ),
+            ],
+        ),
+        "zai.glm-4.7-flash": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.41),
+                ),
+            ],
+        ),
+        "zai.glm5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.03),
+                    output_cost_per_token=per_million_tokens(3.3),
+                ),
+            ],
+        ),
+    },
+    "ap-southeast-3": {
+        "deepseek.v3.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.74),
+                ),
+            ],
+        ),
+        "deepseek.v3.2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.74),
+                    output_cost_per_token=per_million_tokens(2.22),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.32),
+                    output_cost_per_token=per_million_tokens(2.64),
+                    cache_read_cost_per_token=per_million_tokens(0.08),
+                ),
+            ],
+        ),
+        "google.gemma-3-12b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.108),
+                    output_cost_per_token=per_million_tokens(0.348),
+                ),
+            ],
+        ),
+        "google.gemma-3-27b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.276),
+                    output_cost_per_token=per_million_tokens(0.456),
+                ),
+            ],
+        ),
+        "google.gemma-3-4b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.048),
+                    output_cost_per_token=per_million_tokens(0.096),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "mistral.devstral-2-123b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.48),
+                    output_cost_per_token=per_million_tokens(2.4),
+                ),
+            ],
+        ),
+        "mistral.magistral-small-2509": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.8),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-14b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-3b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.12),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-8b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.18),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-3-675b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.8),
+                ),
+            ],
+        ),
+        "mistral.voxtral-mini-3b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.048),
+                    output_cost_per_token=per_million_tokens(0.048),
+                ),
+            ],
+        ),
+        "mistral.voxtral-small-24b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.36),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2-thinking": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.0),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.6),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.288),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.276),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.78),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-120b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.16),
+                    output_cost_per_token=per_million_tokens(0.62),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-20b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.31),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-20b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.084),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "qwen.qwen3-235b-a22b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.91),
+                ),
+            ],
+        ),
+        "qwen.qwen3-32b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.16),
+                    output_cost_per_token=per_million_tokens(0.62),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-30b-a3b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.16),
+                    output_cost_per_token=per_million_tokens(0.62),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-480b-a35b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.47),
+                    output_cost_per_token=per_million_tokens(1.87),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-next": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-next-80b-a3b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.168),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-vl-235b-a22b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.636),
+                    output_cost_per_token=per_million_tokens(3.192),
+                ),
+            ],
+        ),
+        "writer.palmyra-vision-7b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "zai.glm-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(2.64),
+                ),
+            ],
+        ),
+        "zai.glm-4.7-flash": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "zai.glm5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.2),
+                    output_cost_per_token=per_million_tokens(3.84),
+                ),
+            ],
+        ),
+    },
+    "ap-southeast-4": {
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.065),
+                    output_cost_per_token=per_million_tokens(0.26),
+                    cache_read_cost_per_token=per_million_tokens(0.01625),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.87),
+                    output_cost_per_token=per_million_tokens(3.48),
+                    cache_read_cost_per_token=per_million_tokens(0.2175),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.33),
+                    output_cost_per_token=per_million_tokens(2.71),
+                    cache_read_cost_per_token=per_million_tokens(0.0825),
+                ),
+            ],
+        ),
+    },
+    "ap-southeast-5": {
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.288),
+                    cache_read_cost_per_token=per_million_tokens(0.018),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.41),
+                    output_cost_per_token=per_million_tokens(3.39),
+                    cache_read_cost_per_token=per_million_tokens(0.1025),
+                ),
+            ],
+        ),
+    },
+    "ap-southeast-6": {
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.32),
+                    output_cost_per_token=per_million_tokens(2.63),
+                    cache_read_cost_per_token=per_million_tokens(0.08),
+                ),
+            ],
+        ),
+    },
+    "ap-southeast-7": {
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.288),
+                    cache_read_cost_per_token=per_million_tokens(0.018),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.41),
+                    output_cost_per_token=per_million_tokens(3.39),
+                    cache_read_cost_per_token=per_million_tokens(0.1025),
+                ),
+            ],
+        ),
+    },
+    "ca-central-1": {
+        "amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.352),
+                    output_cost_per_token=per_million_tokens(2.97),
+                    cache_read_cost_per_token=per_million_tokens(0.088),
+                ),
+            ],
+        ),
+        "amazon.nova-2-omni-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.4),
+                    output_cost_per_token=per_million_tokens(2.9),
+                ),
+            ],
+        ),
+        "amazon.nova-2-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.463),
+                    output_cost_per_token=per_million_tokens(11.726),
+                ),
+            ],
+        ),
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.064),
+                    output_cost_per_token=per_million_tokens(0.256),
+                    cache_read_cost_per_token=per_million_tokens(0.016),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-image-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.9),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.1),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-text-express-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.3),
+                    output_cost_per_token=per_million_tokens(0.8),
+                ),
+            ],
+        ),
+        "amazon.titan-text-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.3),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.32),
+                    output_cost_per_token=per_million_tokens(2.67),
+                    cache_read_cost_per_token=per_million_tokens(0.08),
+                ),
+            ],
+        ),
+        "meta.llama3-70b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.05),
+                    output_cost_per_token=per_million_tokens(4.03),
+                ),
+            ],
+        ),
+        "meta.llama3-8b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.35),
+                    output_cost_per_token=per_million_tokens(0.69),
+                ),
+            ],
+        ),
+        "mistral.mistral-7b-instruct-v0:2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.17),
+                    output_cost_per_token=per_million_tokens(0.23),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-2402-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(4.6),
+                    output_cost_per_token=per_million_tokens(13.8),
+                ),
+            ],
+        ),
+        "mistral.mixtral-8x7b-instruct-v0:1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.52),
+                    output_cost_per_token=per_million_tokens(0.81),
+                ),
+            ],
+        ),
+    },
+    "ca-west-1": {
+        "amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.374),
+                    output_cost_per_token=per_million_tokens(3.091),
+                    cache_read_cost_per_token=per_million_tokens(0.0935),
+                ),
+            ],
+        ),
+        "amazon.nova-2-omni-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.4),
+                    output_cost_per_token=per_million_tokens(3.1),
+                ),
+            ],
+        ),
+        "amazon.nova-2-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.551),
+                    output_cost_per_token=per_million_tokens(12.386),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.34),
+                    output_cost_per_token=per_million_tokens(2.81),
+                    cache_read_cost_per_token=per_million_tokens(0.85),
+                ),
+            ],
+        ),
+    },
+    "eu-central-1": {
+        "amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.429),
+                    output_cost_per_token=per_million_tokens(3.597),
+                    cache_read_cost_per_token=per_million_tokens(0.10725),
+                ),
+            ],
+        ),
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.078),
+                    output_cost_per_token=per_million_tokens(0.312),
+                    cache_read_cost_per_token=per_million_tokens(0.0195),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.046),
+                    output_cost_per_token=per_million_tokens(0.184),
+                    cache_read_cost_per_token=per_million_tokens(0.0115),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.05),
+                    output_cost_per_token=per_million_tokens(4.2),
+                    cache_read_cost_per_token=per_million_tokens(0.2625),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-image-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.0),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-text-express-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.3),
+                    output_cost_per_token=per_million_tokens(0.863),
+                ),
+            ],
+        ),
+        "deepseek.v3.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.696),
+                    output_cost_per_token=per_million_tokens(2.016),
+                ),
+            ],
+        ),
+        "deepseek.v3.2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.74),
+                    output_cost_per_token=per_million_tokens(2.22),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.39),
+                    output_cost_per_token=per_million_tokens(3.27),
+                    cache_read_cost_per_token=per_million_tokens(0.0975),
+                ),
+            ],
+        ),
+        "google.gemma-3-12b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.108),
+                    output_cost_per_token=per_million_tokens(0.348),
+                ),
+            ],
+        ),
+        "google.gemma-3-27b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.276),
+                    output_cost_per_token=per_million_tokens(0.456),
+                ),
+            ],
+        ),
+        "google.gemma-3-4b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.048),
+                    output_cost_per_token=per_million_tokens(0.096),
+                ),
+            ],
+        ),
+        "google.gemma-4-26b-a4b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.156),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "google.gemma-4-31b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.168),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "google.gemma-4-e2b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.048),
+                    output_cost_per_token=per_million_tokens(0.096),
+                ),
+            ],
+        ),
+        "meta.llama3-2-1b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.13),
+                    output_cost_per_token=per_million_tokens(0.13),
+                ),
+            ],
+        ),
+        "meta.llama3-2-3b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.19),
+                    output_cost_per_token=per_million_tokens(0.19),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "mistral.devstral-2-123b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.48),
+                    output_cost_per_token=per_million_tokens(2.4),
+                ),
+            ],
+        ),
+        "mistral.magistral-small-2509": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.8),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-14b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-3b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.12),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-8b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.18),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-3-675b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.8),
+                ),
+            ],
+        ),
+        "mistral.voxtral-mini-3b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.048),
+                    output_cost_per_token=per_million_tokens(0.048),
+                ),
+            ],
+        ),
+        "mistral.voxtral-small-24b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.36),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2-thinking": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.0),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.6),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.288),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.276),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.78),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-120b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.79),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-20b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.09),
+                    output_cost_per_token=per_million_tokens(0.4),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-20b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.084),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "qwen.qwen3-235b-a22b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.29),
+                    output_cost_per_token=per_million_tokens(1.16),
+                ),
+            ],
+        ),
+        "qwen.qwen3-32b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.79),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-30b-a3b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.79),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-480b-a35b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.54),
+                    output_cost_per_token=per_million_tokens(2.16),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-next": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-next-80b-a3b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.168),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-vl-235b-a22b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.636),
+                    output_cost_per_token=per_million_tokens(3.192),
+                ),
+            ],
+        ),
+        "writer.palmyra-vision-7b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "zai.glm-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(2.64),
+                ),
+            ],
+        ),
+        "zai.glm-4.7-flash": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "zai.glm5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.2),
+                    output_cost_per_token=per_million_tokens(3.84),
+                ),
+            ],
+        ),
+    },
+    "eu-central-2": {
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.027),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+    },
+    "eu-north-1": {
+        "amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.363),
+                    output_cost_per_token=per_million_tokens(2.992),
+                    cache_read_cost_per_token=per_million_tokens(0.09075),
+                ),
+            ],
+        ),
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.065),
+                    output_cost_per_token=per_million_tokens(0.26),
+                    cache_read_cost_per_token=per_million_tokens(0.01625),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.038),
+                    output_cost_per_token=per_million_tokens(0.152),
+                    cache_read_cost_per_token=per_million_tokens(0.0095),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.87),
+                    output_cost_per_token=per_million_tokens(3.48),
+                    cache_read_cost_per_token=per_million_tokens(0.2175),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.021),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "deepseek.v3.2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.74),
+                    output_cost_per_token=per_million_tokens(2.22),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.33),
+                    output_cost_per_token=per_million_tokens(2.72),
+                    cache_read_cost_per_token=per_million_tokens(0.0825),
+                ),
+            ],
+        ),
+        "google.gemma-3-12b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.108),
+                    output_cost_per_token=per_million_tokens(0.348),
+                ),
+            ],
+        ),
+        "google.gemma-3-27b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.276),
+                    output_cost_per_token=per_million_tokens(0.456),
+                ),
+            ],
+        ),
+        "google.gemma-3-4b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.048),
+                    output_cost_per_token=per_million_tokens(0.096),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "mistral.devstral-2-123b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.48),
+                    output_cost_per_token=per_million_tokens(2.4),
+                ),
+            ],
+        ),
+        "mistral.magistral-small-2509": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.8),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-14b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-3b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.12),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-8b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.18),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-3-675b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.8),
+                ),
+            ],
+        ),
+        "mistral.voxtral-mini-3b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.048),
+                    output_cost_per_token=per_million_tokens(0.048),
+                ),
+            ],
+        ),
+        "mistral.voxtral-small-24b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.36),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2-thinking": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.0),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.6),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.288),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.276),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.78),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-20b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.084),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-next": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-next-80b-a3b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.168),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-vl-235b-a22b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.636),
+                    output_cost_per_token=per_million_tokens(3.192),
+                ),
+            ],
+        ),
+        "writer.palmyra-vision-7b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "zai.glm-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(2.64),
+                ),
+            ],
+        ),
+        "zai.glm-4.7-flash": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "zai.glm5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.2),
+                    output_cost_per_token=per_million_tokens(3.84),
+                ),
+            ],
+        ),
+    },
+    "eu-south-1": {
+        "amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.528),
+                    output_cost_per_token=per_million_tokens(4.411),
+                    cache_read_cost_per_token=per_million_tokens(0.132),
+                ),
+            ],
+        ),
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.096),
+                    output_cost_per_token=per_million_tokens(0.384),
+                    cache_read_cost_per_token=per_million_tokens(0.024),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.056),
+                    output_cost_per_token=per_million_tokens(0.224),
+                    cache_read_cost_per_token=per_million_tokens(0.014),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.28),
+                    output_cost_per_token=per_million_tokens(5.21),
+                    cache_read_cost_per_token=per_million_tokens(0.32),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.023),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "deepseek.v3.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.696),
+                    output_cost_per_token=per_million_tokens(2.016),
+                ),
+            ],
+        ),
+        "deepseek.v3.2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.74),
+                    output_cost_per_token=per_million_tokens(2.22),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.481),
+                    output_cost_per_token=per_million_tokens(4.1),
+                    cache_read_cost_per_token=per_million_tokens(0.0825),
+                ),
+            ],
+        ),
+        "google.gemma-3-12b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.11),
+                    output_cost_per_token=per_million_tokens(0.34),
+                ),
+            ],
+        ),
+        "google.gemma-3-27b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.27),
+                    output_cost_per_token=per_million_tokens(0.45),
+                ),
+            ],
+        ),
+        "google.gemma-3-4b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.05),
+                    output_cost_per_token=per_million_tokens(0.09),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.35),
+                    output_cost_per_token=per_million_tokens(1.41),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "mistral.devstral-2-123b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.48),
+                    output_cost_per_token=per_million_tokens(2.4),
+                ),
+            ],
+        ),
+        "mistral.magistral-small-2509": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.59),
+                    output_cost_per_token=per_million_tokens(1.76),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-14b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.23),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-3b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.12),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-8b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.18),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-3-675b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.8),
+                ),
+            ],
+        ),
+        "mistral.voxtral-mini-3b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.05),
+                    output_cost_per_token=per_million_tokens(0.05),
+                ),
+            ],
+        ),
+        "mistral.voxtral-small-24b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.35),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2-thinking": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.0),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.6),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.7),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2-vl": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.7),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.28),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.27),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.78),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-120b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.79),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-20b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.09),
+                    output_cost_per_token=per_million_tokens(0.4),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.7),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-20b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.23),
+                ),
+            ],
+        ),
+        "qwen.qwen3-235b-a22b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.29),
+                    output_cost_per_token=per_million_tokens(1.16),
+                ),
+            ],
+        ),
+        "qwen.qwen3-32b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.79),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-30b-a3b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.79),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-480b-a35b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.54),
+                    output_cost_per_token=per_million_tokens(2.16),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-next": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-next-80b-a3b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.168),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-vl-235b-a22b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.62),
+                    output_cost_per_token=per_million_tokens(3.12),
+                ),
+            ],
+        ),
+        "writer.palmyra-vision-7b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "zai.glm-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(2.64),
+                ),
+            ],
+        ),
+        "zai.glm-4.7-flash": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "zai.glm5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.2),
+                    output_cost_per_token=per_million_tokens(3.84),
+                ),
+            ],
+        ),
+    },
+    "eu-south-2": {
+        "amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.363),
+                    output_cost_per_token=per_million_tokens(3.205),
+                    cache_read_cost_per_token=per_million_tokens(0.09075),
+                ),
+            ],
+        ),
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.066),
+                    output_cost_per_token=per_million_tokens(0.264),
+                    cache_read_cost_per_token=per_million_tokens(0.0165),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.039),
+                    output_cost_per_token=per_million_tokens(0.156),
+                    cache_read_cost_per_token=per_million_tokens(0.00975),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.88),
+                    output_cost_per_token=per_million_tokens(3.52),
+                    cache_read_cost_per_token=per_million_tokens(0.22),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.021),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.33),
+                    output_cost_per_token=per_million_tokens(2.75),
+                    cache_read_cost_per_token=per_million_tokens(0.0825),
+                ),
+            ],
+        ),
+    },
+    "eu-west-1": {
+        "amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.374),
+                    output_cost_per_token=per_million_tokens(3.157),
+                    cache_read_cost_per_token=per_million_tokens(0.0935),
+                ),
+            ],
+        ),
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.069),
+                    output_cost_per_token=per_million_tokens(0.276),
+                    cache_read_cost_per_token=per_million_tokens(0.01725),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.04),
+                    output_cost_per_token=per_million_tokens(0.16),
+                    cache_read_cost_per_token=per_million_tokens(0.01),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.92),
+                    output_cost_per_token=per_million_tokens(3.68),
+                    cache_read_cost_per_token=per_million_tokens(0.23),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-image-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.0),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.026004),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-text-express-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.0),
+                    output_cost_per_token=per_million_tokens(1.7),
+                ),
+            ],
+        ),
+        "amazon.titan-text-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.3),
+                    output_cost_per_token=per_million_tokens(0.4),
+                ),
+            ],
+        ),
+        "deepseek.v3.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.696),
+                    output_cost_per_token=per_million_tokens(2.016),
+                ),
+            ],
+        ),
+        "deepseek.v3.2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.74),
+                    output_cost_per_token=per_million_tokens(2.22),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.34),
+                    output_cost_per_token=per_million_tokens(2.87),
+                    cache_read_cost_per_token=per_million_tokens(0.085),
+                ),
+            ],
+        ),
+        "google.gemma-3-12b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.11),
+                    output_cost_per_token=per_million_tokens(0.34),
+                ),
+            ],
+        ),
+        "google.gemma-3-27b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.27),
+                    output_cost_per_token=per_million_tokens(0.45),
+                ),
+            ],
+        ),
+        "google.gemma-3-4b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.05),
+                    output_cost_per_token=per_million_tokens(0.09),
+                ),
+            ],
+        ),
+        "meta.llama3-2-1b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.11),
+                    output_cost_per_token=per_million_tokens(0.11),
+                ),
+            ],
+        ),
+        "meta.llama3-2-3b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.17),
+                    output_cost_per_token=per_million_tokens(0.17),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.35),
+                    output_cost_per_token=per_million_tokens(1.41),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "mistral.devstral-2-123b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.48),
+                    output_cost_per_token=per_million_tokens(2.4),
+                ),
+            ],
+        ),
+        "mistral.magistral-small-2509": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.59),
+                    output_cost_per_token=per_million_tokens(1.76),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-14b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.23),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-3b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.12),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-8b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.18),
+                ),
+            ],
+        ),
+        "mistral.mistral-7b-instruct-v0:2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.16),
+                    output_cost_per_token=per_million_tokens(0.22),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-2402-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(4.3),
+                    output_cost_per_token=per_million_tokens(13.0),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-3-675b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.8),
+                ),
+            ],
+        ),
+        "mistral.mixtral-8x7b-instruct-v0:1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.49),
+                    output_cost_per_token=per_million_tokens(0.76),
+                ),
+            ],
+        ),
+        "mistral.voxtral-mini-3b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.05),
+                    output_cost_per_token=per_million_tokens(0.05),
+                ),
+            ],
+        ),
+        "mistral.voxtral-small-24b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.35),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2-thinking": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.0),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.6),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.7),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2-vl": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.7),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.28),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.27),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.78),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-120b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.7),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-20b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.35),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.7),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-20b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.23),
+                ),
+            ],
+        ),
+        "qwen.qwen3-235b-a22b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.264),
+                    output_cost_per_token=per_million_tokens(1.056),
+                ),
+            ],
+        ),
+        "qwen.qwen3-32b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.7),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-30b-a3b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.7),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-480b-a35b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.54),
+                    output_cost_per_token=per_million_tokens(2.16),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-next": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-next-80b-a3b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.168),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-vl-235b-a22b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.62),
+                    output_cost_per_token=per_million_tokens(3.12),
+                ),
+            ],
+        ),
+        "writer.palmyra-vision-7b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "zai.glm-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(2.64),
+                ),
+            ],
+        ),
+        "zai.glm-4.7-flash": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "zai.glm5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.2),
+                    output_cost_per_token=per_million_tokens(3.84),
+                ),
+            ],
+        ),
+    },
+    "eu-west-2": {
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.084),
+                    output_cost_per_token=per_million_tokens(0.336),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.049),
+                    output_cost_per_token=per_million_tokens(0.196),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.13),
+                    output_cost_per_token=per_million_tokens(4.52),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-image-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.0),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.1),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-text-express-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.3),
+                    output_cost_per_token=per_million_tokens(0.9),
+                ),
+            ],
+        ),
+        "amazon.titan-text-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.3),
+                ),
+            ],
+        ),
+        "deepseek.v3.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.899985),
+                    output_cost_per_token=per_million_tokens(2.606853),
+                ),
+            ],
+        ),
+        "deepseek.v3.2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.961),
+                    output_cost_per_token=per_million_tokens(2.8675),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.42),
+                    output_cost_per_token=per_million_tokens(3.52),
+                    cache_read_cost_per_token=per_million_tokens(0.105),
+                ),
+            ],
+        ),
+        "google.gemma-3-12b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.14),
+                    output_cost_per_token=per_million_tokens(0.45),
+                ),
+            ],
+        ),
+        "google.gemma-3-27b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(0.59),
+                ),
+            ],
+        ),
+        "google.gemma-3-4b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.06),
+                    output_cost_per_token=per_million_tokens(0.12),
+                ),
+            ],
+        ),
+        "meta.llama3-70b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.45),
+                    output_cost_per_token=per_million_tokens(4.55),
+                ),
+            ],
+        ),
+        "meta.llama3-8b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.39),
+                    output_cost_per_token=per_million_tokens(0.78),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.47),
+                    output_cost_per_token=per_million_tokens(1.86),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.47),
+                    output_cost_per_token=per_million_tokens(1.86),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.47),
+                    output_cost_per_token=per_million_tokens(1.86),
+                ),
+            ],
+        ),
+        "mistral.devstral-2-123b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.62),
+                    output_cost_per_token=per_million_tokens(3.1),
+                ),
+            ],
+        ),
+        "mistral.magistral-small-2509": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.78),
+                    output_cost_per_token=per_million_tokens(2.33),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-14b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.31),
+                    output_cost_per_token=per_million_tokens(0.31),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-3b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.16),
+                    output_cost_per_token=per_million_tokens(0.16),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-8b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.23),
+                ),
+            ],
+        ),
+        "mistral.mistral-7b-instruct-v0:2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.26),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-2402-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(5.2),
+                    output_cost_per_token=per_million_tokens(15.6),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-3-675b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.775),
+                    output_cost_per_token=per_million_tokens(2.325),
+                ),
+            ],
+        ),
+        "mistral.mixtral-8x7b-instruct-v0:1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.59),
+                    output_cost_per_token=per_million_tokens(0.91),
+                ),
+            ],
+        ),
+        "mistral.voxtral-mini-3b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.06),
+                    output_cost_per_token=per_million_tokens(0.06),
+                ),
+            ],
+        ),
+        "mistral.voxtral-small-24b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.16),
+                    output_cost_per_token=per_million_tokens(0.47),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2-thinking": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.93),
+                    output_cost_per_token=per_million_tokens(3.875),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.93),
+                    output_cost_per_token=per_million_tokens(4.65),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.31),
+                    output_cost_per_token=per_million_tokens(0.93),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2-vl": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.31),
+                    output_cost_per_token=per_million_tokens(0.93),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.09),
+                    output_cost_per_token=per_million_tokens(0.37),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.09),
+                    output_cost_per_token=per_million_tokens(0.36),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(1.01),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-120b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.93),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-20b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.11),
+                    output_cost_per_token=per_million_tokens(0.47),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.93),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-20b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.11),
+                    output_cost_per_token=per_million_tokens(0.31),
+                ),
+            ],
+        ),
+        "qwen.qwen3-235b-a22b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.34),
+                    output_cost_per_token=per_million_tokens(1.37),
+                ),
+            ],
+        ),
+        "qwen.qwen3-32b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.93),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-30b-a3b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.93),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-480b-a35b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.7),
+                    output_cost_per_token=per_million_tokens(2.79),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-next": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.78),
+                    output_cost_per_token=per_million_tokens(1.86),
+                ),
+            ],
+        ),
+        "qwen.qwen3-next-80b-a3b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.217),
+                    output_cost_per_token=per_million_tokens(1.86),
+                ),
+            ],
+        ),
+        "qwen.qwen3-vl-235b-a22b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.82),
+                    output_cost_per_token=per_million_tokens(4.12),
+                ),
+            ],
+        ),
+        "writer.palmyra-vision-7b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.23),
+                    output_cost_per_token=per_million_tokens(0.93),
+                ),
+            ],
+        ),
+        "zai.glm-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.93),
+                    output_cost_per_token=per_million_tokens(3.41),
+                ),
+            ],
+        ),
+        "zai.glm-4.7-flash": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.11),
+                    output_cost_per_token=per_million_tokens(0.62),
+                ),
+            ],
+        ),
+        "zai.glm5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.55),
+                    output_cost_per_token=per_million_tokens(4.96),
+                ),
+            ],
+        ),
+    },
+    "eu-west-3": {
+        "amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.484),
+                    output_cost_per_token=per_million_tokens(4.059),
+                    cache_read_cost_per_token=per_million_tokens(0.121),
+                ),
+            ],
+        ),
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.088),
+                    output_cost_per_token=per_million_tokens(0.352),
+                    cache_read_cost_per_token=per_million_tokens(0.022),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.052),
+                    output_cost_per_token=per_million_tokens(0.208),
+                    cache_read_cost_per_token=per_million_tokens(0.013),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.18),
+                    output_cost_per_token=per_million_tokens(4.72),
+                    cache_read_cost_per_token=per_million_tokens(0.295),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-image-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.0),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.03),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-text-express-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.25),
+                    output_cost_per_token=per_million_tokens(0.788),
+                ),
+            ],
+        ),
+        "amazon.titan-text-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.25),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.44),
+                    output_cost_per_token=per_million_tokens(3.69),
+                    cache_read_cost_per_token=per_million_tokens(0.11),
+                ),
+            ],
+        ),
+        "meta.llama3-2-1b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.13),
+                    output_cost_per_token=per_million_tokens(0.13),
+                ),
+            ],
+        ),
+        "meta.llama3-2-3b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.2),
+                ),
+            ],
+        ),
+        "mistral.mistral-7b-instruct-v0:2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=per_million_tokens(0.26),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-2402-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(5.2),
+                    output_cost_per_token=per_million_tokens(15.6),
+                ),
+            ],
+        ),
+        "mistral.mixtral-8x7b-instruct-v0:1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.59),
+                    output_cost_per_token=per_million_tokens(0.91),
+                ),
+            ],
+        ),
+    },
+    "il-central-1": {
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.075),
+                    output_cost_per_token=per_million_tokens(0.3),
+                    cache_read_cost_per_token=per_million_tokens(0.01875),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.044),
+                    output_cost_per_token=per_million_tokens(0.176),
+                    cache_read_cost_per_token=per_million_tokens(0.011),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.0),
+                    output_cost_per_token=per_million_tokens(4.0),
+                    cache_read_cost_per_token=per_million_tokens(0.25),
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.38),
+                    output_cost_per_token=per_million_tokens(3.13),
+                    cache_read_cost_per_token=per_million_tokens(0.095),
+                ),
+            ],
+        ),
+    },
+    "me-central-1": {
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.3),
+                    output_cost_per_token=per_million_tokens(2.5),
+                    cache_read_cost_per_token=per_million_tokens(0.08),
+                ),
+            ],
+        ),
+    },
+    "sa-east-1": {
+        "amazon.titan-embed-image-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.2),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.2),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-text-express-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.4),
+                    output_cost_per_token=per_million_tokens(1.1),
+                ),
+            ],
+        ),
+        "amazon.titan-text-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.3),
+                    output_cost_per_token=per_million_tokens(0.4),
+                ),
+            ],
+        ),
+        "deepseek.v3.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.696),
+                    output_cost_per_token=per_million_tokens(2.016),
+                ),
+            ],
+        ),
+        "deepseek.v3.2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.74),
+                    output_cost_per_token=per_million_tokens(2.22),
+                ),
+            ],
+        ),
+        "google.gemma-3-12b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.11),
+                    output_cost_per_token=per_million_tokens(0.35),
+                ),
+            ],
+        ),
+        "google.gemma-3-27b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.28),
+                    output_cost_per_token=per_million_tokens(0.46),
+                ),
+            ],
+        ),
+        "google.gemma-3-4b-it": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.05),
+                    output_cost_per_token=per_million_tokens(0.1),
+                ),
+            ],
+        ),
+        "meta.llama3-70b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(4.45),
+                    output_cost_per_token=per_million_tokens(5.88),
+                ),
+            ],
+        ),
+        "meta.llama3-8b-instruct-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.5),
+                    output_cost_per_token=per_million_tokens(1.01),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.45),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "minimax.minimax-m2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.36),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "mistral.devstral-2-123b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.48),
+                    output_cost_per_token=per_million_tokens(2.4),
+                ),
+            ],
+        ),
+        "mistral.magistral-small-2509": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.61),
+                    output_cost_per_token=per_million_tokens(1.82),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-14b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-3b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.12),
+                ),
+            ],
+        ),
+        "mistral.ministral-3-8b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.18),
+                ),
+            ],
+        ),
+        "mistral.mistral-7b-instruct-v0:2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.25),
+                    output_cost_per_token=per_million_tokens(0.34),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-2402-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(6.7),
+                    output_cost_per_token=per_million_tokens(20.2),
+                ),
+            ],
+        ),
+        "mistral.mistral-large-3-675b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.61),
+                    output_cost_per_token=per_million_tokens(1.82),
+                ),
+            ],
+        ),
+        "mistral.mixtral-8x7b-instruct-v0:1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.76),
+                    output_cost_per_token=per_million_tokens(1.18),
+                ),
+            ],
+        ),
+        "mistral.voxtral-mini-3b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.05),
+                    output_cost_per_token=per_million_tokens(0.05),
+                ),
+            ],
+        ),
+        "mistral.voxtral-small-24b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.12),
+                    output_cost_per_token=per_million_tokens(0.36),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2-thinking": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.73),
+                    output_cost_per_token=per_million_tokens(3.03),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k2.5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(3.6),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2-vl": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.29),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.07),
+                    output_cost_per_token=per_million_tokens(0.28),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.78),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-120b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-20b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.36),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-safeguard-20b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "qwen.qwen3-235b-a22b-2507": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.264),
+                    output_cost_per_token=per_million_tokens(1.056),
+                ),
+            ],
+        ),
+        "qwen.qwen3-32b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-30b-a3b-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.73),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-480b-a35b-instruct": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.54),
+                    output_cost_per_token=per_million_tokens(2.16),
+                ),
+            ],
+        ),
+        "qwen.qwen3-coder-next": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.6),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-next-80b-a3b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.168),
+                    output_cost_per_token=per_million_tokens(1.44),
+                ),
+            ],
+        ),
+        "qwen.qwen3-vl-235b-a22b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.64),
+                    output_cost_per_token=per_million_tokens(3.22),
+                ),
+            ],
+        ),
+        "writer.palmyra-vision-7b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "zai.glm-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.72),
+                    output_cost_per_token=per_million_tokens(2.64),
+                ),
+            ],
+        ),
+        "zai.glm-4.7-flash": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.08),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "zai.glm5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.2),
+                    output_cost_per_token=per_million_tokens(3.84),
+                ),
+            ],
+        ),
+    },
+    "us-gov-east-1": {
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.03),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2-vl": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.288),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.276),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.78),
+                ),
+            ],
+        ),
+        "openai.gpt-5.4": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.3),
+                    output_cost_per_token=per_million_tokens(19.8),
+                    cache_read_cost_per_token=per_million_tokens(0.33),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-120b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-20b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.084),
+                    output_cost_per_token=per_million_tokens(0.36),
+                ),
+            ],
+        ),
+    },
+    "us-gov-west-1": {
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.288),
+                    cache_read_cost_per_token=per_million_tokens(0.018),
+                ),
+            ],
+        ),
+        "amazon.nova-micro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.042),
+                    output_cost_per_token=per_million_tokens(0.168),
+                    cache_read_cost_per_token=per_million_tokens(0.0105),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.96),
+                    output_cost_per_token=per_million_tokens(3.84),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.11),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "amazon.titan-text-express-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.8),
+                    output_cost_per_token=per_million_tokens(1.6),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-12b-v2-vl": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.24),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-3-30b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.288),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-nano-9b-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.072),
+                    output_cost_per_token=per_million_tokens(0.276),
+                ),
+            ],
+        ),
+        "nvidia.nemotron-super-3-120b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.78),
+                ),
+            ],
+        ),
+        "openai.gpt-5.4": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.3),
+                    output_cost_per_token=per_million_tokens(19.8),
+                    cache_read_cost_per_token=per_million_tokens(0.33),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-120b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.18),
+                    output_cost_per_token=per_million_tokens(0.72),
+                ),
+            ],
+        ),
+        "openai.gpt-oss-20b-1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.084),
+                    output_cost_per_token=per_million_tokens(0.36),
+                ),
+            ],
+        ),
+    },
+    "us-west-1": {
+        "amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.429),
+                    output_cost_per_token=per_million_tokens(3.351),
+                    cache_read_cost_per_token=per_million_tokens(0.10725),
+                ),
+            ],
+        ),
+        "amazon.nova-2-omni-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.4),
+                    output_cost_per_token=per_million_tokens(3.5),
+                ),
+            ],
+        ),
+        "amazon.nova-2-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.771),
+                    output_cost_per_token=per_million_tokens(14.124),
+                ),
+            ],
+        ),
+        "amazon.nova-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.077),
+                    output_cost_per_token=per_million_tokens(0.308),
+                ),
+            ],
+        ),
+        "amazon.nova-pro-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.03),
+                    output_cost_per_token=per_million_tokens(4.12),
+                ),
+            ],
+        ),
+        "amazon.titan-embed-text-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.024),
+                    output_cost_per_token=0.0,
+                ),
+            ],
+        ),
+        "global.amazon.nova-2-lite-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.39),
+                    output_cost_per_token=per_million_tokens(3.21),
+                    cache_read_cost_per_token=per_million_tokens(0.0975),
+                ),
+            ],
+        ),
+    },
+}
+
+# Claude's overrides come from the shared table, so both Bedrock providers price it identically.
+_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
+    region: {**_BEDROCK_REGIONAL.get(region, {}), **ANTHROPIC_REGIONAL_PRICING.get(region, {})}
+    for region in _BEDROCK_REGIONAL.keys() | ANTHROPIC_REGIONAL_PRICING.keys()
+}
 
 # Pre-sorted by key length descending for longest-prefix matching
 _PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
-
-
-# Cross-region inference profile prefixes. A profile call (e.g. "us.anthropic...")
-# with no dedicated regional entry falls back to the base model's pricing.
-_INFERENCE_PROFILE_PREFIXES = ("global.", "us.", "eu.", "apac.", "au.", "jp.", "ca.")
-
-
-def _strip_profile_prefix(model: str) -> str:
-    for prefix in _INFERENCE_PROFILE_PREFIXES:
-        if model.startswith(prefix):
-            return model[len(prefix) :]
-    return model
-
-
-def _lookup_default_pricing(model: str) -> ModelPricing | None:
-    pricing = _PRICING.get(model)
-    if pricing is not None:
-        return pricing
-    for prefix, p in _PRICING_BY_PREFIX:
-        if model.startswith(prefix):
-            return p
-    bare = _strip_profile_prefix(model)
-    if bare != model:
-        return _lookup_default_pricing(bare)
-    return None
 
 
 def calculate_bedrock_cost(
@@ -1069,24 +5678,21 @@ def calculate_bedrock_cost(
 ) -> Cost | None:
     """Calculate cost for a Bedrock API call. Returns None if model pricing is unknown.
 
-    ``as_of`` selects dated pricing for models with scheduled rate changes
+    ``region`` is the Region the request is sent to, which is the Region Bedrock bills against --
+    a cross-Region inference profile is priced by the Region it is called from, not by wherever the
+    request is routed. ``as_of`` selects dated pricing for models with scheduled rate changes
     (e.g. Claude Sonnet 5's introductory period); it defaults to the latest
     schedule. See ``lmux.cost.calculate_cost``.
-    """
-    # Try regional pricing first if region specified
-    if region is not None and region != "us-east-1":
-        regional = _REGIONAL_PRICING.get(region, {})
-        pricing = regional.get(model)
-        if pricing is None:
-            for prefix, p in sorted(regional.items(), key=lambda item: len(item[0]), reverse=True):
-                if model.startswith(prefix):
-                    pricing = p
-                    break
-        if pricing is not None:
-            return calculate_cost(usage, pricing, as_of)
 
-    # Fall back to default (us-east-1) pricing
-    pricing = _lookup_default_pricing(model)
+    Matching is shared with the native Anthropic Bedrock provider (see
+    ``lmux_bedrock_shared.pricing``) so Claude resolves identically through either.
+    """
+    if region is not None and region != DEFAULT_PRICING_REGION:
+        pricing = lookup_regional_pricing(_REGIONAL_PRICING, region, model)
+        if pricing is not None:
+            return cost_or_none(pricing, usage, as_of)
+
+    pricing = lookup_pricing(_PRICING, _PRICING_BY_PREFIX, model, INFERENCE_PROFILE_PREFIXES)
     if pricing is None:
         return None
     return calculate_cost(usage, pricing, as_of)

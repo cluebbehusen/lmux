@@ -134,7 +134,10 @@ class BedrockProvider(
         pricing = self._custom_pricing.get(model)
         if pricing is not None:
             return calculate_cost(usage, pricing, as_of)
-        return calculate_bedrock_cost(model, usage, region=self._region, as_of=as_of)
+        # Price against the Region the request was actually sent to, not the constructor argument:
+        # ``region`` is usually left unset and resolved from the session (AWS_DEFAULT_REGION, a
+        # profile), and Bedrock bills by the Region called.
+        return calculate_bedrock_cost(model, usage, region=self._resolve_auth().region, as_of=as_of)
 
     # MARK: Client & Auth Management
 

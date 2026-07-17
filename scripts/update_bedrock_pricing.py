@@ -9,9 +9,12 @@ Then fetches real model and inference profile IDs from the Bedrock API
 (via boto3's default credential chain) to ensure pricing keys match actual
 Bedrock identifiers.
 
+Regional overrides for every Region are included by default (a handful of Regions -- notably
+GovCloud -- price some models above us-east-1); ``--regions`` narrows this for quick partial runs.
+
 Usage:
-    python3 scripts/update_bedrock_pricing.py --write
-    python3 scripts/update_bedrock_pricing.py               # stdout, us-east-1 only
+    python3 scripts/update_bedrock_pricing.py --write            # all Regions
+    python3 scripts/update_bedrock_pricing.py                    # stdout, all Regions
     python3 scripts/update_bedrock_pricing.py --regions eu-west-1 ap-northeast-1
 """
 
@@ -25,7 +28,7 @@ from dataclasses import dataclass, fields, replace
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError, EndpointConnectionError
@@ -572,11 +575,18 @@ def _set_dimension(mp: ModelPrices, dim_name: str, price: Decimal) -> None:
         mp.cache_write_1h_cost = price
 
 
-def parse_amazon_models(data: dict[str, Any]) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
+def parse_amazon_models(
+    data: dict[str, Any], *, fallback_to_global: bool = True
+) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
     """Parse non-mantle entries from AmazonBedrock API for Amazon + legacy models.
 
     Returns (default_pricing, global_pricing) where global_pricing contains only
     models that have cross-region global inference profile pricing.
+
+    ``fallback_to_global`` fills a missing standard rate from the global rate. Correct for the
+    us-east-1 baseline (a global-only model still needs a list price), but wrong for regional diffs:
+    a Region that publishes only the global meter has no genuine standard rate, and emitting the
+    global discount as its standard rate under-reports geo-profile calls (see ``_fetch_regional_diffs``).
     """
     products = data.get("products", {})
     terms = data.get("terms", {}).get("OnDemand", {})
@@ -620,8 +630,7 @@ def parse_amazon_models(data: dict[str, Any]) -> tuple[dict[str, ModelPrices], d
         for dim_name, prices_by_scope in dims.items():
             non_global_price = prices_by_scope.get(False)
             global_price = prices_by_scope.get(True)
-            # Default uses non-global price, falls back to global
-            price = non_global_price if non_global_price is not None else global_price
+            price = non_global_price if non_global_price is not None else (global_price if fallback_to_global else None)
             if price is not None:
                 _set_dimension(default_mp, dim_name, price)
             if global_price is not None:
@@ -724,11 +733,16 @@ def _is_global_fm(usagetype: str) -> bool:
     return legacy_global or snake_global
 
 
-def parse_foundation_models(data: dict[str, Any]) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
+def parse_foundation_models(
+    data: dict[str, Any], *, fallback_to_global: bool = True
+) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
     """Parse AmazonBedrockFoundationModels API. Prices are per million tokens.
 
     Returns (default_pricing, global_pricing) where global_pricing contains only
     models that have cross-region global inference profile pricing.
+
+    ``fallback_to_global`` fills a missing standard rate from the global rate -- see
+    :func:`parse_amazon_models`; it is disabled for regional diffs.
     """
     products = data.get("products", {})
     terms = data.get("terms", {}).get("OnDemand", {})
@@ -767,16 +781,19 @@ def parse_foundation_models(data: dict[str, Any]) -> tuple[dict[str, ModelPrices
     if unmapped:
         _warn(f"Unmapped Foundation Models servicenames: {sorted(unmapped)}")
 
-    return _build_fm_result(collected)
+    return _build_fm_result(collected, fallback_to_global=fallback_to_global)
 
 
 def _build_fm_result(
     collected: dict[str, dict[tuple[str, bool, bool], Decimal]],
+    *,
+    fallback_to_global: bool = True,
 ) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
     """Build ModelPrices from collected Foundation Models data.
 
-    Returns (default_pricing, global_pricing) where default uses non-global prices
-    (falling back to global), and global_pricing contains only models with global pricing.
+    Returns (default_pricing, global_pricing). ``default`` uses non-global (standard) prices;
+    ``fallback_to_global`` fills a missing standard dimension from the global rate (see
+    :func:`parse_amazon_models`). ``global_pricing`` contains only models with global pricing.
     """
     result: dict[str, ModelPrices] = {}
     global_result: dict[str, ModelPrices] = {}
@@ -785,10 +802,9 @@ def _build_fm_result(
         global_mp = ModelPrices()
         has_global = False
         for dim_name in ("input", "output", "cache_read", "cache_write", "cache_write_1h"):
-            # Standard tier: prefer non-global, fall back to global
             non_global_std = prices.get((dim_name, False, False))
             global_std = prices.get((dim_name, False, True))
-            std = non_global_std if non_global_std is not None else global_std
+            std = non_global_std if non_global_std is not None else (global_std if fallback_to_global else None)
             if std is not None:
                 _set_dimension(default_mp, dim_name, std)
             if global_std is not None:
@@ -798,7 +814,7 @@ def _build_fm_result(
             # Long-context tier: same pattern
             non_global_lctx = prices.get((dim_name, True, False))
             global_lctx = prices.get((dim_name, True, True))
-            lctx = non_global_lctx if non_global_lctx is not None else global_lctx
+            lctx = non_global_lctx if non_global_lctx is not None else (global_lctx if fallback_to_global else None)
             _set_fm_lctx(default_mp, dim_name, lctx)
             if global_lctx is not None:
                 _set_fm_lctx(global_mp, dim_name, global_lctx)
@@ -864,6 +880,38 @@ def compute_regional_diffs(default: dict[str, ModelPrices], regional: dict[str, 
         if def_prices is None or _prices_differ(def_prices, reg_prices):
             diffs[model_id] = reg_prices
     return diffs
+
+
+def _tier_is_emittable(input_cost: Decimal | None, output_cost: Decimal | None, *, is_embedding: bool) -> bool:
+    """Whether a tier has the rates ``PricingTier`` requires. Embeddings bill no output tokens."""
+    if input_cost is None:
+        return False
+    return is_embedding or output_cost is not None
+
+
+def drop_unemittable(prices: dict[str, ModelPrices]) -> tuple[dict[str, ModelPrices], list[tuple[str, str]]]:
+    """Split overrides into those safe to emit and the (model ID, reason) pairs that are not.
+
+    Input and output rates are mandatory -- a ``PricingTier`` will not construct without them -- so a
+    Region that omits either (e.g. ap-east-2 lists ``APE2-NovaLite-input-tokens`` with no non-batch
+    ``-output-tokens``) is dropped and falls back to us-east-1. A Region that prices input/output but
+    omits a cache dimension (e.g. eu-west-2 Nova Pro, whose cache reads are priced only on the flex
+    and priority tiers) is kept: its genuine input/output premium is emitted, and a cached call
+    against the missing rate is reported as unpriced at runtime -- see
+    ``lmux.cost.usage_has_unpriced_dimension`` -- rather than billed for free.
+    """
+    keep: dict[str, ModelPrices] = {}
+    dropped: list[tuple[str, str]] = []
+    for model_id, mp in prices.items():
+        is_emb = _is_embedding(model_id)
+        if not _tier_is_emittable(mp.input_cost, mp.output_cost, is_embedding=is_emb):
+            dropped.append((model_id, "no complete on-demand tier"))
+            continue
+        if mp.has_lctx and not _tier_is_emittable(mp.lctx_input_cost, mp.lctx_output_cost, is_embedding=is_emb):
+            dropped.append((model_id, "no complete long-context tier"))
+            continue
+        keep[model_id] = mp
+    return keep, dropped
 
 
 def _prices_differ(a: ModelPrices, b: ModelPrices) -> bool:
@@ -944,12 +992,10 @@ def _emit_import_lines(lines: list[str], *, has_dated: bool) -> None:
     """Emit the datetime + lmux imports common to both generated pricing modules."""
     lines.append("from datetime import date")
     lines.append("")
+    names = ["ModelPricing", "PricingTier", "calculate_cost", "per_million_tokens"]
     if has_dated:
-        lines.append(
-            "from lmux.cost import ModelPricing, PricingSchedule, PricingTier, calculate_cost, per_million_tokens"
-        )
-    else:
-        lines.append("from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens")
+        names.insert(1, "PricingSchedule")
+    lines.append("from lmux.cost import " + ", ".join(names))
     lines.append("from lmux.types import Cost, Usage")
 
 
@@ -976,7 +1022,15 @@ def _emit_header(lines: list[str], *, has_regional: bool, has_dated: bool) -> No
     lines.append('"""')
     lines.append("")
     _emit_import_lines(lines, has_dated=has_dated)
-    lines.append("from lmux_bedrock_shared.pricing import ANTHROPIC_PRICING")
+    lines.append("from lmux_bedrock_shared.pricing import (")
+    lines.append("    ANTHROPIC_PRICING,")
+    lines.append("    ANTHROPIC_REGIONAL_PRICING,")
+    lines.append("    DEFAULT_PRICING_REGION,")
+    lines.append("    INFERENCE_PROFILE_PREFIXES,")
+    lines.append("    cost_or_none,")
+    lines.append("    lookup_pricing,")
+    lines.append("    lookup_regional_pricing,")
+    lines.append(")")
     lines.append("")
 
 
@@ -1000,14 +1054,17 @@ def _emit_pricing_dict(lines: list[str], pricing: dict[str, ModelPrices]) -> Non
     lines.append("")
 
 
-def _emit_regional_dict(
+def _emit_nested_pricing_dict(
     lines: list[str],
+    name: str,
     regional: dict[str, dict[str, ModelPrices]] | None,
+    *,
+    comment: str,
 ) -> None:
-    """Emit the _REGIONAL_PRICING dict and prefix list."""
-    if regional:
-        lines.append("# Regional pricing overrides (only models that differ from us-east-1)")
-        lines.append("_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {")
+    """Emit a ``{region: {model_id: ModelPricing}}`` literal under ``name``."""
+    if regional and any(regional.values()):
+        lines.append(f"# {comment}")
+        lines.append(f"{name}: dict[str, dict[str, ModelPricing]] = {{")
         for region in sorted(regional.keys()):
             if not regional[region]:
                 continue
@@ -1016,11 +1073,28 @@ def _emit_regional_dict(
                 _emit_model_pricing(lines, model_id, regional[region][model_id], indent=8)
             lines.append("    },")
         lines.append("}")
-        lines.append("")
     else:
-        lines.append("_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {}")
-        lines.append("")
+        lines.append(f"{name}: dict[str, dict[str, ModelPricing]] = {{}}")
+    lines.append("")
 
+
+def _emit_regional_dict(
+    lines: list[str],
+    regional: dict[str, dict[str, ModelPrices]] | None,
+) -> None:
+    """Emit the non-Anthropic regional overrides merged with the shared Anthropic subset."""
+    _emit_nested_pricing_dict(
+        lines,
+        "_BEDROCK_REGIONAL",
+        regional,
+        comment="Regional pricing overrides (only models that differ from us-east-1)",
+    )
+    lines.append("# Claude's overrides come from the shared table, so both Bedrock providers price it identically.")
+    lines.append("_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {")
+    lines.append("    region: {**_BEDROCK_REGIONAL.get(region, {}), **ANTHROPIC_REGIONAL_PRICING.get(region, {})}")
+    lines.append("    for region in _BEDROCK_REGIONAL.keys() | ANTHROPIC_REGIONAL_PRICING.keys()")
+    lines.append("}")
+    lines.append("")
     lines.append("# Pre-sorted by key length descending for longest-prefix matching")
     lines.append("_PRICING_BY_PREFIX = sorted(_PRICING.items(), key=lambda item: len(item[0]), reverse=True)")
     lines.append("")
@@ -1028,54 +1102,26 @@ def _emit_regional_dict(
 
 
 _FUNCTION_BODY = """\
-# Cross-region inference profile prefixes. A profile call (e.g. "us.anthropic...")
-# with no dedicated regional entry falls back to the base model's pricing.
-_INFERENCE_PROFILE_PREFIXES = ("global.", "us.", "eu.", "apac.", "au.", "jp.", "ca.")
-
-
-def _strip_profile_prefix(model: str) -> str:
-    for prefix in _INFERENCE_PROFILE_PREFIXES:
-        if model.startswith(prefix):
-            return model[len(prefix) :]
-    return model
-
-
-def _lookup_default_pricing(model: str) -> ModelPricing | None:
-    pricing = _PRICING.get(model)
-    if pricing is not None:
-        return pricing
-    for prefix, p in _PRICING_BY_PREFIX:
-        if model.startswith(prefix):
-            return p
-    bare = _strip_profile_prefix(model)
-    if bare != model:
-        return _lookup_default_pricing(bare)
-    return None
-
-
 def calculate_bedrock_cost(
     model: str, usage: Usage, *, region: str | None = None, as_of: date | None = None
 ) -> Cost | None:
     \"\"\"Calculate cost for a Bedrock API call. Returns None if model pricing is unknown.
 
-    ``as_of`` selects dated pricing for models with scheduled rate changes
+    ``region`` is the Region the request is sent to, which is the Region Bedrock bills against --
+    a cross-Region inference profile is priced by the Region it is called from, not by wherever the
+    request is routed. ``as_of`` selects dated pricing for models with scheduled rate changes
     (e.g. Claude Sonnet 5's introductory period); it defaults to the latest
     schedule. See ``lmux.cost.calculate_cost``.
-    \"\"\"
-    # Try regional pricing first if region specified
-    if region is not None and region != "us-east-1":
-        regional = _REGIONAL_PRICING.get(region, {})
-        pricing = regional.get(model)
-        if pricing is None:
-            for prefix, p in sorted(regional.items(), key=lambda item: len(item[0]), reverse=True):
-                if model.startswith(prefix):
-                    pricing = p
-                    break
-        if pricing is not None:
-            return calculate_cost(usage, pricing, as_of)
 
-    # Fall back to default (us-east-1) pricing
-    pricing = _lookup_default_pricing(model)
+    Matching is shared with the native Anthropic Bedrock provider (see
+    ``lmux_bedrock_shared.pricing``) so Claude resolves identically through either.
+    \"\"\"
+    if region is not None and region != DEFAULT_PRICING_REGION:
+        pricing = lookup_regional_pricing(_REGIONAL_PRICING, region, model)
+        if pricing is not None:
+            return cost_or_none(pricing, usage, as_of)
+
+    pricing = lookup_pricing(_PRICING, _PRICING_BY_PREFIX, model, INFERENCE_PROFILE_PREFIXES)
     if pricing is None:
         return None
     return calculate_cost(usage, pricing, as_of)
@@ -1088,50 +1134,118 @@ def _emit_function(lines: list[str]) -> None:
     lines.append("")
 
 
+def _split_regional(
+    regional: dict[str, dict[str, ModelPrices]] | None,
+    *,
+    anthropic: bool,
+) -> dict[str, dict[str, ModelPrices]]:
+    """Take either the Anthropic or the non-Anthropic half of the regional overrides."""
+    split: dict[str, dict[str, ModelPrices]] = {}
+    for region, models in (regional or {}).items():
+        half = {mid: mp for mid, mp in models.items() if _is_anthropic(mid) is anthropic}
+        if half:
+            split[region] = half
+    return split
+
+
 def _is_anthropic(model_id: str) -> bool:
     """Whether a (possibly profile-prefixed) model ID is an Anthropic Claude model."""
     return _strip_profile_prefix(model_id).startswith("anthropic.")
 
 
 _SHARED_ANTHROPIC_FUNCTION_BODY = '''\
-_PRICING_BY_PREFIX = sorted(ANTHROPIC_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
+_ANTHROPIC_BY_PREFIX = sorted(ANTHROPIC_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
+
+# The Region the default tables are priced for; every other Region is an override.
+DEFAULT_PRICING_REGION = "us-east-1"
+
+# Cross-region inference profile prefixes. Bedrock bills a profile call at the standard rate of the
+# Region the request is sent to, so a geo profile (e.g. "us.anthropic...") with no dedicated entry
+# resolves to the base model. "global." is priced separately (~10% below standard) and is never
+# resolved to the base model inside a regional table: absent there means it matches the default
+# table, not that it takes the Region's standard rate.
+GEO_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.")
+GLOBAL_PROFILE_PREFIX = "global."
+INFERENCE_PROFILE_PREFIXES = (GLOBAL_PROFILE_PREFIX, *GEO_PROFILE_PREFIXES)
 
 
-# Cross-region inference profile prefixes. A profile call (e.g. "us.anthropic...")
-# with no dedicated regional entry falls back to the base model's pricing.
-_INFERENCE_PROFILE_PREFIXES = ("global.", "us.", "eu.", "apac.", "au.", "jp.", "ca.")
-
-
-def _strip_profile_prefix(model: str) -> str:
-    for prefix in _INFERENCE_PROFILE_PREFIXES:
+def strip_profile_prefix(model: str, prefixes: tuple[str, ...] = INFERENCE_PROFILE_PREFIXES) -> str:
+    """Drop an inference-profile prefix from a model ID, if it carries one."""
+    for prefix in prefixes:
         if model.startswith(prefix):
             return model[len(prefix) :]
     return model
 
 
-def _lookup_pricing(model: str) -> ModelPricing | None:
-    pricing = ANTHROPIC_PRICING.get(model)
+def lookup_pricing(
+    table: dict[str, ModelPricing],
+    by_prefix: list[tuple[str, ModelPricing]],
+    model: str,
+    strip_prefixes: tuple[str, ...],
+) -> ModelPricing | None:
+    """Exact match, then longest-prefix, then one retry against the profile-stripped ID."""
+    pricing = table.get(model)
     if pricing is not None:
         return pricing
-    for prefix, p in _PRICING_BY_PREFIX:
+    for prefix, p in by_prefix:
         if model.startswith(prefix):
             return p
-    bare = _strip_profile_prefix(model)
+    bare = strip_profile_prefix(model, strip_prefixes)
     if bare != model:
-        return _lookup_pricing(bare)
+        return lookup_pricing(table, by_prefix, bare, strip_prefixes)
     return None
 
 
-def calculate_bedrock_anthropic_cost(model: str, usage: Usage, *, as_of: date | None = None) -> Cost | None:
+def lookup_regional_pricing(
+    regional: dict[str, dict[str, ModelPricing]], region: str, model: str
+) -> ModelPricing | None:
+    """A Region's pricing override, or None when it has none and the default table applies.
+
+    Sorted per call rather than precomputed: the prefix order has to come from the same table the
+    exact match reads, or the two can disagree. Only one Region's handful of overrides is sorted,
+    on a request that already carries an HTTP round trip.
+    """
+    table = regional.get(region)
+    if not table:
+        return None
+    by_prefix = sorted(table.items(), key=lambda item: len(item[0]), reverse=True)
+    return lookup_pricing(table, by_prefix, model, GEO_PROFILE_PREFIXES)
+
+
+def calculate_bedrock_anthropic_cost(
+    model: str, usage: Usage, *, region: str | None = None, as_of: date | None = None
+) -> Cost | None:
     """Calculate cost for a native Anthropic-on-Bedrock call. None if pricing is unknown.
 
     Handles both bare model IDs and cross-region inference-profile IDs
-    (e.g. ``us.anthropic.claude-opus-4-8``). ``as_of`` selects dated pricing for
+    (e.g. ``us.anthropic.claude-opus-4-8``). ``region`` is the Region the request is sent to, which
+    is the Region Bedrock bills against -- a cross-Region inference profile is priced by the Region
+    it is called from, not by wherever the request is routed. ``as_of`` selects dated pricing for
     models with scheduled rate changes (e.g. Claude Sonnet 5's introductory
     period); it defaults to the latest schedule. See ``lmux.cost.calculate_cost``.
     """
-    pricing = _lookup_pricing(model)
+    if region is not None and region != DEFAULT_PRICING_REGION:
+        pricing = lookup_regional_pricing(ANTHROPIC_REGIONAL_PRICING, region, model)
+        if pricing is not None:
+            return cost_or_none(pricing, usage, as_of)
+    pricing = lookup_pricing(ANTHROPIC_PRICING, _ANTHROPIC_BY_PREFIX, model, INFERENCE_PROFILE_PREFIXES)
     if pricing is None:
+        return None
+    return calculate_cost(usage, pricing, as_of)
+
+
+def cost_or_none(pricing: ModelPricing, usage: Usage, as_of: date | None = None) -> Cost | None:
+    """Cost from a regional override, or None when it leaves a billed token dimension unpriced.
+
+    A Region may publish input/output but no cache meter; ``calculate_cost`` treats a missing rate
+    as zero, which would bill those cache tokens for free, so the unknown cost is reported as None
+    instead. Regional overrides are single-tier, so the base tier's rates decide.
+    """
+    tier = pricing.tiers[0]
+    creation = max(usage.cache_creation_tokens or 0, sum((usage.cache_creation_tokens_by_ttl or {}).values()))
+    if (usage.cache_read_tokens or 0) and tier.cache_read_cost_per_token is None:
+        return None
+    if creation and tier.cache_creation_cost_per_token is None and not tier.cache_creation_cost_per_token_by_ttl:
         return None
     return calculate_cost(usage, pricing, as_of)
 '''
@@ -1155,15 +1269,27 @@ def _emit_shared_header(lines: list[str], *, has_dated: bool) -> None:
     lines.append("")
 
 
-def generate_shared_anthropic_py(pricing: dict[str, ModelPrices]) -> str:
+def generate_shared_anthropic_py(
+    pricing: dict[str, ModelPrices],
+    regional: dict[str, dict[str, ModelPrices]] | None = None,
+) -> str:
     """Generate the lmux_bedrock_shared.pricing source (Anthropic-on-Bedrock subset)."""
     lines: list[str] = []
-    _emit_shared_header(lines, has_dated=any(_dated_schedule_for(mid) for mid in pricing))
+    has_dated = any(_dated_schedule_for(mid) for mid in pricing) or any(
+        _dated_schedule_for(mid) for models in (regional or {}).values() for mid in models
+    )
+    _emit_shared_header(lines, has_dated=has_dated)
     lines.append("ANTHROPIC_PRICING: dict[str, ModelPricing] = {")
     for model_id in sorted(pricing):
         _emit_model_pricing(lines, model_id, pricing[model_id])
     lines.append("}")
     lines.append("")
+    _emit_nested_pricing_dict(
+        lines,
+        "ANTHROPIC_REGIONAL_PRICING",
+        regional,
+        comment="Regional overrides for Claude (only Regions whose prices differ from us-east-1)",
+    )
     lines.extend(_SHARED_ANTHROPIC_FUNCTION_BODY.splitlines())
     lines.append("")
     return "\n".join(lines)
@@ -1299,23 +1425,82 @@ def _warn(msg: str) -> None:
     print(f"WARNING: {msg}", file=sys.stderr)  # noqa: T201
 
 
+def _die(msg: str) -> NoReturn:
+    """Print an error to stderr and exit non-zero, leaving any existing generated files untouched."""
+    print(f"ERROR: {msg}", file=sys.stderr)  # noqa: T201
+    raise SystemExit(1)
+
+
+def _region_overrides(  # noqa: PLR0913
+    reg_bedrock: dict[str, Any],
+    reg_fm: dict[str, Any],
+    default_pricing: dict[str, ModelPrices],
+    global_pricing: dict[str, ModelPrices],
+    global_models: set[str],
+    resolution_map: dict[str, str],
+    region: str,
+) -> dict[str, ModelPrices]:
+    """A Region's standard (bare) and Global-profile (``global.``) overrides vs us-east-1.
+
+    Standard overrides use only non-global meters (a Global-only meter is not a genuine standard
+    rate). Global overrides come from the Global meters: a Global-profile call is billed by the
+    Region it is called from, and AWS publishes a per-Region Global rate (uniform for Claude, but
+    not for Nova/Titan), so those must be kept where they differ from the us-east-1 Global rate --
+    keyed ``global.<id>`` -- rather than falling through to the single us-east-1 Global rate.
+
+    ``global_models`` are the resolved model IDs that actually have a Global inference profile (the
+    default table's ``global.`` keys). A Global override is emitted only for those: some models
+    carry a Global *meter* in the price list but no invokable Global profile, so a ``global.`` key
+    for them would price a call that cannot be made.
+    """
+    reg_mantle = parse_mantle_models(reg_bedrock)
+    reg_amazon, reg_amazon_global = parse_amazon_models(reg_bedrock, fallback_to_global=False)
+    reg_foundation, reg_foundation_global = parse_foundation_models(reg_fm, fallback_to_global=False)
+
+    reg_std = resolve_pricing_ids(merge_pricing(reg_mantle, reg_amazon, reg_foundation), resolution_map)
+    std_diffs, std_dropped = drop_unemittable(compute_regional_diffs(default_pricing, reg_std))
+
+    reg_global = resolve_pricing_ids(merge_pricing({}, reg_amazon_global, reg_foundation_global), resolution_map)
+    reg_global = {mid: mp for mid, mp in reg_global.items() if mid in global_models}
+    global_diffs, global_dropped = drop_unemittable(compute_regional_diffs(global_pricing, reg_global))
+
+    for model_id, reason in std_dropped:
+        _warn(f"  {region}: {model_id} — {reason}; falling back to us-east-1 pricing")
+    for model_id, reason in global_dropped:
+        _warn(f"  {region}: global.{model_id} — {reason}; falling back to us-east-1 global pricing")
+
+    return {**std_diffs, **{f"global.{model_id}": mp for model_id, mp in global_diffs.items()}}
+
+
 def _fetch_regional_diffs(
     args: argparse.Namespace,
     default_pricing: dict[str, ModelPrices],
+    global_pricing: dict[str, ModelPrices],
+    global_models: set[str],
+    resolution_map: dict[str, str],
 ) -> dict[str, dict[str, ModelPrices]] | None:
-    """Fetch pricing for requested regions and return diffs from us-east-1."""
-    if not args.regions and not args.all_regions:
-        return None
+    """Fetch pricing for every Region (or those requested) and return overrides vs us-east-1.
 
-    if args.all_regions:
+    ``resolution_map`` must be the one already applied to ``default_pricing``/``global_pricing``:
+    both sides of the comparison have to be keyed by real Bedrock model IDs, or every dated model
+    misses the lookup and is reported as a spurious diff under an ID no request ever carries.
+    ``global_models`` are the resolved IDs with a Global profile (see :func:`_region_overrides`).
+    """
+    if args.regions:
+        # An explicit narrowing for quick partial runs. On a write it yields a partial table --
+        # only the requested Regions keep overrides -- so warn rather than silently drop the rest.
+        if args.write:
+            _warn("--regions with --write emits overrides for only those Regions; omit --regions to refresh all.")
+        regions = [r for r in args.regions if r != DEFAULT_REGION]
+    else:
+        # Default (including the documented bare --write): every Region, so a refresh regenerates
+        # the full regional table instead of wiping it.
         bedrock_index = fetch_region_index("AmazonBedrock")
         fm_index = fetch_region_index("AmazonBedrockFoundationModels")
-        regions = sorted(set(bedrock_index.keys()) | set(fm_index.keys()))
-        regions = [r for r in regions if r != DEFAULT_REGION]
-    else:
-        regions = [r for r in args.regions if r != DEFAULT_REGION]
+        regions = sorted((set(bedrock_index.keys()) | set(fm_index.keys())) - {DEFAULT_REGION})
 
     regional_diffs: dict[str, dict[str, ModelPrices]] = {}
+    failed: list[str] = []
     for region in regions:
         _info(f"Fetching pricing for {region}...")
         try:
@@ -1323,19 +1508,28 @@ def _fetch_regional_diffs(
             reg_fm = fetch_pricing("AmazonBedrockFoundationModels", region)
         except (urllib.error.URLError, json.JSONDecodeError, KeyError) as e:
             _warn(f"Failed to fetch {region}: {e}")
+            failed.append(region)
             continue
 
-        reg_mantle = parse_mantle_models(reg_bedrock)
-        reg_amazon, _ = parse_amazon_models(reg_bedrock)
-        reg_foundation, _ = parse_foundation_models(reg_fm)
-        reg_merged = merge_pricing(reg_mantle, reg_amazon, reg_foundation)
-
-        diffs = compute_regional_diffs(default_pricing, reg_merged)
-        if diffs:
-            regional_diffs[region] = diffs
-            _info(f"  {region}: {len(diffs)} models differ from us-east-1")
+        overrides = _region_overrides(
+            reg_bedrock, reg_fm, default_pricing, global_pricing, global_models, resolution_map, region
+        )
+        if overrides:
+            regional_diffs[region] = overrides
+            _info(f"  {region}: {len(overrides)} overrides differ from us-east-1")
         else:
             _info(f"  {region}: all prices match us-east-1")
+
+    if failed:
+        detail = ", ".join(failed)
+        # A partial fetch must not overwrite a complete committed table: a skipped Region's genuine
+        # overrides would vanish and every call there would silently fall back to us-east-1.
+        if args.write:
+            _die(
+                f"{len(failed)} region(s) failed to fetch ({detail}); refusing to --write a table that would "
+                "drop their overrides. Re-run when the Pricing API is reachable."
+            )
+        _warn(f"{len(failed)} region(s) failed to fetch ({detail}); the printed table omits them.")
 
     return regional_diffs or None
 
@@ -1356,12 +1550,12 @@ def main() -> None:
         "--regions",
         nargs="+",
         metavar="REGION",
-        help="Include regional pricing overrides for these regions",
+        help="Only these regions get overrides (default: all regions)",
     )
     _ = parser.add_argument(
         "--all-regions",
         action="store_true",
-        help="Include all available regions",
+        help="Deprecated no-op: all regions are included by default",
     )
     args = parser.parse_args()
 
@@ -1403,20 +1597,21 @@ def main() -> None:
     expanded_pricing = expand_with_real_profiles(default_pricing, global_pricing, real_profile_ids)
     _info(f"Total entries after inference profile expansion: {len(expanded_pricing)}")
 
-    # Regional pricing (compared against unexpanded default)
-    regional_diffs = _fetch_regional_diffs(args, default_pricing)
+    # Regional pricing (compared against unexpanded default/global, re-keyed the same way). Only
+    # models with a real Global profile (a "global." key in the expanded table) get Global overrides.
+    global_models = {k[len("global.") :] for k in expanded_pricing if k.startswith("global.")}
+    regional_diffs = _fetch_regional_diffs(args, default_pricing, global_pricing, global_models, resolution_map)
 
     # Split off the Anthropic-on-Bedrock subset (shared with the native lmux-anthropic Bedrock
-    # provider). The shared subset carries default and inference-profile pricing only: the native
-    # provider prices by request ID alone, so it has no per-region dimension to hold overrides.
-    # Per-region overrides therefore stay whole in lmux-aws-bedrock's _REGIONAL_PRICING, which its
-    # Converse provider consults with the request's region before falling back to the default table.
+    # provider), default and regional alike, so both consumers price Claude from the same table.
+    # lmux-aws-bedrock merges the Anthropic subset back into its own tables.
     anthropic_pricing = {mid: mp for mid, mp in expanded_pricing.items() if _is_anthropic(mid)}
     bedrock_pricing = {mid: mp for mid, mp in expanded_pricing.items() if not _is_anthropic(mid)}
-    bedrock_regional = regional_diffs or {}
+    anthropic_regional = _split_regional(regional_diffs, anthropic=True)
+    bedrock_regional = _split_regional(regional_diffs, anthropic=False)
 
     # Generate code
-    shared_code = generate_shared_anthropic_py(anthropic_pricing)
+    shared_code = generate_shared_anthropic_py(anthropic_pricing, anthropic_regional)
     bedrock_code = generate_cost_py(bedrock_pricing, bedrock_regional)
 
     if args.write:
