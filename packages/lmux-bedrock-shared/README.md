@@ -2,8 +2,8 @@
 
 Shared internals for the two lmux providers that talk to Amazon Bedrock:
 
-- [`lmux-aws-bedrock`](../lmux-aws-bedrock) — the Converse-API provider (all Bedrock vendors + embeddings).
-- [`lmux-anthropic`](../lmux-anthropic) `[bedrock]` — the native Anthropic Messages API provider (`AnthropicBedrockProvider`).
+- [`lmux-aws-bedrock`](https://pypi.org/project/lmux-aws-bedrock/) — the Converse-API provider (all Bedrock vendors + embeddings).
+- [`lmux-anthropic`](https://pypi.org/project/lmux-anthropic/) `[bedrock]` — the native Anthropic Messages API provider (`AnthropicBedrockProvider`).
 
 It exists so those two packages don't duplicate the AWS-specific transport code or the Anthropic-on-Bedrock pricing table, while keeping core `lmux` free of any AWS-specific code.
 

@@ -179,7 +179,7 @@ Requires the `bedrock` extra, which pulls in `boto3` (for the AWS credential cha
 uv add "lmux-anthropic[bedrock]"
 ```
 
-`AnthropicBedrockProvider` serves Claude through Bedrock's **native Anthropic Messages API** (`InvokeModel` / `InvokeModelWithResponseStream`) with the same chat/streaming interface — distinct from [`lmux-aws-bedrock`](../lmux-aws-bedrock), which speaks Bedrock's normalized Converse API across all vendors. Use this one when you want Claude on Bedrock with the exact first-party Messages semantics (thinking config, `cache_control`, `output_config` all pass through unchanged):
+`AnthropicBedrockProvider` serves Claude through Bedrock's **native Anthropic Messages API** (`InvokeModel` / `InvokeModelWithResponseStream`) with the same chat/streaming interface — distinct from [`lmux-aws-bedrock`](https://pypi.org/project/lmux-aws-bedrock/), which speaks Bedrock's normalized Converse API across all vendors. Use this one when you want Claude on Bedrock with the exact first-party Messages semantics (thinking config, `cache_control`, `output_config` all pass through unchanged):
 
 ```python
 from lmux_anthropic import AnthropicBedrockProvider
