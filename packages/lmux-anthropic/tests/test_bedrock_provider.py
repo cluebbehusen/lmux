@@ -14,7 +14,7 @@ import respx
 if TYPE_CHECKING:
     import boto3
 
-from lmux.cost import ModelPricing, PricingTier
+from lmux.cost import ModelPricing, PricingTier, per_million_tokens
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError, RateLimitError
 from lmux.types import Cost, UserMessage
 from lmux_anthropic import AnthropicBedrockProvider
@@ -354,6 +354,33 @@ class TestCost:
         )
         assert intro.cost is not None
         assert intro.cost.input_cost == 2.2  # us-east-1 intro rate (2.0 list x1.1)
+
+    def test_prices_by_resolved_region(self, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Cost follows the Region the request was sent to, not the constructor argument.
+
+        ``region`` is usually left unset and resolved from the session, and Bedrock bills by the
+        Region called — so a provider pointed at eu-west-1 must bill eu-west-1's rates.
+        """
+        regional = {
+            "eu-west-1": {
+                MODEL: ModelPricing(
+                    tiers=[
+                        PricingTier(
+                            input_cost_per_token=per_million_tokens(9.0),
+                            output_cost_per_token=per_million_tokens(9.0),
+                        )
+                    ],
+                ),
+            },
+        }
+        monkeypatch.setattr("lmux_bedrock_shared.pricing.ANTHROPIC_REGIONAL_PRICING", regional)
+        respx_mock.post(_url(MODEL, "invoke", base="https://bedrock-runtime.eu-west-1.amazonaws.com")).mock(
+            return_value=httpx.Response(200, json=_message(input_tokens=1_000_000, output_tokens=0))
+        )
+        provider = AnthropicBedrockProvider(auth=FakeAuth(_Session(region_name="eu-west-1")))
+        response = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert response.cost is not None
+        assert response.cost.input_cost == pytest.approx(9.0)
 
     def test_unknown_model_has_no_cost(
         self, sync_provider: AnthropicBedrockProvider, respx_mock: respx.MockRouter

@@ -675,7 +675,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.13.0"
+version = "0.14.0"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "httpx" },
@@ -703,7 +703,7 @@ provides-extras = ["vertex", "bedrock"]
 
 [[package]]
 name = "lmux-aws-bedrock"
-version = "0.11.0"
+version = "0.12.0"
 source = { editable = "packages/lmux-aws-bedrock" }
 dependencies = [
     { name = "boto3" },
@@ -751,7 +751,7 @@ provides-extras = ["identity"]
 
 [[package]]
 name = "lmux-bedrock-shared"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/lmux-bedrock-shared" }
 dependencies = [
     { name = "boto3" },

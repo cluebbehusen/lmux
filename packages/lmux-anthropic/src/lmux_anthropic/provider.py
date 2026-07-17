@@ -923,7 +923,9 @@ class AnthropicBedrockProvider(AnthropicProvider):
         pricing = self._custom_pricing.get(model)
         if pricing is not None:
             return calculate_cost(usage, pricing, as_of)
-        return calculate_bedrock_anthropic_cost(model, usage, as_of=as_of)
+        # Bedrock bills by the Region called, and ``region`` is often left unset and resolved from
+        # the session, so price against the resolved auth context rather than the constructor arg.
+        return calculate_bedrock_anthropic_cost(model, usage, region=self._resolve_auth().region, as_of=as_of)
 
     @override
     def _cost_model(self, request_model: str, response_model: str) -> str:

@@ -340,6 +340,31 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "au.anthropic.claude-sonnet-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(11.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.4)},
+            ),
+        ],
+        schedules=[
+            PricingSchedule(
+                valid_from=date(2026, 9, 1),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(3.3),
+                        output_cost_per_token=per_million_tokens(16.5),
+                        cache_read_cost_per_token=per_million_tokens(0.33),
+                        cache_creation_cost_per_token=per_million_tokens(4.125),
+                        cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(6.6)},
+                    ),
+                ],
+            ),
+        ],
+    ),
     "eu.anthropic.claude-3-haiku-20240307-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -797,43 +822,321 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
     ),
 }
 
-_PRICING_BY_PREFIX = sorted(ANTHROPIC_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
+# Regional overrides for Claude (only Regions whose prices differ from us-east-1)
+ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
+    "ap-northeast-1": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "ap-northeast-2": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "ap-northeast-3": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "ap-south-1": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "ap-south-2": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "ap-southeast-1": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "ap-southeast-2": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "eu-north-1": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "eu-south-1": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "eu-south-2": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "eu-west-1": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "eu-west-3": {
+        "anthropic.claude-3-5-sonnet-v2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                ),
+            ],
+        ),
+    },
+    "us-gov-east-1": {
+        "anthropic.claude-3-5-sonnet-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.6),
+                    output_cost_per_token=per_million_tokens(18.0),
+                ),
+            ],
+        ),
+        "anthropic.claude-3-7-sonnet-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.6),
+                    output_cost_per_token=per_million_tokens(18.0),
+                    cache_read_cost_per_token=per_million_tokens(0.36),
+                    cache_creation_cost_per_token=per_million_tokens(4.5),
+                ),
+            ],
+        ),
+        "anthropic.claude-3-haiku-20240307-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.3),
+                    output_cost_per_token=per_million_tokens(1.5),
+                ),
+            ],
+        ),
+        "anthropic.claude-opus-4-8": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(6.0),
+                    output_cost_per_token=per_million_tokens(30.0),
+                    cache_read_cost_per_token=per_million_tokens(0.6),
+                    cache_creation_cost_per_token=per_million_tokens(7.5),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(12.0)},
+                ),
+            ],
+        ),
+        "anthropic.claude-sonnet-4-5-20250929-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.6),
+                    output_cost_per_token=per_million_tokens(18.0),
+                    cache_read_cost_per_token=per_million_tokens(0.36),
+                    cache_creation_cost_per_token=per_million_tokens(4.5),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(7.2)},
+                ),
+            ],
+        ),
+    },
+    "us-gov-west-1": {
+        "anthropic.claude-3-5-sonnet-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.6),
+                    output_cost_per_token=per_million_tokens(18.0),
+                ),
+            ],
+        ),
+        "anthropic.claude-3-7-sonnet-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.6),
+                    output_cost_per_token=per_million_tokens(18.0),
+                    cache_read_cost_per_token=per_million_tokens(0.36),
+                    cache_creation_cost_per_token=per_million_tokens(4.5),
+                ),
+            ],
+        ),
+        "anthropic.claude-3-haiku-20240307-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.3),
+                    output_cost_per_token=per_million_tokens(1.5),
+                ),
+            ],
+        ),
+        "anthropic.claude-opus-4-8": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(6.0),
+                    output_cost_per_token=per_million_tokens(30.0),
+                    cache_read_cost_per_token=per_million_tokens(0.6),
+                    cache_creation_cost_per_token=per_million_tokens(7.5),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(12.0)},
+                ),
+            ],
+        ),
+        "anthropic.claude-sonnet-4-5-20250929-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.6),
+                    output_cost_per_token=per_million_tokens(18.0),
+                    cache_read_cost_per_token=per_million_tokens(0.36),
+                    cache_creation_cost_per_token=per_million_tokens(4.5),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(7.2)},
+                ),
+            ],
+        ),
+    },
+}
+
+_ANTHROPIC_BY_PREFIX = sorted(ANTHROPIC_PRICING.items(), key=lambda item: len(item[0]), reverse=True)
+
+# The Region the default tables are priced for; every other Region is an override.
+DEFAULT_PRICING_REGION = "us-east-1"
+
+# Cross-region inference profile prefixes. Bedrock bills a profile call at the standard rate of the
+# Region the request is sent to, so a geo profile (e.g. "us.anthropic...") with no dedicated entry
+# resolves to the base model. "global." is priced separately (~10% below standard) and is never
+# resolved to the base model inside a regional table: absent there means it matches the default
+# table, not that it takes the Region's standard rate.
+GEO_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.")
+GLOBAL_PROFILE_PREFIX = "global."
+INFERENCE_PROFILE_PREFIXES = (GLOBAL_PROFILE_PREFIX, *GEO_PROFILE_PREFIXES)
 
 
-# Cross-region inference profile prefixes. A profile call (e.g. "us.anthropic...")
-# with no dedicated regional entry falls back to the base model's pricing.
-_INFERENCE_PROFILE_PREFIXES = ("global.", "us.", "eu.", "apac.", "au.", "jp.", "ca.")
-
-
-def _strip_profile_prefix(model: str) -> str:
-    for prefix in _INFERENCE_PROFILE_PREFIXES:
+def strip_profile_prefix(model: str, prefixes: tuple[str, ...] = INFERENCE_PROFILE_PREFIXES) -> str:
+    """Drop an inference-profile prefix from a model ID, if it carries one."""
+    for prefix in prefixes:
         if model.startswith(prefix):
             return model[len(prefix) :]
     return model
 
 
-def _lookup_pricing(model: str) -> ModelPricing | None:
-    pricing = ANTHROPIC_PRICING.get(model)
+def lookup_pricing(
+    table: dict[str, ModelPricing],
+    by_prefix: list[tuple[str, ModelPricing]],
+    model: str,
+    strip_prefixes: tuple[str, ...],
+) -> ModelPricing | None:
+    """Exact match, then longest-prefix, then one retry against the profile-stripped ID."""
+    pricing = table.get(model)
     if pricing is not None:
         return pricing
-    for prefix, p in _PRICING_BY_PREFIX:
+    for prefix, p in by_prefix:
         if model.startswith(prefix):
             return p
-    bare = _strip_profile_prefix(model)
+    bare = strip_profile_prefix(model, strip_prefixes)
     if bare != model:
-        return _lookup_pricing(bare)
+        return lookup_pricing(table, by_prefix, bare, strip_prefixes)
     return None
 
 
-def calculate_bedrock_anthropic_cost(model: str, usage: Usage, *, as_of: date | None = None) -> Cost | None:
+def lookup_regional_pricing(
+    regional: dict[str, dict[str, ModelPricing]], region: str, model: str
+) -> ModelPricing | None:
+    """A Region's pricing override, or None when it has none and the default table applies.
+
+    Sorted per call rather than precomputed: the prefix order has to come from the same table the
+    exact match reads, or the two can disagree. Only one Region's handful of overrides is sorted,
+    on a request that already carries an HTTP round trip.
+    """
+    table = regional.get(region)
+    if not table:
+        return None
+    by_prefix = sorted(table.items(), key=lambda item: len(item[0]), reverse=True)
+    return lookup_pricing(table, by_prefix, model, GEO_PROFILE_PREFIXES)
+
+
+def calculate_bedrock_anthropic_cost(
+    model: str, usage: Usage, *, region: str | None = None, as_of: date | None = None
+) -> Cost | None:
     """Calculate cost for a native Anthropic-on-Bedrock call. None if pricing is unknown.
 
     Handles both bare model IDs and cross-region inference-profile IDs
-    (e.g. ``us.anthropic.claude-opus-4-8``). ``as_of`` selects dated pricing for
+    (e.g. ``us.anthropic.claude-opus-4-8``). ``region`` is the Region the request is sent to, which
+    is the Region Bedrock bills against -- a cross-Region inference profile is priced by the Region
+    it is called from, not by wherever the request is routed. ``as_of`` selects dated pricing for
     models with scheduled rate changes (e.g. Claude Sonnet 5's introductory
     period); it defaults to the latest schedule. See ``lmux.cost.calculate_cost``.
     """
-    pricing = _lookup_pricing(model)
+    if region is not None and region != DEFAULT_PRICING_REGION:
+        pricing = lookup_regional_pricing(ANTHROPIC_REGIONAL_PRICING, region, model)
+        if pricing is not None:
+            return cost_or_none(pricing, usage, as_of)
+    pricing = lookup_pricing(ANTHROPIC_PRICING, _ANTHROPIC_BY_PREFIX, model, INFERENCE_PROFILE_PREFIXES)
     if pricing is None:
+        return None
+    return calculate_cost(usage, pricing, as_of)
+
+
+def cost_or_none(pricing: ModelPricing, usage: Usage, as_of: date | None = None) -> Cost | None:
+    """Cost from a regional override, or None when it leaves a billed token dimension unpriced.
+
+    A Region may publish input/output but no cache meter; ``calculate_cost`` treats a missing rate
+    as zero, which would bill those cache tokens for free, so the unknown cost is reported as None
+    instead. Regional overrides are single-tier, so the base tier's rates decide.
+    """
+    tier = pricing.tiers[0]
+    creation = max(usage.cache_creation_tokens or 0, sum((usage.cache_creation_tokens_by_ttl or {}).values()))
+    if (usage.cache_read_tokens or 0) and tier.cache_read_cost_per_token is None:
+        return None
+    if creation and tier.cache_creation_cost_per_token is None and not tier.cache_creation_cost_per_token_by_ttl:
         return None
     return calculate_cost(usage, pricing, as_of)
