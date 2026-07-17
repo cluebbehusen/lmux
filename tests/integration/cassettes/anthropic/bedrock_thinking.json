@@ -1,0 +1,46 @@
+{
+  "endpoint": "https://bedrock-runtime.us-east-1.amazonaws.com/model/us.anthropic.claude-haiku-4-5-20251001-v1%3A0/invoke",
+  "request": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is 17 * 23? Think step by step, then state the number."
+      }
+    ],
+    "max_tokens": 2048,
+    "thinking": {
+      "type": "enabled",
+      "budget_tokens": 1024
+    },
+    "anthropic_version": "bedrock-2023-05-31"
+  },
+  "response": {
+    "model": "claude-haiku-4-5-20251001",
+    "id": "msg_bdrk_01EmGqRzoGuVK5ZnD3AB8qgc",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "Let me calculate 17 * 23 step by step.\n\nI can break this down:\n17 * 23 = 17 * (20 + 3)\n        = 17 * 20 + 17 * 3\n        = 340 + 51\n        = 391\n\nAlternatively, I could do:\n17 * 23 = (10 + 7) * 23\n        = 10 * 23 + 7 * 23\n        = 230 + 161\n        = 391\n\nBoth methods give me 391.",
+        "signature": "EskDCkgIDxABGAIqQPhVcXWOgxl+eT5UzCbMAhD30A2Ct5+5J15dk5Y+C25EVVGFfcTLjsD8iKCsZLJAuPrX7PURq6acZlZNbp9DcMgSDD7VRW5hi4x/CNXmUBoMKz58+PSeu8guV0fTIjDDUKinhHpeUL26PWEJU/m2rge46gp9bh2v97gkF1lb/f23R2jJBzeoMUuvqJ4u+fIqrgI5ul9BAjYqyKGgbYJkbjszVKfDS5qhR28c7NLAYq8BCCAZVdfcA7MdXCJphOZkLP7ULZwK4UFxErGvv/Yr0IuIkDpLBBZaxmgzpgVh4RtWDCjMy1nZZrzEo9+lWamuLUOp18PWbo1A40rxWw5IrKyT80WCmJAMjGA5n7CU3IKqopeYxjOZGB4DaLLcclkvbKzJuChI/RonkTG58kiyPLRqQAmwBfTs4DUoBi0kmyYJPJr4IBNWkDoDRY/LZyAbR9mhpLRw6i2guGZ8e/gJuIvVNym9gaHB0sD6fdKLMw8n9WANpJ4ccN76Z3E/7onkoZTpMWWkBCQ1VPIpGLzC2GVa7G/LI3JXIGUSV5awZWWcWi6jvtn5WafNRgFY2zmCl1XximP4czH1Zfn4VIpsnRgB"
+      },
+      {
+        "type": "text",
+        "text": "# Calculating 17 \u00d7 23\n\n**Step by step:**\n- 17 \u00d7 23 = 17 \u00d7 (20 + 3)\n- = (17 \u00d7 20) + (17 \u00d7 3)\n- = 340 + 51\n- = 391\n\n**The answer is 391**"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 55,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 223
+    }
+  }
+}

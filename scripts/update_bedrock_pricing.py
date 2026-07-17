@@ -1406,15 +1406,14 @@ def main() -> None:
     # Regional pricing (compared against unexpanded default)
     regional_diffs = _fetch_regional_diffs(args, default_pricing)
 
-    # Split off the Anthropic-on-Bedrock subset (shared with the native lmux-anthropic
-    # Bedrock provider). Anthropic regional overrides are dropped from _REGIONAL_PRICING —
-    # anthropic regional pricing is already carried as region-prefixed keys in the main dict.
+    # Split off the Anthropic-on-Bedrock subset (shared with the native lmux-anthropic Bedrock
+    # provider). The shared subset carries default and inference-profile pricing only: the native
+    # provider prices by request ID alone, so it has no per-region dimension to hold overrides.
+    # Per-region overrides therefore stay whole in lmux-aws-bedrock's _REGIONAL_PRICING, which its
+    # Converse provider consults with the request's region before falling back to the default table.
     anthropic_pricing = {mid: mp for mid, mp in expanded_pricing.items() if _is_anthropic(mid)}
     bedrock_pricing = {mid: mp for mid, mp in expanded_pricing.items() if not _is_anthropic(mid)}
-    bedrock_regional = {
-        region: {mid: mp for mid, mp in models.items() if not _is_anthropic(mid)}
-        for region, models in (regional_diffs or {}).items()
-    }
+    bedrock_regional = regional_diffs or {}
 
     # Generate code
     shared_code = generate_shared_anthropic_py(anthropic_pricing)

@@ -1002,6 +1002,10 @@ class AnthropicBedrockProvider(AnthropicProvider):
         fed to the shared stream state, which drops non-delta events); a modeled ``exception`` frame
         (``:exception-type``) or unmodeled ``error`` frame (``:error-code``) is raised through the AWS
         error hierarchy.
+
+        A mid-stream Anthropic ``error`` event (e.g. an overload once generation has begun) arrives as
+        an ordinary chunk frame on a 200 response, not as an AWS exception frame, so the decoded payload
+        is checked for it the same way the SSE transports check their events.
         """
         from lmux_bedrock_shared import exceptions as bedrock_exceptions  # noqa: PLC0415
 
@@ -1017,4 +1021,6 @@ class AnthropicBedrockProvider(AnthropicProvider):
                 error_code, headers.get(":error-message") or error_code, self._provider_name
             )
         decoded: dict[str, Any] = json.loads(base64.b64decode(data["bytes"]))
+        if decoded.get("type") == "error":
+            raise error_from_stream(decoded, self._provider_name)
         return decoded

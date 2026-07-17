@@ -86,14 +86,14 @@ response = provider.chat(
 )
 ```
 
-| Parameter          | Type                            | Description                          |
-| ------------------ | ------------------------------- | ------------------------------------ |
-| `service_tier`           | `"auto" \| "default" \| "flex"` | Service tier selection               |
-| `reasoning_effort`       | `"low" \| "medium" \| "high"`   | Reasoning effort for o-series models |
-| `seed`                   | `int`                           | Deterministic sampling seed          |
-| `user`                   | `str`                           | End-user identifier                  |
+| Parameter                | Type                            | Description                                                      |
+| ------------------------ | ------------------------------- | ---------------------------------------------------------------- |
+| `service_tier`           | `"auto" \| "default" \| "flex"` | Service tier selection                                           |
+| `reasoning_effort`       | `"low" \| "medium" \| "high"`   | Reasoning effort for o-series models                             |
+| `seed`                   | `int`                           | Deterministic sampling seed                                      |
+| `user`                   | `str`                           | End-user identifier                                              |
 | `prompt_cache_key`       | `str`                           | Prompt-cache routing key for better hit rates (chat + responses) |
-| `prompt_cache_retention` | `"in_memory" \| "24h"`          | Prompt-cache retention; legacy, pre-gpt-5.6 (chat + responses) |
+| `prompt_cache_retention` | `"in_memory" \| "24h"`          | Prompt-cache retention; legacy, pre-gpt-5.6 (chat + responses)   |
 
 ## Constructor Options
 

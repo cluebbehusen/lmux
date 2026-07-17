@@ -110,14 +110,14 @@ response = provider.chat(
 )
 ```
 
-| Parameter | Type | Description |
-|---|---|---|
-| `reasoning_effort` | `"low" \| "medium" \| "high"` | Reasoning effort for o-series models |
-| `seed` | `int` | Deterministic sampling seed |
-| `user` | `str` | End-user identifier |
-| `prompt_cache_key` | `str` | Cache key for Azure's automatic prompt caching (chat + responses) |
-| `prompt_cache_retention` | `"in_memory" \| "24h"` | Prompt cache retention policy (chat + responses) |
-| `deployment_type` | `"global" \| "data_zone" \| "regional"` | Affects cost calculation only, not sent to API |
+| Parameter                | Type                                    | Description                                                       |
+| ------------------------ | --------------------------------------- | ----------------------------------------------------------------- |
+| `reasoning_effort`       | `"low" \| "medium" \| "high"`           | Reasoning effort for o-series models                              |
+| `seed`                   | `int`                                   | Deterministic sampling seed                                       |
+| `user`                   | `str`                                   | End-user identifier                                               |
+| `prompt_cache_key`       | `str`                                   | Cache key for Azure's automatic prompt caching (chat + responses) |
+| `prompt_cache_retention` | `"in_memory" \| "24h"`                  | Prompt cache retention policy (chat + responses)                  |
+| `deployment_type`        | `"global" \| "data_zone" \| "regional"` | Affects cost calculation only, not sent to API                    |
 
 ## Constructor Options
 

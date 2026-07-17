@@ -187,6 +187,16 @@ class TestChat:
         assert "inference_geo" not in body
         assert body["top_k"] == 5
 
+    def test_inference_geo_multiplier_not_applied(
+        self, sync_provider: AnthropicBedrockProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.post(_url(MODEL, "invoke")).mock(return_value=httpx.Response(200, json=_message()))
+        standard = sync_provider.chat(MODEL, [UserMessage(content="Hi")])
+        us = sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=AnthropicParams(inference_geo="us"))
+        assert standard.cost is not None
+        assert us.cost is not None
+        assert standard.cost.total_cost == us.cost.total_cost
+
     def test_custom_pricing_overrides_table(
         self, sync_provider: AnthropicBedrockProvider, respx_mock: respx.MockRouter
     ) -> None:
@@ -303,6 +313,17 @@ class TestChatStream:
         body = _chunk(_ANTHROPIC_STREAM_EVENTS[0]) + _error_frame("ModelStreamErrorException", "boom")
         respx_mock.post(_url(MODEL, "invoke-with-response-stream")).mock(return_value=httpx.Response(200, content=body))
         with pytest.raises(ProviderError):
+            list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+    def test_stream_anthropic_error_event(
+        self, sync_provider: AnthropicBedrockProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        # A mid-stream Anthropic error rides in an ordinary chunk frame on a 200 response, not an
+        # AWS exception frame; raise rather than truncate the stream silently.
+        error_event = {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}
+        body = _chunk(_ANTHROPIC_STREAM_EVENTS[0]) + _chunk(_ANTHROPIC_STREAM_EVENTS[1]) + _chunk(error_event)
+        respx_mock.post(_url(MODEL, "invoke-with-response-stream")).mock(return_value=httpx.Response(200, content=body))
+        with pytest.raises(ProviderError, match="Overloaded"):
             list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
 
     async def test_astream_http_error(self, respx_mock: respx.MockRouter) -> None:

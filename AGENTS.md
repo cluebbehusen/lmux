@@ -50,16 +50,16 @@ Providers implement only the protocols they support. `ParamsT` is a provider-spe
 
 Every provider package follows the same structure (see lmux-openai as reference):
 
-| File | Purpose |
-| --- | --- |
-| `provider.py` | Provider class implementing protocol(s) |
-| `auth.py` | `<Provider>EnvAuthProvider` — reads API key from env var |
-| `params.py` | `<Provider>Params(BaseModel)` — provider-specific parameters |
-| `cost.py` | `PRICING` dict + `calculate_<provider>_cost()` with prefix matching |
-| `_lazy.py` | `create_sync_client()` / `create_async_client()` factory functions |
-| `_mappers.py` | Convert between lmux types and SDK types |
-| `_exceptions.py` | Map SDK exceptions to `lmux.exceptions` hierarchy |
-| `__init__.py` | Re-exports + `preload()` function |
+| File             | Purpose                                                             |
+| ---------------- | ------------------------------------------------------------------- |
+| `provider.py`    | Provider class implementing protocol(s)                             |
+| `auth.py`        | `<Provider>EnvAuthProvider` — reads API key from env var            |
+| `params.py`      | `<Provider>Params(BaseModel)` — provider-specific parameters        |
+| `cost.py`        | `PRICING` dict + `calculate_<provider>_cost()` with prefix matching |
+| `_lazy.py`       | `create_sync_client()` / `create_async_client()` factory functions  |
+| `_mappers.py`    | Convert between lmux types and SDK types                            |
+| `_exceptions.py` | Map SDK exceptions to `lmux.exceptions` hierarchy                   |
+| `__init__.py`    | Re-exports + `preload()` function                                   |
 
 ### Lazy Loading
 
@@ -219,8 +219,8 @@ For non-mock value replacements (e.g., swapping module-level data), use `monkeyp
 - **One level deep only** (true unit testing). If `a` calls `b` which calls `c`, the test for `a` mocks `b` — never `c`. Each unit test exercises exactly one layer.
 - **Type mocks correctly**: `MagicMock` for sync functions, `AsyncMock` for async functions.
 - **Don't write test scaffolding that itself needs testing.** Keep test setup minimal — if a test file has large helper functions or complex builders, the test is testing its own scaffolding, not the library code.
-- **Test for 100% branch coverage but don't over-test.** Cover all branches in *our* code. Don't write tests that effectively exercise third-party library behavior — that's what mocks are for.
-- **Test positive and negative assertions** — verify that expected calls were made *and* that unexpected calls were not. This also avoids "unused argument" warnings from fixtures.
+- **Test for 100% branch coverage but don't over-test.** Cover all branches in _our_ code. Don't write tests that effectively exercise third-party library behavior — that's what mocks are for.
+- **Test positive and negative assertions** — verify that expected calls were made _and_ that unexpected calls were not. This also avoids "unused argument" warnings from fixtures.
 - Use `assert_called_once_with` / `assert_awaited_once_with` to verify mock calls — not `call_args`:
 
 ```python

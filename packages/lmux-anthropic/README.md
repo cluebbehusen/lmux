@@ -64,15 +64,15 @@ response = provider.chat(
 )
 ```
 
-| Parameter       | Type                        | Description                        |
-| --------------- | --------------------------- | ---------------------------------- |
-| `thinking`      | `dict`                      | Extended thinking configuration    |
-| `metadata`      | `dict[str, str]`            | Request metadata                   |
-| `top_k`         | `int`                       | Top-k sampling                     |
-| `service_tier`  | `"auto" \| "standard_only"` | Service tier selection             |
-| `inference_geo` | `"us"`                      | Inference geography (affects cost) |
+| Parameter       | Type                        | Description                                                                                                          |
+| --------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `thinking`      | `dict`                      | Extended thinking configuration                                                                                      |
+| `metadata`      | `dict[str, str]`            | Request metadata                                                                                                     |
+| `top_k`         | `int`                       | Top-k sampling                                                                                                       |
+| `service_tier`  | `"auto" \| "standard_only"` | Service tier selection                                                                                               |
+| `inference_geo` | `"us"`                      | Inference geography (affects cost)                                                                                   |
 | `cache_control` | `dict`                      | Top-level prompt-cache control — auto-places a breakpoint on the last cacheable block (e.g. `{"type": "ephemeral"}`) |
-| `pricing_as_of` | `datetime.date`             | Override the date used for dated pricing (e.g. a model's introductory-rate window); defaults to the current date |
+| `pricing_as_of` | `datetime.date`             | Override the date used for dated pricing (e.g. a model's introductory-rate window); defaults to the current date     |
 
 ## Prompt Caching
 

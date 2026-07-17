@@ -204,7 +204,7 @@ Prefer **structured data over scraping pixels**, in this order:
    ```
 
    Watch for **multi-level headers** — e.g. OpenAI's `Short context` / `Long
-   context` bands each span their own Input/Cached/Cache-write/Output columns, so
+context` bands each span their own Input/Cached/Cache-write/Output columns, so
    one row carries both the base tier and the `>272k` tier. And there are usually
    **separate Standard / Batch / Priority tables**; only the **Standard on-demand**
    table maps to `cost.py`.
@@ -236,7 +236,7 @@ provider — `lmux_aws_bedrock.cost._PRICING` still contains every model
 2. Diff the generated output against the current `pricing.py` and `cost.py` and
    report the differences as Price Updates / New Models.
 3. ALWAYS check the script's stderr for `Unmapped Foundation Models
-   servicenames` warnings — models missing from `FM_SERVICENAME_MAP` are
+servicenames` warnings — models missing from `FM_SERVICENAME_MAP` are
    silently dropped from the output. Report each unmapped model as a New
    Model with a caveat that it needs an `FM_SERVICENAME_MAP` entry. A clean
    diff does NOT mean there are no new models.
@@ -266,11 +266,12 @@ transpose input/output or conflate SKU versions). Use Azure's first-party source
    double-counting bug. (Some models live under a `Managed Model Hosting Service`
    product rather than `Azure Llama Models`; match by the model name in
    `meterName`, not the product.)
+
 2. **Playwright CLI** to render the DeepSeek / Llama / Grok / Mistral Foundry
    pricing tables when you need the on-page layout — see "JavaScript-rendered
    pages (Playwright CLI)".
 3. **Microsoft Learn** for lifecycle — check the **Retired Foundry Models** and
-   model-retirement-schedule pages to catch models that should be *removed* from
+   model-retirement-schedule pages to catch models that should be _removed_ from
    `cost.py`. Absence from the pricing catalog alone is NOT proof of retirement;
    the retired-models page is.
 

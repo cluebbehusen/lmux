@@ -13,7 +13,7 @@ Cut a release for one or more lmux packages: create a GitHub release whose git t
 
 - Packages are versioned and released **independently** (`packages/lmux`, `packages/lmux-anthropic`, ...). One release == one package. A change that bumps several packages needs one release per package.
 - `.github/workflows/publish.yml` triggers on a pushed git tag matching `lmux-v*` or `lmux-<pkg>-v*` and publishes that package to PyPI via Trusted Publishing. It derives the package from the tag, reads that package's `pyproject.toml` version, and **fails if the tag version does not match the pyproject version** — so the version must already be bumped and merged.
-- `gh release create <tag>` creates the tag at the target commit *and* the GitHub release in one step. The pushed tag is what triggers publish, so creating the release **is** the publish action. There is no separate `git tag` / `git push --tags`.
+- `gh release create <tag>` creates the tag at the target commit _and_ the GitHub release in one step. The pushed tag is what triggers publish, so creating the release **is** the publish action. There is no separate `git tag` / `git push --tags`.
 - There is no changelog automation. Notes are written by hand in the format below.
 - (`workflow_dispatch` on the publish workflow can target TestPyPI or re-run a publish manually; the normal path is a tag/release.)
 
