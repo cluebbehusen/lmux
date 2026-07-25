@@ -1,7 +1,9 @@
 """Google model pricing data and cost calculation.
 
-Prices are for standard on-demand (global endpoint) Vertex AI pricing;
-the Gemini Developer API paid tier uses the same per-token rates.
+Prices are for standard on-demand (global endpoint) Vertex AI pricing. The
+Gemini Developer API paid tier matches these rates for Gemini 2.5 and later,
+but diverges on Gemini 2.0: the Developer API bills 2.0 Flash at 0.10/0.40
+against Vertex's 0.15/0.60. The Vertex rates are the ones stored here.
 Pricing source: https://cloud.google.com/vertex-ai/generative-ai/pricing
 """
 
@@ -17,12 +19,32 @@ from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
     # ── Google Gemini 3 ────────────────────────────────────────
+    "gemini-3.6-flash": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.5),
+                output_cost_per_token=per_million_tokens(7.5),
+                cache_read_cost_per_token=per_million_tokens(0.15),
+            ),
+        ],
+    ),
     "gemini-3.5-flash": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(1.5),
                 output_cost_per_token=per_million_tokens(9.0),
                 cache_read_cost_per_token=per_million_tokens(0.15),
+            ),
+        ],
+    ),
+    # Flash-Lite must keep its own key: without it the id prefix-matches
+    # gemini-3.5-flash and bills 5x the correct input rate.
+    "gemini-3.5-flash-lite": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.30),
+                output_cost_per_token=per_million_tokens(2.50),
+                cache_read_cost_per_token=per_million_tokens(0.03),
             ),
         ],
     ),
@@ -131,6 +153,7 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.15),
                 output_cost_per_token=per_million_tokens(0.6),
+                cache_read_cost_per_token=per_million_tokens(0.0375),
             ),
         ],
     ),
@@ -139,6 +162,7 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.075),
                 output_cost_per_token=per_million_tokens(0.3),
+                cache_read_cost_per_token=per_million_tokens(0.01875),
             ),
         ],
     ),

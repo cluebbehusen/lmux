@@ -56,6 +56,18 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    # Claude Opus 5 family
+    "claude-opus-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(25.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(10.00)},
+            ),
+        ],
+    ),
     # Claude Sonnet 5 family — introductory pricing through 2026-08-31, then
     # standard pricing (matching Sonnet 4.6) from 2026-09-01. Full 1M context
     # at standard pricing, so there is no >200K tier.
@@ -299,6 +311,7 @@ _VERTEX_UNIFORM_PRICING_MODELS = (
 _VERTEX_PREMIUM_PRICING_MODELS = (
     "claude-fable-5",
     "claude-mythos-5",
+    "claude-opus-5",
     "claude-sonnet-5",
     "claude-opus-4-8",
     "claude-opus-4-7",

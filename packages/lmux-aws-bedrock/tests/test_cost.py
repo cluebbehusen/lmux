@@ -395,3 +395,34 @@ class TestCalculateBedrockCost:
         assert cost is not None
         assert cost_default is not None
         assert cost.total_cost == pytest.approx(cost_default.total_cost)
+
+
+class TestRetiredModelIdsResolveViaConverse:
+    """The Converse table merges the shared Anthropic subset, so it must price the same retired
+    IDs. Asserting the IDs a caller presents, not the table's own keys, is what catches a key
+    that has silently become unreachable.
+    """
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "anthropic.claude-3-5-sonnet-20240620-v1:0",
+            "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            "anthropic.claude-3-7-sonnet-20250219-v1:0",
+            "anthropic.claude-3-opus-20240229-v1:0",
+            "anthropic.claude-opus-4-20250514-v1:0",
+        ],
+    )
+    def test_retired_dated_id_prices(self, model: str) -> None:
+        cost = calculate_bedrock_cost(model, Usage(input_tokens=1_000_000, output_tokens=1_000_000))
+        assert cost is not None, f"{model} is unreachable — the table key is not a prefix of it"
+        assert cost.total_cost > 0
+
+    def test_opus_5_profiles_price(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        standard = calculate_bedrock_cost("us.anthropic.claude-opus-5", usage)
+        glob = calculate_bedrock_cost("global.anthropic.claude-opus-5", usage)
+        assert standard is not None
+        assert glob is not None
+        assert standard.total_cost == pytest.approx(5.5 + 27.5)
+        assert glob.total_cost == pytest.approx(5.0 + 25.0)

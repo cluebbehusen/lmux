@@ -21,6 +21,32 @@ class TestCalculateAnthropicCost:
         usage = Usage(input_tokens=10, output_tokens=5)
         assert calculate_anthropic_cost("totally-unknown-model", usage) is None
 
+    def test_opus_5_pricing(self) -> None:
+        usage = Usage(
+            input_tokens=1000,
+            output_tokens=500,
+            cache_read_tokens=200,
+            cache_creation_tokens_by_ttl={"5m": 100, "1h": 50},
+        )
+        cost = calculate_anthropic_cost("claude-opus-5", usage)
+        assert cost is not None
+        input_cost = (1000 - 200 - 150) * 5.00 / 1_000_000
+        output_cost = 500 * 25.00 / 1_000_000
+        cache_read_cost = 200 * 0.50 / 1_000_000
+        cache_creation_cost = (100 * 6.25 + 50 * 10.00) / 1_000_000
+        # Compared as a dict so the whole object is checked while tolerating float drift;
+        # pytest.approx cannot be nested inside a Cost constructor.
+        assert cost.model_dump() == pytest.approx(
+            {
+                "input_cost": input_cost,
+                "output_cost": output_cost,
+                "total_cost": input_cost + output_cost + cache_read_cost + cache_creation_cost,
+                "cache_read_cost": cache_read_cost,
+                "cache_creation_cost": cache_creation_cost,
+                "currency": "USD",
+            }
+        )
+
     def test_date_suffixed_model_matches_prefix(self) -> None:
         usage = Usage(input_tokens=1000, output_tokens=500)
         cost = calculate_anthropic_cost("claude-sonnet-4-6-20260214", usage)
@@ -185,6 +211,10 @@ class TestHasVertexRegionalPremium:
 
     def test_unknown_future_models_default_to_premium(self) -> None:
         assert has_vertex_regional_premium("claude-sonnet-6") is True
+
+    def test_opus_5_is_premium(self) -> None:
+        """claude-opus-5 must not be shadowed by the claude-opus-4 (uniform) prefix."""
+        assert has_vertex_regional_premium("claude-opus-5") is True
 
     def test_case_insensitive(self) -> None:
         """Premium classification folds case, like the pricing lookup."""
