@@ -30,10 +30,22 @@ class TestCalculateAnthropicCost:
         )
         cost = calculate_anthropic_cost("claude-opus-5", usage)
         assert cost is not None
-        assert cost.input_cost == pytest.approx((1000 - 200 - 150) * 5.00 / 1_000_000)
-        assert cost.output_cost == pytest.approx(500 * 25.00 / 1_000_000)
-        assert cost.cache_read_cost == pytest.approx(200 * 0.50 / 1_000_000)
-        assert cost.cache_creation_cost == pytest.approx((100 * 6.25 + 50 * 10.00) / 1_000_000)
+        input_cost = (1000 - 200 - 150) * 5.00 / 1_000_000
+        output_cost = 500 * 25.00 / 1_000_000
+        cache_read_cost = 200 * 0.50 / 1_000_000
+        cache_creation_cost = (100 * 6.25 + 50 * 10.00) / 1_000_000
+        # Compared as a dict so the whole object is checked while tolerating float drift;
+        # pytest.approx cannot be nested inside a Cost constructor.
+        assert cost.model_dump() == pytest.approx(
+            {
+                "input_cost": input_cost,
+                "output_cost": output_cost,
+                "total_cost": input_cost + output_cost + cache_read_cost + cache_creation_cost,
+                "cache_read_cost": cache_read_cost,
+                "cache_creation_cost": cache_creation_cost,
+                "currency": "USD",
+            }
+        )
 
     def test_date_suffixed_model_matches_prefix(self) -> None:
         usage = Usage(input_tokens=1000, output_tokens=500)
