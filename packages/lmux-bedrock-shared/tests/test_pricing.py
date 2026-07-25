@@ -134,3 +134,36 @@ class TestCalculateBedrockAnthropicCost:
         assert latest is not None
         assert intro.input_cost < standard.input_cost
         assert latest == standard
+
+
+_RETIRED_MODEL_IDS = [
+    "anthropic.claude-3-5-sonnet-20240620-v1:0",
+    "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "anthropic.claude-3-5-haiku-20241022-v1:0",
+    "anthropic.claude-3-7-sonnet-20250219-v1:0",
+    "anthropic.claude-3-opus-20240229-v1:0",
+    "anthropic.claude-opus-4-20250514-v1:0",
+    "anthropic.claude-3-haiku-20240307-v1:0",
+    "anthropic.claude-3-sonnet-20240229-v1:0",
+]
+
+
+class TestRetiredModelIdsResolve:
+    """Retired Claude models are retained for historical cost lookups, so the IDs that were
+    actually callable must still price. A dateless table key is unreachable: prefix matching
+    cannot bridge ``...sonnet-20241022-v2:0`` to ``...sonnet-v2``, so the entry looks present
+    in the table while pricing nothing.
+    """
+
+    @pytest.mark.parametrize("model", _RETIRED_MODEL_IDS)
+    def test_dated_model_id_prices(self, model: str) -> None:
+        cost = calculate_bedrock_anthropic_cost(model, Usage(input_tokens=1_000_000, output_tokens=1_000_000))
+        assert cost is not None, f"{model} is unreachable — the table key is not a prefix of it"
+        assert cost.total_cost > 0
+
+    @pytest.mark.parametrize("model", _RETIRED_MODEL_IDS)
+    def test_dated_inference_profile_id_prices(self, model: str) -> None:
+        """The cross-Region profile form strips to the bare dated ID, which must also resolve."""
+        cost = calculate_bedrock_anthropic_cost(f"us.{model}", Usage(input_tokens=1_000_000, output_tokens=0))
+        assert cost is not None
+        assert cost.total_cost > 0

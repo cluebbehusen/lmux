@@ -57,9 +57,13 @@ LCTX_THRESHOLD = 200_000
 
 # Foundation Models API: servicename (after stripping " (Amazon Bedrock Edition)") -> Bedrock model ID
 FM_SERVICENAME_MAP: dict[str, str] = {
-    # Anthropic Claude
+    # Anthropic Claude. Retired models must be keyed by their real dated model ID. AWS drops a
+    # model from list_foundation_models when it retires, so the catalog resolver can no longer
+    # turn a dateless key into the ID a caller presents, and the dateless key would be written
+    # out as an entry nothing can ever look up. See KNOWN_UNRESOLVED_IDS.
     "Claude Fable 5": "anthropic.claude-fable-5-v1",
     "Claude Mythos 5": "anthropic.claude-mythos-5-v1",
+    "Claude Opus 5": "anthropic.claude-opus-5-v1",
     "Claude Sonnet 5": "anthropic.claude-sonnet-5-v1",
     "Claude Opus 4.8": "anthropic.claude-opus-4-8-v1",
     "Claude Opus 4.7": "anthropic.claude-opus-4-7-v1",
@@ -69,16 +73,13 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     "Claude Sonnet 4.5": "anthropic.claude-sonnet-4-5-v1",
     "Claude Haiku 4.5": "anthropic.claude-haiku-4-5-v1",
     "Claude Sonnet 4": "anthropic.claude-sonnet-4-v1",
-    "Claude Opus 4": "anthropic.claude-opus-4-v1",
+    "Claude Opus 4": "anthropic.claude-opus-4-20250514-v1",
     "Claude Opus 4.1": "anthropic.claude-opus-4-1-v1",
-    "Claude 3.7 Sonnet": "anthropic.claude-3-7-sonnet-v1",
-    "Claude 3.5 Sonnet v2": "anthropic.claude-3-5-sonnet-v2",
-    "Claude 3.5 Sonnet": "anthropic.claude-3-5-sonnet-v1",
-    # AWS delisted 3.5 Haiku from list_foundation_models, so the catalog resolver
-    # can no longer map a simplified key to the real dated ID. Hardcode the dated
-    # model ID directly so prefix matching still prices existing 3.5 Haiku calls.
+    "Claude 3.7 Sonnet": "anthropic.claude-3-7-sonnet-20250219-v1",
+    "Claude 3.5 Sonnet v2": "anthropic.claude-3-5-sonnet-20241022-v2",
+    "Claude 3.5 Sonnet": "anthropic.claude-3-5-sonnet-20240620-v1",
     "Claude 3.5 Haiku": "anthropic.claude-3-5-haiku-20241022-v1",
-    "Claude 3 Opus": "anthropic.claude-3-opus-v1",
+    "Claude 3 Opus": "anthropic.claude-3-opus-20240229-v1",
     "Claude 3 Sonnet": "anthropic.claude-3-sonnet-v1",
     "Claude 3 Haiku": "anthropic.claude-3-haiku-v1",
     "Claude": "anthropic.claude-v2",
@@ -292,6 +293,57 @@ def _build_resolution_indexes(
     return real_raw, real_clean, dateless_to_real, normalized_to_real, prefix_to_real
 
 
+# Simplified IDs that never resolve, because AWS no longer lists the model. Membership records
+# that someone checked what a caller actually presents -- not that the key is necessarily right.
+# An unresolved ID missing from this set is a newly retired model whose key may have silently
+# become unreachable, so generation stops instead of emitting an entry nothing can look up.
+KNOWN_UNRESOLVED_IDS: frozenset[str] = frozenset(
+    {
+        # The key is itself the real (retired) Bedrock model ID, so its entry is reachable.
+        "ai21.j2-mid-v1",
+        "ai21.j2-ultra-v1",
+        "ai21.jamba-instruct-v1",
+        "amazon.titan-text-express-v1",
+        "amazon.titan-text-lite-v1",
+        "amazon.titan-text-premier-v1",
+        "anthropic.claude-instant-v1",
+        "anthropic.claude-v2",
+        "cohere.command-light-text-v14",
+        "cohere.command-text-v14",
+        "meta.llama2-13b-chat-v1",
+        "meta.llama2-70b-chat-v1",
+        "meta.llama3-2-11b-instruct-v1",
+        "meta.llama3-2-1b-instruct-v1",
+        "meta.llama3-2-3b-instruct-v1",
+        "meta.llama3-2-90b-instruct-v1",
+        # Reachable: the key is a prefix of the real ID, but the model is not offered in
+        # us-east-1 and fetch_bedrock_catalog only lists that Region, so it cannot be confirmed.
+        "qwen.qwen3-235b-a22b-2507",
+        # Dated IDs hardcoded in FM_SERVICENAME_MAP; delisted, so they cannot resolve.
+        "anthropic.claude-3-5-haiku-20241022-v1",
+        "anthropic.claude-3-5-sonnet-20240620-v1",
+        "anthropic.claude-3-5-sonnet-20241022-v2",
+        "anthropic.claude-3-7-sonnet-20250219-v1",
+        "anthropic.claude-3-opus-20240229-v1",
+        "anthropic.claude-opus-4-20250514-v1",
+        # Not confirmed reachable: the real ID may differ, which would price these as None.
+        # These are live models rather than retirements, tracked as a separate known gap.
+        "amazon.nova-2-omni-v1",
+        "amazon.nova-2-pro-v1",
+        "anthropic.claude-mythos-5-v1",
+        "deepseek.v3.1",
+        "google.gemma-4-26b-a4b",
+        "google.gemma-4-31b",
+        "google.gemma-4-e2b",
+        "moonshotai.kimi-k2-thinking",
+        "nvidia.nemotron-nano-12b-v2-vl",
+        "qwen.qwen3-coder-480b-a35b-instruct",
+        "xai.grok-4.3",
+        "zai.glm5",
+    }
+)
+
+
 def build_id_resolution_map(
     simplified_ids: set[str],
     real_model_ids: list[str],
@@ -344,8 +396,16 @@ def build_id_resolution_map(
 
         unresolved.append(sid)
 
+    unexpected = sorted(set(unresolved) - KNOWN_UNRESOLVED_IDS)
+    if unexpected:
+        _die(
+            f"Could not resolve to real Bedrock model IDs: {unexpected}. A model that retires drops "
+            "out of list_foundation_models, so its simplified key stops resolving and would be "
+            "written out as an entry no caller can look up. Point FM_SERVICENAME_MAP at the real "
+            "dated model ID, then record the key in KNOWN_UNRESOLVED_IDS."
+        )
     if unresolved:
-        _warn(f"Could not resolve to real Bedrock model IDs: {sorted(unresolved)}")
+        _info(f"Unresolved but known ({len(unresolved)}): {sorted(unresolved)}")
     if mapping:
         _info(f"Resolved {len(mapping)} simplified IDs to real Bedrock model IDs:")
         for old, new in sorted(mapping.items()):
@@ -673,7 +733,11 @@ def _parse_fm_dimension(usagetype: str) -> tuple[str, bool] | None:
     skip_patterns = [
         "ProvisionedThroughput",
         "Reserved",
+        # Both spellings are required: legacy PascalCase is "_Batch", the snake_case
+        # form used from Claude Opus 5 onward is "_batch". Missing the lowercase one
+        # lets a batch rate overwrite the standard rate under the same dimension key.
         "Batch",
+        "_batch",
         "LatencyOptimized",
         "ModelStorage",
         "Customization",

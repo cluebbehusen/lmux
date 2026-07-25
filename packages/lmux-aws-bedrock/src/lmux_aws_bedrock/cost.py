@@ -5535,6 +5535,30 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "google.gemma-4-26b-a4b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.156),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "google.gemma-4-31b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.168),
+                    output_cost_per_token=per_million_tokens(0.48),
+                ),
+            ],
+        ),
+        "google.gemma-4-e2b": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.048),
+                    output_cost_per_token=per_million_tokens(0.096),
+                ),
+            ],
+        ),
         "nvidia.nemotron-nano-12b-v2": ModelPricing(
             tiers=[
                 PricingTier(
@@ -5584,6 +5608,24 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "openai.gpt-5.6-luna": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.32),
+                    output_cost_per_token=per_million_tokens(7.92),
+                    cache_read_cost_per_token=per_million_tokens(0.132),
+                ),
+            ],
+        ),
+        "openai.gpt-5.6-terra": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.3),
+                    output_cost_per_token=per_million_tokens(19.8),
+                    cache_read_cost_per_token=per_million_tokens(0.33),
+                ),
+            ],
+        ),
         "openai.gpt-oss-120b-1": ModelPricing(
             tiers=[
                 PricingTier(
@@ -5597,6 +5639,15 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                 PricingTier(
                     input_cost_per_token=per_million_tokens(0.084),
                     output_cost_per_token=per_million_tokens(0.36),
+                ),
+            ],
+        ),
+        "xai.grok-4.3": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(1.5),
+                    output_cost_per_token=per_million_tokens(3.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
                 ),
             ],
         ),

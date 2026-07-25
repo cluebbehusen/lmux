@@ -176,3 +176,36 @@ class TestCalculateGoogleCost:
         cost = calculate_google_cost("gemini-3.1-flash-lite", usage)
         assert cost is not None
         assert cost.cache_read_cost == pytest.approx(500 * 0.025 / 1_000_000)
+
+    @pytest.mark.parametrize(
+        "model",
+        ["gemini-3.5-flash-lite", "gemini-3.5-flash-lite-preview-06-2026", "GEMINI-3.5-Flash-Lite"],
+    )
+    def test_gemini_3_5_flash_lite_does_not_fall_through_to_flash(self, model: str) -> None:
+        """Flash-Lite must not prefix-match gemini-3.5-flash, which bills 5x its input rate."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_tokens=1_000_000)
+        cost = calculate_google_cost(model, usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(0.0)  # every input token is a cache read
+        assert cost.output_cost == pytest.approx(2.50)
+        assert cost.cache_read_cost == pytest.approx(0.03)
+
+    def test_gemini_3_6_flash(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_tokens=100_000)
+        cost = calculate_google_cost("gemini-3.6-flash", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx((1_000_000 - 100_000) * 1.50 / 1_000_000)
+        assert cost.output_cost == pytest.approx(7.50)
+        assert cost.cache_read_cost == pytest.approx(100_000 * 0.15 / 1_000_000)
+
+    @pytest.mark.parametrize(
+        ("model", "rate"),
+        [("gemini-2.0-flash", 0.0375), ("gemini-2.0-flash-lite", 0.01875)],
+    )
+    def test_gemini_2_0_cache_reads_are_billed(self, model: str, rate: float) -> None:
+        """An unset cache-read rate would bill these tokens at zero rather than the published rate."""
+        usage = Usage(input_tokens=100_000, output_tokens=0, cache_read_tokens=100_000)
+        cost = calculate_google_cost(model, usage)
+        assert cost is not None
+        assert cost.cache_read_cost == pytest.approx(100_000 * rate / 1_000_000)
+        assert cost.total_cost > 0.0

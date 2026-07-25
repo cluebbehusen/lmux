@@ -73,22 +73,29 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # --- OpenAI: GPT-5.6 family (sol/terra/luna) ---
-    # Azure had not published gpt-5.6 retail meters at the time of writing (GA on Azure but
-    # unpriced), so these mirror OpenAI's Global Standard rates, which Azure AOAI meters match
-    # for every other GPT-5.x model. Cache-write is intentionally omitted: Azure does not meter
-    # cache writes for any AOAI model (unlike OpenAI, which bills gpt-5.6+ cache writes). Replace
-    # with the -glbl meters once Azure publishes them. The bare "gpt-5.6" alias routes to Sol.
+    # Rates come from the Azure "5.6 {sol,terra,luna} {ShortCo,LongCo} ... Std Gl 1M Tokens"
+    # meters. gpt-5.6 is the only AOAI family Azure meters cache writes for ("Cd Wr"), at 1.25x
+    # the input rate; every other family exposes cached input only. Azure labels the second tier
+    # LongCo without publishing the boundary, so the 272K threshold comes from OpenAI's rule.
+    # The bare "gpt-5.6" alias routes to Sol.
+    #
+    # Azure bills cache writes but does not report them: the usage object carries only
+    # cached_tokens, a read counter. So the cache-write rate below applies only when a caller
+    # passes cache_creation_tokens to calculate_azure_foundry_cost directly. In a cost derived
+    # from an Azure response those tokens stay inside input_tokens and bill at 1.0x, not 1.25x.
     "gpt-5.6": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(5.00),
                 output_cost_per_token=per_million_tokens(30.00),
                 cache_read_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(10.00),
                 output_cost_per_token=per_million_tokens(45.00),
                 cache_read_cost_per_token=per_million_tokens(1.00),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
                 min_input_tokens=272_000,
             ),
         ],
@@ -99,11 +106,13 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(5.00),
                 output_cost_per_token=per_million_tokens(30.00),
                 cache_read_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(10.00),
                 output_cost_per_token=per_million_tokens(45.00),
                 cache_read_cost_per_token=per_million_tokens(1.00),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
                 min_input_tokens=272_000,
             ),
         ],
@@ -114,11 +123,13 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(2.50),
                 output_cost_per_token=per_million_tokens(15.00),
                 cache_read_cost_per_token=per_million_tokens(0.25),
+                cache_creation_cost_per_token=per_million_tokens(3.125),
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(5.00),
                 output_cost_per_token=per_million_tokens(22.50),
                 cache_read_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token=per_million_tokens(6.25),
                 min_input_tokens=272_000,
             ),
         ],
@@ -129,11 +140,13 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(1.00),
                 output_cost_per_token=per_million_tokens(6.00),
                 cache_read_cost_per_token=per_million_tokens(0.10),
+                cache_creation_cost_per_token=per_million_tokens(1.25),
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(2.00),
                 output_cost_per_token=per_million_tokens(9.00),
                 cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
                 min_input_tokens=272_000,
             ),
         ],
@@ -565,12 +578,21 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # Azure publishes the long-context band as "4.3 ... Glbl L" meters without stating the
+    # boundary; xAI documents it as 200K prompt tokens, where the rate exactly doubles.
     "grok-4.3": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(1.25),
                 output_cost_per_token=per_million_tokens(2.50),
-            )
+                cache_read_cost_per_token=per_million_tokens(0.20),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.50),
+                output_cost_per_token=per_million_tokens(5.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                min_input_tokens=200_000,
+            ),
         ],
     ),
     "grok-4-fast": ModelPricing(
@@ -625,6 +647,10 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # Scout is a partner/community (Marketplace) model, not sold by Azure, so it has no Foundry
+    # Models meter and does not appear on the Llama pricing page. Its rate comes from the retail
+    # catalog under serviceName='Azure Machine Learning', productName='Managed Model Hosting
+    # Service', meters "Llama-4-Scout-17B-16E-In/Out Tokens".
     "llama-4-scout": ModelPricing(
         tiers=[
             PricingTier(
@@ -711,10 +737,9 @@ _PRICING: dict[str, ModelPricing] = {
     ),
     # --- MoonshotAI Kimi. Runtime `model` ids per the Azure model catalog are Kimi-K2.5 /
     # Kimi-K2.6 / Kimi-K2.7-Code (the "FW-"/"FW Kimi" form is only the Fireworks billing meter,
-    # not the deployable id). Azure offers these only as Data Zone deployments; the base rates below
-    # are the DZ meter / 1.1, keeping the base-is-global convention used by every other model. Pass
-    # deployment_type="data_zone" to bill the exact DZ rate — the default, unqualified call
-    # deliberately under-reports ~9% (there is no global tier to fall back to). ---
+    # not the deployable id). The rates below are the Azure "K2.x ... glbl" meters, matching the
+    # base-is-global convention used by every other model. Note that Kimi-K2-Thinking still has a
+    # live retail meter but was retired 2026-03-29, so it is deliberately absent. ---
     "Kimi-K2.5": ModelPricing(
         tiers=[
             PricingTier(
