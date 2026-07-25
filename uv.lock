@@ -675,7 +675,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.14.0"
+version = "0.14.1"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "httpx" },
@@ -703,7 +703,7 @@ provides-extras = ["vertex", "bedrock"]
 
 [[package]]
 name = "lmux-aws-bedrock"
-version = "0.12.0"
+version = "0.12.1"
 source = { editable = "packages/lmux-aws-bedrock" }
 dependencies = [
     { name = "boto3" },
@@ -729,7 +729,7 @@ provides-extras = ["async"]
 
 [[package]]
 name = "lmux-azure-foundry"
-version = "0.9.0"
+version = "0.9.1"
 source = { editable = "packages/lmux-azure-foundry" }
 dependencies = [
     { name = "httpx" },
@@ -751,7 +751,7 @@ provides-extras = ["identity"]
 
 [[package]]
 name = "lmux-bedrock-shared"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "packages/lmux-bedrock-shared" }
 dependencies = [
     { name = "boto3" },
@@ -777,7 +777,7 @@ requires-dist = [{ name = "lmux-google", editable = "packages/lmux-google" }]
 
 [[package]]
 name = "lmux-google"
-version = "0.10.0"
+version = "0.10.1"
 source = { editable = "packages/lmux-google" }
 dependencies = [
     { name = "google-auth" },
