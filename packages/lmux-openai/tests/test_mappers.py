@@ -263,6 +263,12 @@ class TestSupportsExplicitPromptCache:
     def test_older_model_not_supported(self) -> None:
         assert supports_explicit_prompt_cache("gpt-5.5") is False
 
+    def test_later_generation_supported(self) -> None:
+        assert supports_explicit_prompt_cache("gpt-6") is True
+
+    def test_non_gpt_model_not_supported(self) -> None:
+        assert supports_explicit_prompt_cache("o4-mini") is False
+
 
 class TestHasCacheBreakpoint:
     def test_true_when_a_block_carries_a_breakpoint(self) -> None:
@@ -366,6 +372,66 @@ class TestMapResponseInput:
         assert map_response_input(items) == [
             {"role": "user", "content": "call the tool"},
             {"type": "function_call_output", "call_id": "call_1", "output": '{"result": 42}'},
+        ]
+
+    def test_explicit_cache_maps_text_and_image_parts(self) -> None:
+        items = [
+            ResponseInputMessage(
+                role="user",
+                content=[
+                    TextContent(text="Stable"),
+                    ImageContent(url="https://example.com/image.png", detail="high"),
+                    CachePointContent(),
+                    TextContent(text="Variable"),
+                ],
+            )
+        ]
+        assert map_response_input(items, explicit_cache=True) == [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Stable"},
+                    {
+                        "type": "input_image",
+                        "image_url": "https://example.com/image.png",
+                        "detail": "high",
+                        "prompt_cache_breakpoint": {"mode": "explicit"},
+                    },
+                    {"type": "input_text", "text": "Variable"},
+                ],
+            }
+        ]
+
+    def test_explicit_leading_cache_marks_previous_message(self) -> None:
+        items = [
+            ResponseInputMessage(role="developer", content="Stable instructions"),
+            ResponseInputMessage(role="user", content=[CachePointContent(), TextContent(text="Question")]),
+        ]
+        assert map_response_input(items, explicit_cache=True) == [
+            {
+                "role": "developer",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "Stable instructions",
+                        "prompt_cache_breakpoint": {"mode": "explicit"},
+                    }
+                ],
+            },
+            {"role": "user", "content": [{"type": "input_text", "text": "Question"}]},
+        ]
+
+    def test_cache_points_dropped_without_explicit_support(self) -> None:
+        items = [ResponseInputMessage(role="user", content=[TextContent(text="Stable"), CachePointContent()])]
+        assert map_response_input(items) == [{"role": "user", "content": [{"type": "input_text", "text": "Stable"}]}]
+
+    def test_marker_only_message_after_function_item_is_dropped(self) -> None:
+        items = [
+            ResponseInputFunctionCallOutput(call_id="call_1", output="result"),
+            ResponseInputMessage(role="user", content=[CachePointContent()]),
+        ]
+        assert map_response_input(items, explicit_cache=True) == [
+            {"type": "function_call_output", "call_id": "call_1", "output": "result"}
         ]
 
 

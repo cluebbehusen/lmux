@@ -1,0 +1,134 @@
+{
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request": {
+    "model": "gpt-5.6-luna",
+    "input": [
+      {
+        "role": "developer",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "5f6a6352a50b494fb742387b2b898100\n\nSentence 0: the quick brown fox jumps over the lazy dog. Sentence 1: the quick brown fox jumps over the lazy dog. Sentence 2: the quick brown fox jumps over the lazy dog. Sentence 3: the quick brown fox jumps over the lazy dog. Sentence 4: the quick brown fox jumps over the lazy dog. Sentence 5: the quick brown fox jumps over the lazy dog. Sentence 6: the quick brown fox jumps over the lazy dog. Sentence 7: the quick brown fox jumps over the lazy dog. Sentence 8: the quick brown fox jumps over the lazy dog. Sentence 9: the quick brown fox jumps over the lazy dog. Sentence 10: the quick brown fox jumps over the lazy dog. Sentence 11: the quick brown fox jumps over the lazy dog. Sentence 12: the quick brown fox jumps over the lazy dog. Sentence 13: the quick brown fox jumps over the lazy dog. Sentence 14: the quick brown fox jumps over the lazy dog. Sentence 15: the quick brown fox jumps over the lazy dog. Sentence 16: the quick brown fox jumps over the lazy dog. Sentence 17: the quick brown fox jumps over the lazy dog. Sentence 18: the quick brown fox jumps over the lazy dog. Sentence 19: the quick brown fox jumps over the lazy dog. Sentence 20: the quick brown fox jumps over the lazy dog. Sentence 21: the quick brown fox jumps over the lazy dog. Sentence 22: the quick brown fox jumps over the lazy dog. Sentence 23: the quick brown fox jumps over the lazy dog. Sentence 24: the quick brown fox jumps over the lazy dog. Sentence 25: the quick brown fox jumps over the lazy dog. Sentence 26: the quick brown fox jumps over the lazy dog. Sentence 27: the quick brown fox jumps over the lazy dog. Sentence 28: the quick brown fox jumps over the lazy dog. Sentence 29: the quick brown fox jumps over the lazy dog. Sentence 30: the quick brown fox jumps over the lazy dog. Sentence 31: the quick brown fox jumps over the lazy dog. Sentence 32: the quick brown fox jumps over the lazy dog. Sentence 33: the quick brown fox jumps over the lazy dog. Sentence 34: the quick brown fox jumps over the lazy dog. Sentence 35: the quick brown fox jumps over the lazy dog. Sentence 36: the quick brown fox jumps over the lazy dog. Sentence 37: the quick brown fox jumps over the lazy dog. Sentence 38: the quick brown fox jumps over the lazy dog. Sentence 39: the quick brown fox jumps over the lazy dog. Sentence 40: the quick brown fox jumps over the lazy dog. Sentence 41: the quick brown fox jumps over the lazy dog. Sentence 42: the quick brown fox jumps over the lazy dog. Sentence 43: the quick brown fox jumps over the lazy dog. Sentence 44: the quick brown fox jumps over the lazy dog. Sentence 45: the quick brown fox jumps over the lazy dog. Sentence 46: the quick brown fox jumps over the lazy dog. Sentence 47: the quick brown fox jumps over the lazy dog. Sentence 48: the quick brown fox jumps over the lazy dog. Sentence 49: the quick brown fox jumps over the lazy dog. Sentence 50: the quick brown fox jumps over the lazy dog. Sentence 51: the quick brown fox jumps over the lazy dog. Sentence 52: the quick brown fox jumps over the lazy dog. Sentence 53: the quick brown fox jumps over the lazy dog. Sentence 54: the quick brown fox jumps over the lazy dog. Sentence 55: the quick brown fox jumps over the lazy dog. Sentence 56: the quick brown fox jumps over the lazy dog. Sentence 57: the quick brown fox jumps over the lazy dog. Sentence 58: the quick brown fox jumps over the lazy dog. Sentence 59: the quick brown fox jumps over the lazy dog. Sentence 60: the quick brown fox jumps over the lazy dog. Sentence 61: the quick brown fox jumps over the lazy dog. Sentence 62: the quick brown fox jumps over the lazy dog. Sentence 63: the quick brown fox jumps over the lazy dog. Sentence 64: the quick brown fox jumps over the lazy dog. Sentence 65: the quick brown fox jumps over the lazy dog. Sentence 66: the quick brown fox jumps over the lazy dog. Sentence 67: the quick brown fox jumps over the lazy dog. Sentence 68: the quick brown fox jumps over the lazy dog. Sentence 69: the quick brown fox jumps over the lazy dog. Sentence 70: the quick brown fox jumps over the lazy dog. Sentence 71: the quick brown fox jumps over the lazy dog. Sentence 72: the quick brown fox jumps over the lazy dog. Sentence 73: the quick brown fox jumps over the lazy dog. Sentence 74: the quick brown fox jumps over the lazy dog. Sentence 75: the quick brown fox jumps over the lazy dog. Sentence 76: the quick brown fox jumps over the lazy dog. Sentence 77: the quick brown fox jumps over the lazy dog. Sentence 78: the quick brown fox jumps over the lazy dog. Sentence 79: the quick brown fox jumps over the lazy dog. Sentence 80: the quick brown fox jumps over the lazy dog. Sentence 81: the quick brown fox jumps over the lazy dog. Sentence 82: the quick brown fox jumps over the lazy dog. Sentence 83: the quick brown fox jumps over the lazy dog. Sentence 84: the quick brown fox jumps over the lazy dog. Sentence 85: the quick brown fox jumps over the lazy dog. Sentence 86: the quick brown fox jumps over the lazy dog. Sentence 87: the quick brown fox jumps over the lazy dog. Sentence 88: the quick brown fox jumps over the lazy dog. Sentence 89: the quick brown fox jumps over the lazy dog. Sentence 90: the quick brown fox jumps over the lazy dog. Sentence 91: the quick brown fox jumps over the lazy dog. Sentence 92: the quick brown fox jumps over the lazy dog. Sentence 93: the quick brown fox jumps over the lazy dog. Sentence 94: the quick brown fox jumps over the lazy dog. Sentence 95: the quick brown fox jumps over the lazy dog. Sentence 96: the quick brown fox jumps over the lazy dog. Sentence 97: the quick brown fox jumps over the lazy dog. Sentence 98: the quick brown fox jumps over the lazy dog. Sentence 99: the quick brown fox jumps over the lazy dog. Sentence 100: the quick brown fox jumps over the lazy dog. Sentence 101: the quick brown fox jumps over the lazy dog. Sentence 102: the quick brown fox jumps over the lazy dog. Sentence 103: the quick brown fox jumps over the lazy dog. Sentence 104: the quick brown fox jumps over the lazy dog. Sentence 105: the quick brown fox jumps over the lazy dog. Sentence 106: the quick brown fox jumps over the lazy dog. Sentence 107: the quick brown fox jumps over the lazy dog. Sentence 108: the quick brown fox jumps over the lazy dog. Sentence 109: the quick brown fox jumps over the lazy dog. Sentence 110: the quick brown fox jumps over the lazy dog. Sentence 111: the quick brown fox jumps over the lazy dog. Sentence 112: the quick brown fox jumps over the lazy dog. Sentence 113: the quick brown fox jumps over the lazy dog. Sentence 114: the quick brown fox jumps over the lazy dog. Sentence 115: the quick brown fox jumps over the lazy dog. Sentence 116: the quick brown fox jumps over the lazy dog. Sentence 117: the quick brown fox jumps over the lazy dog. Sentence 118: the quick brown fox jumps over the lazy dog. Sentence 119: the quick brown fox jumps over the lazy dog. Sentence 120: the quick brown fox jumps over the lazy dog. Sentence 121: the quick brown fox jumps over the lazy dog. Sentence 122: the quick brown fox jumps over the lazy dog. Sentence 123: the quick brown fox jumps over the lazy dog. Sentence 124: the quick brown fox jumps over the lazy dog. Sentence 125: the quick brown fox jumps over the lazy dog. Sentence 126: the quick brown fox jumps over the lazy dog. Sentence 127: the quick brown fox jumps over the lazy dog. Sentence 128: the quick brown fox jumps over the lazy dog. Sentence 129: the quick brown fox jumps over the lazy dog. Sentence 130: the quick brown fox jumps over the lazy dog. Sentence 131: the quick brown fox jumps over the lazy dog. Sentence 132: the quick brown fox jumps over the lazy dog. Sentence 133: the quick brown fox jumps over the lazy dog. Sentence 134: the quick brown fox jumps over the lazy dog. Sentence 135: the quick brown fox jumps over the lazy dog. Sentence 136: the quick brown fox jumps over the lazy dog. Sentence 137: the quick brown fox jumps over the lazy dog. Sentence 138: the quick brown fox jumps over the lazy dog. Sentence 139: the quick brown fox jumps over the lazy dog. Sentence 140: the quick brown fox jumps over the lazy dog. Sentence 141: the quick brown fox jumps over the lazy dog. Sentence 142: the quick brown fox jumps over the lazy dog. Sentence 143: the quick brown fox jumps over the lazy dog. Sentence 144: the quick brown fox jumps over the lazy dog. Sentence 145: the quick brown fox jumps over the lazy dog. Sentence 146: the quick brown fox jumps over the lazy dog. Sentence 147: the quick brown fox jumps over the lazy dog. Sentence 148: the quick brown fox jumps over the lazy dog. Sentence 149: the quick brown fox jumps over the lazy dog. Sentence 150: the quick brown fox jumps over the lazy dog. Sentence 151: the quick brown fox jumps over the lazy dog. Sentence 152: the quick brown fox jumps over the lazy dog. Sentence 153: the quick brown fox jumps over the lazy dog. Sentence 154: the quick brown fox jumps over the lazy dog. Sentence 155: the quick brown fox jumps over the lazy dog. Sentence 156: the quick brown fox jumps over the lazy dog. Sentence 157: the quick brown fox jumps over the lazy dog. Sentence 158: the quick brown fox jumps over the lazy dog. Sentence 159: the quick brown fox jumps over the lazy dog. Sentence 160: the quick brown fox jumps over the lazy dog. Sentence 161: the quick brown fox jumps over the lazy dog. Sentence 162: the quick brown fox jumps over the lazy dog. Sentence 163: the quick brown fox jumps over the lazy dog. Sentence 164: the quick brown fox jumps over the lazy dog. Sentence 165: the quick brown fox jumps over the lazy dog. Sentence 166: the quick brown fox jumps over the lazy dog. Sentence 167: the quick brown fox jumps over the lazy dog. Sentence 168: the quick brown fox jumps over the lazy dog. Sentence 169: the quick brown fox jumps over the lazy dog. Sentence 170: the quick brown fox jumps over the lazy dog. Sentence 171: the quick brown fox jumps over the lazy dog. Sentence 172: the quick brown fox jumps over the lazy dog. Sentence 173: the quick brown fox jumps over the lazy dog. Sentence 174: the quick brown fox jumps over the lazy dog. Sentence 175: the quick brown fox jumps over the lazy dog. Sentence 176: the quick brown fox jumps over the lazy dog. Sentence 177: the quick brown fox jumps over the lazy dog. Sentence 178: the quick brown fox jumps over the lazy dog. Sentence 179: the quick brown fox jumps over the lazy dog.\n\nReply with exactly the word: pong",
+            "prompt_cache_breakpoint": {
+              "mode": "explicit"
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Request variant A."
+      }
+    ],
+    "prompt_cache_options": {
+      "mode": "explicit"
+    },
+    "prompt_cache_key": "c3e479e2d2104c728c9a05beca20a07e",
+    "stream": false
+  },
+  "response": {
+    "id": "resp_0b679e1933758490006a6cff28f61c81959f6ba62be375dbc3",
+    "object": "response",
+    "created_at": 1785528104,
+    "status": "completed",
+    "background": false,
+    "billing": {
+      "payer": "developer"
+    },
+    "completed_at": 1785528106,
+    "error": null,
+    "frequency_penalty": 0.0,
+    "incomplete_details": null,
+    "instructions": null,
+    "max_output_tokens": null,
+    "max_tool_calls": null,
+    "model": "gpt-5.6-luna",
+    "moderation": null,
+    "output": [
+      {
+        "id": "rs_0b679e1933758490006a6cff29b7088195a7a9b95492d18a98",
+        "type": "reasoning",
+        "content": [],
+        "encrypted_content": "gAAAAABqbP8qtywiWjZqdzxmz1UG7y-dr4Xt721aY7E3AXRIV2SJC-QZAPFTcevdcpEgQrqOmBbiiVMpPOTA476XVheyl8NqENg8ScIIM4NFGSUa8Iob2dUyLwv13ygOqmF3Uvz0E9dXed4dXomP3CS7C3OspCflmnIYs3r9KFSlCmCvMJBdLa1H2N9jOuK8OgoUTM_ybHZzWRZMhiBpvZa-DzRQ6Ju3bpMutt5ixyR0wYowBzf3Q3U6Th07EpmlsfoAh4a13bDChPoR-J-7A4RJBislCR5AODcI4PXAyUA8Inka-RhalELQbWxi9b1KwLVPDx2C9GrVRJvlkLUlMbSeJIyomQ07oIILrByGT2PEJUNKW0rMiFSvYBiVPbP4aw3VrnKsFcGwlQKsyo2mjHffT05R3AdHdNcDb8XZtillzFYtQHFzwqu7nGvyR9XAaDvhHlPwxXWRCcWPb3hL9NeynmO2Ah33SQYvy8pPbRmq4z4h9rMJK-US1yinbZMNwYkDwBKVOyywvomJd1qJ1TmxdWNOCPm6Z11GYN3ejR7clOQg_X8lyBESDZSVedAvq7hgZv5JHDrFjQPxOoDXWrZ_pvR77Z-bQQqx6dTfXll0oblnLqIqzeC5coXeOiqO34--MlGJ8x2r_r-n65I24pWGrkf_qe70YUPPYe_N9_vqTYBoyxRxmXgaZlST2zS9kTT9jJyzvqox1v4Sh7XNjT2Ez52qL0S7JZfaAfPOr3PqKQWken114jfJnzMSUioabBn2Z_07AOIthIkDxNc9skZgErzol5xbHNxvJlkPS9ZOCDh3GXXTVrofkpO8OO4oIoMSa7x03BBeF2mI1Wwhlz5p73VIrK6dQToKFnlKWexrCI6sFXApVIfKgAOI-VjNWZ8sehF6UNtbVMvt8PL-c7SxTRUyk8V7J6V8j19WLc4wdz0mVY4FcucgRNT3DQQ7qtqyUc5n68V2Uy22zh_0FNe8oQ1_SKuerw==",
+        "summary": []
+      },
+      {
+        "id": "msg_0b679e1933758490006a6cff29ecf48195b702f60b17ebb56b",
+        "type": "message",
+        "status": "completed",
+        "content": [
+          {
+            "type": "output_text",
+            "annotations": [],
+            "logprobs": [],
+            "text": "pong"
+          }
+        ],
+        "phase": "final_answer",
+        "role": "assistant"
+      }
+    ],
+    "parallel_tool_calls": true,
+    "presence_penalty": 0.0,
+    "previous_response_id": null,
+    "prompt_cache_key": "c3e479e2d2104c728c9a05beca20a07e",
+    "prompt_cache_options": {
+      "mode": "explicit",
+      "ttl": "30m"
+    },
+    "prompt_cache_retention": "24h",
+    "reasoning": {
+      "context": "all_turns",
+      "effort": "medium",
+      "mode": "standard",
+      "summary": null
+    },
+    "safety_identifier": null,
+    "service_tier": "default",
+    "store": true,
+    "temperature": 1.0,
+    "text": {
+      "format": {
+        "type": "text"
+      },
+      "verbosity": "medium"
+    },
+    "tool_choice": "auto",
+    "tool_usage": {
+      "image_gen": {
+        "input_tokens": 0,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "output_tokens": 0,
+        "output_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "total_tokens": 0
+      },
+      "web_search": {
+        "num_requests": 0
+      }
+    },
+    "tools": [],
+    "top_logprobs": 0,
+    "top_p": 0.98,
+    "truncation": "disabled",
+    "usage": {
+      "input_tokens": 2560,
+      "input_tokens_details": {
+        "cache_write_tokens": 2549,
+        "cached_tokens": 0
+      },
+      "output_tokens": 19,
+      "output_tokens_details": {
+        "reasoning_tokens": 12
+      },
+      "total_tokens": 2579
+    },
+    "user": null,
+    "metadata": {}
+  }
+}

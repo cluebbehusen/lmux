@@ -1,0 +1,86 @@
+{
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is the weather in Denver? Use the tool."
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "get_weather",
+            "description": "Get the current weather for a city.",
+            "parametersJsonSchema": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "toolConfig": {
+      "functionCallingConfig": {
+        "mode": "ANY",
+        "allowedFunctionNames": [
+          "get_weather"
+        ]
+      }
+    },
+    "generationConfig": {
+      "maxOutputTokens": 2048
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "functionCall": {
+                "name": "get_weather",
+                "args": {
+                  "city": "Denver"
+                },
+                "id": "rc4zzh3g"
+              },
+              "thoughtSignature": "Eo0DCooDARFNMg8zpzCnHUfpNV+Y7AusDtOTsqSBAh7gdru76L68awUe1PHNngveo3DG8iuSQaGsB1G+zYPOX0AslLDizlFxdXoEW7kKZ9Y6kC7yYb5m8YOON1+0xjlgcdynpvQ8SVTE5feAkgoeVH3pb9wlH1PDMuVUp5KaVNGMT1cAdJxmfC++zNI2xSHdpvDNDMqQFHtt4u5fstnRznwX4xDTx9XgzOA3S2mvMSDt/tXYLMz5AAfWrQWWZqhVPceUntIhujjZMW7XV4Rh7dXdpUq2CFMjsKIKhnL1tKKgRoG9iWuYkGCnQFajNSSOnEL4nvoOA5q2jQ5FJRGo1LpUE7oz+D/aH5D4/88CcnrTiknhaB8cYvH4w1xuFISLsnKYBnYoyIcx7AoPRyBpl+XC/cZIKvydtlIV2njNChJkaEIIKi0iSYGHfVnLNHB+NLH9R5+w/W+9ocsXhgmMbs+qqvA32kpukpPw2Qsd1Xluu84NoWgDH8PoJT+le4Q/IOUrgJwZG/oOE118ETXOvw=="
+            }
+          ],
+          "role": "model"
+        },
+        "finishReason": "STOP",
+        "index": 0,
+        "finishMessage": "Model generated function call(s)."
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 57,
+      "candidatesTokenCount": 16,
+      "totalTokenCount": 158,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 57
+        }
+      ],
+      "thoughtsTokenCount": 85,
+      "serviceTier": "standard"
+    },
+    "modelVersion": "gemini-3-flash-preview",
+    "responseId": "w4NsavXFG5Op1MkPhfeb2QY"
+  }
+}

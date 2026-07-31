@@ -18,10 +18,10 @@ _CASSETTE = Path(__file__).parent.parent / "cassettes" / "openai" / "reasoning.j
 
 # gpt-5.6-terra published rates ($/token).
 _RATES = {
-    "input_rate": 2.50 / 1_000_000,
-    "output_rate": 15.00 / 1_000_000,
-    "cache_read_rate": 0.25 / 1_000_000,
-    "cache_write_rate": 3.125 / 1_000_000,
+    "input_rate": 2.00 / 1_000_000,
+    "output_rate": 12.00 / 1_000_000,
+    "cache_read_rate": 0.20 / 1_000_000,
+    "cache_write_rate": 2.50 / 1_000_000,
 }
 
 

@@ -11,15 +11,30 @@ You don't need to install this directly; provider packages (e.g., `lmux-openai`)
 - `SystemMessage`: system/instruction message
 - `DeveloperMessage`: developer message (for o-series models)
 - `UserMessage`: user message, supports text and multimodal content (`TextContent`, `ImageContent`, `CachePointContent`)
-- `AssistantMessage`: assistant message with optional tool calls
+- `AssistantMessage`: assistant message with optional tool calls and provider continuation state
 - `ToolMessage`: tool result
 
 ### Responses
 
-- `ChatResponse`: chat completion result with `content`, `usage`, `cost`, `model`, `provider`, `finish_reason`, and optional `provider_metadata` (a provider-specific `BaseProviderMetadata` subclass)
-- `ChatChunk`: streaming chunk with `delta`, `tool_call_deltas`, `usage`, `cost`, plus the serving `model`/`provider` stamped on the terminal chunk and optional `provider_metadata`
+- `ChatResponse`: chat completion result with `content`, `usage`, `cost`, `model`, `provider`, `finish_reason`, optional `provider_metadata`, and optional provider continuation state
+- `ChatChunk`: streaming chunk with `delta`, `tool_call_deltas`, `usage`, `cost`, plus the serving `model`/`provider` stamped on the terminal chunk and optional metadata and continuation state
 - `EmbeddingResponse`: embedding result with `embeddings`, `usage`, `cost`
 - `ResponseResponse`: Responses API result with `output_text`, `usage`, `cost`
+- `ResponseInputMessage`: Responses API message input, supporting text and multimodal content (`TextContent`, `ImageContent`, `CachePointContent`)
+
+### Provider continuations
+
+Some provider protocols return opaque, signed state that must be sent back unchanged to continue a tool-use turn. Providers that support this attach a `ProviderContinuation` to the response and terminal stream chunk. Use `response.to_assistant_message()` to preserve it:
+
+```python
+response = provider.chat(model, messages, tools=tools)
+messages.append(response.to_assistant_message())
+messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call_id))
+```
+
+Each provider package owns its continuation namespace and payload. When an assistant message returns to the matching provider, that provider may treat the continuation as authoritative instead of rebuilding the turn from normalized content and tool calls. Other providers ignore it and use the normalized fields, so the message remains portable.
+
+Treat continuation data as opaque: preserve it unchanged or set it to `None`. It can include full reasoning text and signatures, may be large or sensitive, and is included by `model_dump()` and `model_dump_json()`.
 
 ### Cost
 
