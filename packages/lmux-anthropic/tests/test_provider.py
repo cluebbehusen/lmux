@@ -463,6 +463,20 @@ class TestChat:
         assert body["thinking"] == {"type": "enabled", "budget_tokens": "provider-defined"}
         assert body["max_tokens"] == 4096
 
+    def test_provider_params_thinking_preserves_explicit_max_tokens(
+        self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock)
+        sync_provider.chat(
+            "claude-sonnet-4-5",
+            [UserMessage(content="Hi")],
+            max_tokens=4096,
+            provider_params=AnthropicParams(thinking={"type": "enabled", "budget_tokens": 32768}),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["max_tokens"] == 4096
+        assert body["thinking"] == {"type": "enabled", "budget_tokens": 32768}
+
     def test_empty_provider_params(self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
         route = _ok(respx_mock)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=AnthropicParams())

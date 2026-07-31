@@ -909,6 +909,7 @@ class TestModelThinkingMode:
             "claude-prod-4-5",
             "claude-4-5-prod",
             "claude-orchid-5",
+            "claude-fable-preview",
         ],
     )
     def test_unparseable_generations(self, model: str) -> None:

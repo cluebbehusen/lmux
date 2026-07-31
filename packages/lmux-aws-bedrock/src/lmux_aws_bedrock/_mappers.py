@@ -248,7 +248,7 @@ _GENERATION_FIRST_GEN_RE = re.compile(
     rf"claude-(\d{{1,2}})(?:-(\d{{1,2}}))?-{_MODEL_FAMILY}(?=$|[-:@.])",
     re.IGNORECASE,
 )
-_ADAPTIVE_PREVIEW_RE = re.compile(r"claude-(?:mythos|fable)-preview(?=$|[-:@.])", re.IGNORECASE)
+_ADAPTIVE_PREVIEW_RE = re.compile(r"claude-mythos-preview(?=$|[-:@.])", re.IGNORECASE)
 
 
 def model_thinking_mode(model: str) -> Literal["adaptive", "enabled"] | None:

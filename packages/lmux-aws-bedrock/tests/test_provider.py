@@ -487,6 +487,22 @@ class TestChat:
         }
         assert "inferenceConfig" not in body
 
+    def test_provider_params_thinking_preserves_explicit_max_tokens(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            max_tokens=1024,
+            provider_params=BedrockParams(
+                additional_model_request_fields={"thinking": {"type": "enabled", "budget_tokens": 99999}}
+            ),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["inferenceConfig"] == {"maxTokens": 1024}
+        assert body["additionalModelRequestFields"] == {"thinking": {"type": "enabled", "budget_tokens": 99999}}
+
     def test_reasoning_effort_does_not_mutate_provider_params(
         self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
