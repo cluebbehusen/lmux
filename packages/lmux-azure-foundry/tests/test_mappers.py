@@ -192,6 +192,34 @@ class TestMapResponseInput:
             {"type": "function_call", "call_id": "c1", "name": "f", "arguments": "{}"},
         ]
 
+    def test_structured_message_maps_and_drops_cache_points(self) -> None:
+        items = [
+            ResponseInputMessage(
+                role="user",
+                content=[
+                    TextContent(text="Describe this image"),
+                    CachePointContent(),
+                    ImageContent(url="https://example.com/image.png", detail="high"),
+                ],
+            )
+        ]
+        assert map_response_input(items) == [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Describe this image"},
+                    {"type": "input_image", "image_url": "https://example.com/image.png", "detail": "high"},
+                ],
+            }
+        ]
+
+    def test_cache_point_only_message_is_dropped(self) -> None:
+        items = [
+            ResponseInputMessage(role="developer", content="Instructions"),
+            ResponseInputMessage(role="user", content=[CachePointContent()]),
+        ]
+        assert map_response_input(items) == [{"role": "developer", "content": "Instructions"}]
+
 
 # MARK: map_chat_completion
 

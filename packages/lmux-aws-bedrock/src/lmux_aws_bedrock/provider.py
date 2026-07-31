@@ -15,7 +15,7 @@ this step.
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from datetime import date
 from typing import TYPE_CHECKING, Any, Literal, override
 from urllib.parse import quote
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from aiobotocore.session import AioSession
 
 from lmux.cost import ModelPricing, calculate_cost
-from lmux.exceptions import LmuxError
+from lmux.exceptions import InvalidRequestError, LmuxError
 from lmux.protocols import AuthProvider, CompletionProvider, EmbeddingProvider, PricingProvider
 from lmux.types import (
     ChatChunk,
@@ -55,7 +55,7 @@ from lmux_aws_bedrock._mappers import (
     map_stream_event,
     map_tool_choice,
     map_tools,
-    model_uses_adaptive_thinking,
+    model_thinking_mode,
 )
 from lmux_aws_bedrock._wire import (
     WireConverseResponse,
@@ -70,6 +70,9 @@ from lmux_bedrock_shared.auth import BedrockAuthContext, resolve_auth_context
 
 PROVIDER_NAME = PROVIDER
 _JSON_CONTENT_TYPE = "application/json"
+_DEFAULT_MAX_TOKENS = 4096
+_MIN_THINKING_BUDGET = 1024
+_THINKING_BUDGETS = {"low": 1024, "medium": 8192, "high": 32768}
 
 _CONVERSE = "converse"
 _CONVERSE_STREAM = "converse-stream"
@@ -77,6 +80,34 @@ _INVOKE = "invoke"
 
 _EXCEPTION_MESSAGE_TYPE = "exception"
 _ERROR_MESSAGE_TYPE = "error"
+
+
+def _enabled_thinking_budget(thinking: object) -> int | None:
+    if not isinstance(thinking, Mapping) or thinking.get("type") != "enabled":
+        return None
+    budget = thinking.get("budget_tokens")
+    return budget if type(budget) is int else None
+
+
+def _thinking_for_effort(
+    model: str,
+    reasoning_effort: Literal["low", "medium", "high"],
+    max_tokens: int,
+) -> tuple[dict[str, object], dict[str, str] | None]:
+    thinking_mode = model_thinking_mode(model)
+    if thinking_mode is None:
+        msg = (
+            f"Cannot map reasoning_effort for unrecognized Claude model {model!r}; "
+            "set provider_params.additional_model_request_fields['thinking'] explicitly"
+        )
+        raise InvalidRequestError(msg, provider=PROVIDER_NAME)
+    if thinking_mode == "adaptive":
+        return {"type": "adaptive", "display": "summarized"}, {"effort": reasoning_effort}
+    budget = min(_THINKING_BUDGETS[reasoning_effort], max_tokens - 1)
+    if budget < _MIN_THINKING_BUDGET:
+        msg = f"max_tokens must be greater than {_MIN_THINKING_BUDGET} when reasoning_effort is set"
+        raise InvalidRequestError(msg, provider=PROVIDER_NAME)
+    return {"type": "enabled", "budget_tokens": budget, "display": "summarized"}, None
 
 
 def _today() -> date:
@@ -516,17 +547,20 @@ class BedrockProvider(
         if reasoning_effort is not None:
             existing = {**kwargs.get("additionalModelRequestFields", {})}
             if "thinking" not in existing:
-                if model_uses_adaptive_thinking(model):
-                    existing["thinking"] = {"type": "adaptive", "display": "summarized"}
-                    existing["output_config"] = {**existing.get("output_config", {}), "effort": reasoning_effort}
-                else:
-                    budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
-                    existing["thinking"] = {
-                        "type": "enabled",
-                        "budget_tokens": budget,
-                        "display": "summarized",
-                    }
+                effective_max_tokens = max_tokens if max_tokens is not None else _DEFAULT_MAX_TOKENS
+                thinking, output_config = _thinking_for_effort(model, reasoning_effort, effective_max_tokens)
+                existing["thinking"] = thinking
+                if output_config is not None:
+                    existing["output_config"] = {**existing.get("output_config", {}), **output_config}
             kwargs["additionalModelRequestFields"] = existing
+
+        additional = kwargs.get("additionalModelRequestFields")
+        thinking = additional.get("thinking") if isinstance(additional, Mapping) else None
+        raw_budget = _enabled_thinking_budget(thinking)
+        if max_tokens is None and raw_budget is not None:
+            inference_config = {**kwargs.get("inferenceConfig", {})}
+            inference_config["maxTokens"] = max(_DEFAULT_MAX_TOKENS, raw_budget + 1)
+            kwargs["inferenceConfig"] = inference_config
 
         return kwargs
 

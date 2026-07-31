@@ -19,7 +19,7 @@ from urllib.parse import quote
 
 from lmux._http import aiter_sse, iter_sse
 from lmux.cost import ModelPricing, calculate_cost
-from lmux.exceptions import LmuxError, ProviderError
+from lmux.exceptions import InvalidRequestError, LmuxError, ProviderError
 from lmux.protocols import AuthProvider, CompletionProvider, PricingProvider
 from lmux.types import ChatChunk, ChatResponse, Cost, Message, ResponseFormat, Tool, ToolChoice, Usage
 from lmux_anthropic._exceptions import (
@@ -53,7 +53,7 @@ from lmux_anthropic._mappers import (
     map_response_format,
     map_tool_choice,
     map_tools,
-    model_uses_adaptive_thinking,
+    model_thinking_mode,
 )
 from lmux_anthropic._wire import (
     WireContentBlockDeltaEvent,
@@ -82,6 +82,8 @@ VERTEX_PROVIDER_NAME = "anthropic-vertex"
 FOUNDRY_PROVIDER_NAME = "anthropic-foundry"
 BEDROCK_PROVIDER_NAME = "anthropic-bedrock"
 DEFAULT_MAX_TOKENS = 4096
+_MIN_THINKING_BUDGET = 1024
+_THINKING_BUDGETS = {"low": 1024, "medium": 8192, "high": 32768}
 _MESSAGES_PATH = "v1/messages"
 _HTTP_ERROR = 400
 
@@ -92,6 +94,36 @@ _INVOKE_STREAM = "invoke-with-response-stream"
 _JSON_CONTENT_TYPE = "application/json"
 _EXCEPTION_MESSAGE_TYPE = "exception"
 _ERROR_MESSAGE_TYPE = "error"
+
+
+def _enabled_thinking_budget(thinking: object) -> int | None:
+    if not isinstance(thinking, Mapping) or thinking.get("type") != "enabled":
+        return None
+    budget = thinking.get("budget_tokens")
+    return budget if type(budget) is int else None
+
+
+def _thinking_for_effort(
+    model: str,
+    reasoning_effort: Literal["low", "medium", "high"],
+    max_tokens: int,
+    provider: str,
+) -> tuple[dict[str, object], dict[str, str] | None]:
+    thinking_mode = model_thinking_mode(model)
+    if thinking_mode is None:
+        msg = (
+            f"Cannot map reasoning_effort for unrecognized Claude model {model!r}; "
+            "set provider_params.thinking explicitly"
+        )
+        raise InvalidRequestError(msg, provider=provider)
+    if thinking_mode == "adaptive":
+        return {"type": "adaptive", "display": "summarized"}, {"effort": reasoning_effort}
+    budget = min(_THINKING_BUDGETS[reasoning_effort], max_tokens - 1)
+    if budget < _MIN_THINKING_BUDGET:
+        msg = f"max_tokens must be greater than {_MIN_THINKING_BUDGET} when reasoning_effort is set"
+        raise InvalidRequestError(msg, provider=provider)
+    return {"type": "enabled", "budget_tokens": budget, "display": "summarized"}, None
+
 
 # Vertex auth providers may return bare credentials, or credentials together
 # with the project ID they resolved (e.g. from ADC or a service account file).
@@ -445,10 +477,15 @@ class AnthropicProvider(
         stream: bool,
     ) -> dict[str, Any]:
         system, mapped_messages = map_messages(messages)
+        provider_thinking = provider_params.thinking if provider_params is not None else None
+        raw_budget = _enabled_thinking_budget(provider_thinking)
+        effective_max_tokens = max_tokens if max_tokens is not None else self._default_max_tokens
+        if max_tokens is None and raw_budget is not None:
+            effective_max_tokens = max(effective_max_tokens, raw_budget + 1)
         body: dict[str, Any] = {
             "model": model,
             "messages": mapped_messages,
-            "max_tokens": max_tokens if max_tokens is not None else self._default_max_tokens,
+            "max_tokens": effective_max_tokens,
             "stream": stream,
         }
         if system is not None:
@@ -470,15 +507,14 @@ class AnthropicProvider(
         # provider_params.thinking takes precedence over reasoning_effort, so skip the
         # reasoning_effort mapping entirely when it is set (otherwise a stray
         # output_config.effort would linger after the provider_params update below).
-        provider_sets_thinking = provider_params is not None and provider_params.thinking is not None
+        provider_sets_thinking = provider_thinking is not None
         if reasoning_effort is not None and not provider_sets_thinking:
-            if model_uses_adaptive_thinking(model):
-                body["thinking"] = {"type": "adaptive", "display": "summarized"}
-                body["output_config"] = {**body.get("output_config", {}), "effort": reasoning_effort}
-            else:
-                budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
-                budget = min(budget, body["max_tokens"] - 1)
-                body["thinking"] = {"type": "enabled", "budget_tokens": budget, "display": "summarized"}
+            thinking, output_config = _thinking_for_effort(
+                model, reasoning_effort, body["max_tokens"], self._provider_name
+            )
+            body["thinking"] = thinking
+            if output_config is not None:
+                body["output_config"] = {**body.get("output_config", {}), **output_config}
         if provider_params is not None:
             body.update(self._provider_params_kwargs(provider_params))
         return body

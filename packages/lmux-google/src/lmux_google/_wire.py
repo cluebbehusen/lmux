@@ -1,10 +1,11 @@
 """Pydantic wire models for Gemini REST response bodies.
 
-Only the fields lmux consumes are declared; unknown fields are ignored (Pydantic's default),
-so new server fields do not break parsing. Gemini uses camelCase on the wire, so a shared
-alias generator maps snake_case field names to their camelCase aliases (``function_call`` ->
-``functionCall``). A part is a field-bag (no ``type`` tag), so ``WirePart`` carries every part
-shape lmux reads as optional fields and the mapper dispatches on which are present.
+Only the fields lmux consumes are declared. Unknown fields are ignored except inside content parts,
+where they are retained so provider continuations can replay them without core changes. Gemini uses
+camelCase on the wire, so a shared alias generator maps snake_case field names to their camelCase
+aliases (``function_call`` -> ``functionCall``). A part is a field-bag (no ``type`` tag), so
+``WirePart`` carries every part shape lmux reads as optional fields and the mapper dispatches on
+which are present.
 """
 
 from typing import Any
@@ -17,28 +18,33 @@ class _GeminiModel(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
+class _ContinuationModel(_GeminiModel):
+    model_config = ConfigDict(extra="allow")
+
+
 # MARK: generateContent (response + streaming chunk share this shape)
 
 
-class WireFunctionCall(_GeminiModel):
+class WireFunctionCall(_ContinuationModel):
     id: str | None = None
     name: str | None = None
     args: dict[str, Any] | None = None
 
 
-class WireExecutableCode(_GeminiModel):
+class WireExecutableCode(_ContinuationModel):
     code: str | None = None
     language: str | None = None
 
 
-class WireCodeExecutionResult(_GeminiModel):
+class WireCodeExecutionResult(_ContinuationModel):
     outcome: str | None = None
     output: str | None = None
 
 
-class WirePart(_GeminiModel):
+class WirePart(_ContinuationModel):
     text: str | None = None
     thought: bool | None = None
+    thought_signature: str | None = None
     function_call: WireFunctionCall | None = None
     executable_code: WireExecutableCode | None = None
     code_execution_result: WireCodeExecutionResult | None = None

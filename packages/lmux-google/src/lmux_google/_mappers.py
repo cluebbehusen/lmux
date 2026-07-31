@@ -9,8 +9,9 @@ Output mappers consume the raw JSON dicts the API returns (``candidates``,
 import json
 import re
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, cast
 
+from lmux.exceptions import InvalidRequestError
 from lmux.types import (
     AssistantMessage,
     CachePointContent,
@@ -25,6 +26,7 @@ from lmux.types import (
     ImageContent,
     JsonObjectResponseFormat,
     Message,
+    ProviderContinuation,
     ResponseFormat,
     ServerToolDelta,
     ServerToolResult,
@@ -45,6 +47,7 @@ from lmux_google._wire import (
     WireCandidate,
     WireEmbedContentResponse,
     WireGenerateContentResponse,
+    WirePart,
     WireUsageMetadata,
     WireVertexPredictResponse,
 )
@@ -53,6 +56,8 @@ type CostCalculator = Callable[[str, Usage], Cost | None]
 type Json = dict[str, Any]
 
 _DATA_URI_PATTERN = re.compile(r"^data:image/([^;]+);base64,(.+)$", re.DOTALL)
+_DEVELOPER_CONTINUATION_NAMESPACE = "lmux_google.developer.generate_content"
+_VERTEX_CONTINUATION_NAMESPACE = "lmux_google.vertex.generate_content"
 
 _FINISH_REASON_MAP: dict[str, str] = {
     "STOP": "stop",
@@ -88,10 +93,15 @@ def map_messages(messages: Sequence[Message], *, include_tool_call_ids: bool = F
 
     # Build tool_call_id -> function_name mapping for ToolMessage translation
     tool_call_names: dict[str, str] = {}
+    continuation_namespace = _continuation_namespace(include_tool_call_ids)
     for msg in messages:
-        if isinstance(msg, AssistantMessage) and msg.tool_calls:
-            for tc in msg.tool_calls:
-                tool_call_names[tc.id] = tc.function.name
+        if not isinstance(msg, AssistantMessage):
+            continue
+        continuation_parts = _assistant_continuation_parts(msg, continuation_namespace)
+        if continuation_parts is not None:
+            tool_call_names.update(_tool_call_names_from_parts(continuation_parts))
+        elif msg.tool_calls:
+            tool_call_names.update((tc.id, tc.function.name) for tc in msg.tool_calls)
 
     for msg in messages:
         if isinstance(msg, SystemMessage | DeveloperMessage):
@@ -102,7 +112,13 @@ def map_messages(messages: Sequence[Message], *, include_tool_call_ids: bool = F
                 continue  # message held only cache points, which this provider has no representation for
             contents.append({"role": "user", "parts": parts})
         elif isinstance(msg, AssistantMessage):
-            contents.append(_map_assistant_message(msg, include_ids=include_tool_call_ids))
+            contents.append(
+                _map_assistant_message(
+                    msg,
+                    include_ids=include_tool_call_ids,
+                    continuation_namespace=continuation_namespace,
+                )
+            )
         else:
             contents.append(_map_tool_message(msg, tool_call_names, include_id=include_tool_call_ids))
 
@@ -133,7 +149,10 @@ def _map_image_content(img: ImageContent) -> Json:
     return {"fileData": {"fileUri": img.url, "mimeType": "image/*"}}
 
 
-def _map_assistant_message(msg: AssistantMessage, *, include_ids: bool) -> Json:
+def _map_assistant_message(msg: AssistantMessage, *, include_ids: bool, continuation_namespace: str) -> Json:
+    continuation_parts = _assistant_continuation_parts(msg, continuation_namespace)
+    if continuation_parts is not None:
+        return {"role": "model", "parts": continuation_parts}
     parts: list[Json] = []
     if msg.content is not None:
         parts.append({"text": msg.content})
@@ -146,6 +165,31 @@ def _map_assistant_message(msg: AssistantMessage, *, include_ids: bool) -> Json:
                 call["id"] = tc.id
             parts.append({"functionCall": call})
     return {"role": "model", "parts": parts}
+
+
+def _assistant_continuation_parts(msg: AssistantMessage, continuation_namespace: str) -> list[Json] | None:
+    continuation = msg.continuation
+    if continuation is None or continuation.namespace != continuation_namespace:
+        return None
+    parts = continuation.data.get("parts")
+    if not isinstance(parts, list) or any(not isinstance(part, dict) for part in parts):
+        error_message = "Google continuation data must contain a list of part objects"
+        raise InvalidRequestError(error_message, provider="google")
+    return cast("list[Json]", parts)
+
+
+def _tool_call_names_from_parts(parts: list[Json]) -> dict[str, str]:
+    names: dict[str, str] = {}
+    for index, part in enumerate(parts):
+        function_call = part.get("functionCall")
+        if not isinstance(function_call, dict):
+            continue
+        name = function_call.get("name")
+        if not isinstance(name, str):
+            continue
+        call_id = function_call.get("id")
+        names[call_id if isinstance(call_id, str) else f"call_{index}"] = name
+    return names
 
 
 def _map_tool_message(msg: ToolMessage, tool_call_names: dict[str, str], *, include_id: bool) -> Json:
@@ -199,6 +243,8 @@ def map_generate_content_response(
     model: str,
     provider_name: str,
     cost_fn: CostCalculator,
+    *,
+    vertexai: bool = False,
 ) -> ChatResponse:
     """Convert a validated Gemini ``generateContent`` response to an lmux ChatResponse."""
     candidate = _get_candidate(response)
@@ -260,6 +306,7 @@ def map_generate_content_response(
         model=model,
         provider=provider_name,
         finish_reason=finish_reason,
+        continuation=_continuation_from_parts(parts, _continuation_namespace(not vertexai)),
     )
 
 
@@ -267,6 +314,8 @@ def map_generate_content_chunk(
     chunk: WireGenerateContentResponse,
     model: str,
     provider_name: str,
+    *,
+    part_offset: int = 0,
 ) -> ChatChunk:
     """Convert a validated streaming ``generateContent`` chunk to an lmux ChatChunk."""
     delta: str | None = None
@@ -284,6 +333,7 @@ def map_generate_content_chunk(
         std_list: list[ServerToolDelta] = []
         std_index = 0
         for i, part in enumerate(parts):
+            part_index = part_offset + i
             if part.thought:
                 if part.text is not None:
                     thinking_pieces.append(part.text)
@@ -294,8 +344,8 @@ def map_generate_content_chunk(
                 fc = part.function_call
                 tcd_list.append(
                     ToolCallDelta(
-                        index=i,
-                        id=fc.id or f"call_{i}",
+                        index=part_index,
+                        id=fc.id or f"call_{part_index}",
                         type="function",
                         function=FunctionCallDelta(name=fc.name, arguments=json.dumps(fc.args or {})),
                     )
@@ -332,6 +382,27 @@ def map_generate_content_chunk(
         model=model,
         provider=provider_name,
     )
+
+
+class GoogleContinuationState:
+    """Accumulate Gemini stream parts until a terminal continuation can be emitted."""
+
+    def __init__(self, *, vertexai: bool) -> None:
+        self._parts: list[Json] = []
+        self._has_signature = False
+        self._namespace = _continuation_namespace(not vertexai)
+
+    def add(self, response: WireGenerateContentResponse) -> int:
+        part_offset = len(self._parts)
+        parts = _candidate_parts(response)
+        self._parts.extend(_dump_parts(parts))
+        self._has_signature = self._has_signature or any(part.thought_signature is not None for part in parts)
+        return part_offset
+
+    def continuation(self) -> ProviderContinuation | None:
+        if not self._has_signature:
+            return None
+        return ProviderContinuation(namespace=self._namespace, data={"parts": self._parts})
 
 
 def map_batch_embeddings_response(
@@ -387,6 +458,27 @@ def map_vertex_embed_response(
 
 
 # MARK: Internal Helpers
+
+
+def _candidate_parts(response: WireGenerateContentResponse) -> list[WirePart]:
+    candidate = _get_candidate(response)
+    if candidate is None or candidate.content is None or candidate.content.parts is None:
+        return []
+    return candidate.content.parts
+
+
+def _dump_parts(parts: list[WirePart]) -> list[Json]:
+    return [part.model_dump(mode="json", by_alias=True, exclude_none=True) for part in parts]
+
+
+def _continuation_namespace(include_tool_call_ids: bool) -> str:
+    return _DEVELOPER_CONTINUATION_NAMESPACE if include_tool_call_ids else _VERTEX_CONTINUATION_NAMESPACE
+
+
+def _continuation_from_parts(parts: list[WirePart], namespace: str) -> ProviderContinuation | None:
+    if not any(part.thought_signature is not None for part in parts):
+        return None
+    return ProviderContinuation(namespace=namespace, data={"parts": _dump_parts(parts)})
 
 
 def _get_candidate(response: WireGenerateContentResponse) -> WireCandidate | None:

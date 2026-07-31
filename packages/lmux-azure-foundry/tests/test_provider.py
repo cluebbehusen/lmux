@@ -13,7 +13,16 @@ from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError
-from lmux.types import FunctionDefinition, JsonObjectResponseFormat, ResponseInputMessage, Tool, UserMessage
+from lmux.types import (
+    CachePointContent,
+    FunctionDefinition,
+    ImageContent,
+    JsonObjectResponseFormat,
+    ResponseInputMessage,
+    TextContent,
+    Tool,
+    UserMessage,
+)
 from lmux_azure_foundry import preload
 from lmux_azure_foundry.auth import AzureAdToken
 from lmux_azure_foundry.params import AzureFoundryParams
@@ -628,6 +637,34 @@ class TestCreateResponse:
         sync_provider.create_response("gpt-5-pro", [ResponseInputMessage(role="user", content="Hello")])
         body = json.loads(route.calls.last.request.content)
         assert body["input"] == [{"role": "user", "content": "Hello"}]
+
+    def test_structured_input_items_mapped(
+        self, sync_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=responses_body))
+        sync_provider.create_response(
+            "gpt-5-pro",
+            [
+                ResponseInputMessage(
+                    role="user",
+                    content=[
+                        TextContent(text="Describe this image"),
+                        CachePointContent(),
+                        ImageContent(url="https://example.com/image.png"),
+                    ],
+                )
+            ],
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["input"] == [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Describe this image"},
+                    {"type": "input_image", "image_url": "https://example.com/image.png", "detail": "auto"},
+                ],
+            }
+        ]
 
     def test_provider_params(
         self, sync_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter

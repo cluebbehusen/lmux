@@ -32,4 +32,6 @@ def test_chat_dev(
     resp = scenario(_CASSETTE, _chat, requires="GEMINI_API_KEY")
     assert_chat(resp, provider="google")
     assert "391" in (resp.content or "")
+    assert resp.continuation is not None
+    assert resp.continuation.namespace == "lmux_google.developer.generate_content"
     assert_cost(resp, **_RATES)
