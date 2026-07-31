@@ -50,6 +50,11 @@ class TestApiKeyHeaders:
     def test_builds_headers(self) -> None:
         assert api_key_headers("secret") == {"x-goog-api-key": "secret", "Content-Type": "application/json"}
 
+    def test_merges_defaults_case_insensitively(self) -> None:
+        assert api_key_headers(
+            "secret", {"X-Trace-ID": "trace-123", "X-GOOG-API-KEY": "wrong", "content-type": "text/plain"}
+        ) == {"X-Trace-ID": "trace-123", "x-goog-api-key": "secret", "Content-Type": "application/json"}
+
 
 class TestBearerHeaders:
     def test_builds_headers(self) -> None:

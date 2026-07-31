@@ -22,40 +22,52 @@ _REFRESH_TIMEOUT = 120.0
 # MARK: Direct Anthropic API
 
 
-def _api_headers(api_key: str) -> Mapping[str, str]:
-    return {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION, "content-type": _JSON}
+def _merge_headers(default_headers: Mapping[str, str] | None, managed_headers: Mapping[str, str]) -> Mapping[str, str]:
+    managed_names = {name.lower() for name in managed_headers}
+    headers = {name: value for name, value in (default_headers or {}).items() if name.lower() not in managed_names}
+    headers.update(managed_headers)
+    return headers
 
 
-def create_sync_client(
+def _api_headers(api_key: str, default_headers: Mapping[str, str] | None) -> Mapping[str, str]:
+    return _merge_headers(
+        default_headers,
+        {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION, "content-type": _JSON},
+    )
+
+
+def create_sync_client(  # noqa: PLR0913
     *,
     api_key: str,
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
+    default_headers: Mapping[str, str] | None = None,
     transport: "httpx.BaseTransport | None" = None,
 ) -> "httpx.Client":
     """Create an httpx client for the Anthropic Messages API."""
     return _create_sync(
         base_url=base_url or DEFAULT_BASE_URL,
-        headers=_api_headers(api_key),
+        headers=_api_headers(api_key, default_headers),
         timeout=timeout,
         max_retries=max_retries,
         transport=transport,
     )
 
 
-def create_async_client(
+def create_async_client(  # noqa: PLR0913
     *,
     api_key: str,
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
+    default_headers: Mapping[str, str] | None = None,
     transport: "httpx.AsyncBaseTransport | None" = None,
 ) -> "httpx.AsyncClient":
     """Create an async httpx client for the Anthropic Messages API."""
     return _create_async(
         base_url=base_url or DEFAULT_BASE_URL,
-        headers=_api_headers(api_key),
+        headers=_api_headers(api_key, default_headers),
         timeout=timeout,
         max_retries=max_retries,
         transport=transport,
@@ -145,11 +157,12 @@ def create_sync_vertex_client(
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
+    default_headers: Mapping[str, str] | None = None,
 ) -> "httpx.Client":
     """Create an httpx client for the Vertex AI ``rawPredict`` endpoint (auth is applied per request)."""
     return _create_sync(
         base_url=base_url or vertex_base_url(region),
-        headers={"content-type": _JSON},
+        headers=_merge_headers(default_headers, {"content-type": _JSON}),
         timeout=timeout,
         max_retries=max_retries,
     )
@@ -161,11 +174,12 @@ def create_async_vertex_client(
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
+    default_headers: Mapping[str, str] | None = None,
 ) -> "httpx.AsyncClient":
     """Create an async httpx client for the Vertex AI ``rawPredict`` endpoint (auth is applied per request)."""
     return _create_async(
         base_url=base_url or vertex_base_url(region),
-        headers={"content-type": _JSON},
+        headers=_merge_headers(default_headers, {"content-type": _JSON}),
         timeout=timeout,
         max_retries=max_retries,
     )
@@ -218,11 +232,12 @@ def create_sync_foundry_client(
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
+    default_headers: Mapping[str, str] | None = None,
 ) -> "httpx.Client":
     """Create an httpx client for the Microsoft Foundry Anthropic endpoint (auth is applied per request)."""
     return _create_sync(
         base_url=_resolve_foundry_base_url(base_url, resource),
-        headers={"anthropic-version": ANTHROPIC_VERSION, "content-type": _JSON},
+        headers=_merge_headers(default_headers, {"anthropic-version": ANTHROPIC_VERSION, "content-type": _JSON}),
         timeout=timeout,
         max_retries=max_retries,
     )
@@ -234,11 +249,12 @@ def create_async_foundry_client(
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
+    default_headers: Mapping[str, str] | None = None,
 ) -> "httpx.AsyncClient":
     """Create an async httpx client for the Microsoft Foundry Anthropic endpoint (auth is applied per request)."""
     return _create_async(
         base_url=_resolve_foundry_base_url(base_url, resource),
-        headers={"anthropic-version": ANTHROPIC_VERSION, "content-type": _JSON},
+        headers=_merge_headers(default_headers, {"anthropic-version": ANTHROPIC_VERSION, "content-type": _JSON}),
         timeout=timeout,
         max_retries=max_retries,
     )

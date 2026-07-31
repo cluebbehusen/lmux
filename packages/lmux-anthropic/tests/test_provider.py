@@ -290,6 +290,24 @@ class TestChat:
             "stop_sequences": ["END"],
         }
 
+    def test_default_headers_preserve_managed_headers(self, respx_mock: respx.MockRouter) -> None:
+        route = _ok(respx_mock)
+        provider = AnthropicProvider(
+            auth=FakeAuth(),
+            default_headers={
+                "X-Trace-ID": "trace-123",
+                "X-API-KEY": "wrong",
+                "ANTHROPIC-VERSION": "wrong",
+                "CONTENT-TYPE": "text/plain",
+            },
+        )
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert headers["x-trace-id"] == "trace-123"
+        assert headers["x-api-key"] == "sk-ant-fake-key"
+        assert headers["anthropic-version"] == "2023-06-01"
+        assert headers["content-type"] == "application/json"
+
     def test_stop_list(self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
         route = _ok(respx_mock)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], stop=["A", "B"])
@@ -962,6 +980,20 @@ class TestVertexChat:
         assert "model" not in body
         assert body["anthropic_version"] == "vertex-2023-10-16"
 
+    def test_default_headers_preserve_bearer_auth(
+        self, vertex_auth: FakeVertexAuth, respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(_vertex_url(MODEL)).mock(return_value=httpx.Response(200, json=_message()))
+        provider = AnthropicVertexProvider(
+            auth=vertex_auth,
+            project_id="my-proj",
+            region="us-east5",
+            default_headers={"X-Trace-ID": "trace-123", "authorization": "Bearer wrong"},
+        )
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers["x-trace-id"] == "trace-123"
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+
     async def test_basic_achat(self, vertex_auth: FakeVertexAuth, respx_mock: respx.MockRouter) -> None:
         route = respx_mock.post(_vertex_url(MODEL)).mock(return_value=httpx.Response(200, json=_message()))
         provider = AnthropicVertexProvider(auth=vertex_auth, project_id="my-proj", region="us-east5")
@@ -1210,6 +1242,25 @@ class TestFoundryChat:
         request = route.calls.last.request
         assert request.headers["api-key"] == "foundry-key"
         assert json.loads(request.content)["model"] == MODEL
+
+    def test_default_headers_preserve_managed_headers(self, respx_mock: respx.MockRouter) -> None:
+        route = respx_mock.post(_foundry_url()).mock(return_value=httpx.Response(200, json=_message()))
+        provider = AnthropicFoundryProvider(
+            auth=FakeFoundryAuth(),
+            resource="my-resource",
+            default_headers={
+                "X-Trace-ID": "trace-123",
+                "API-KEY": "wrong",
+                "ANTHROPIC-VERSION": "wrong",
+                "CONTENT-TYPE": "text/plain",
+            },
+        )
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert headers["x-trace-id"] == "trace-123"
+        assert headers["api-key"] == "foundry-key"
+        assert headers["anthropic-version"] == "2023-06-01"
+        assert headers["content-type"] == "application/json"
 
     def test_reasoning_effort_rejects_opaque_deployment(
         self, foundry_sync_provider: AnthropicFoundryProvider, respx_mock: respx.MockRouter

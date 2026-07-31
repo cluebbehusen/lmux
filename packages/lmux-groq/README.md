@@ -78,7 +78,11 @@ GroqProvider(
     base_url=...,      # Optional base URL override
     timeout=...,       # Request timeout in seconds
     max_retries=...,   # Max retry attempts
+    default_headers=...,  # Optional headers included with every request
     transport=...,        # Optional httpx.BaseTransport for the sync client (proxies, testing)
     async_transport=...,  # Optional httpx.AsyncBaseTransport for the async client
 )
 ```
+
+`default_headers` is useful for gateway authentication, tracing, and routing. Groq-managed authorization and
+content-type headers take precedence over caller values, case-insensitively.
