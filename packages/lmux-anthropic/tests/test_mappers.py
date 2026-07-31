@@ -959,6 +959,62 @@ class TestAnthropicContinuationState:
         )
         assert state.continuation() is None
 
+    @pytest.mark.parametrize("partial_json", ["", '{"city": "Den', "[]"])
+    def test_unusable_tool_input_drops_signed_continuation(self, partial_json: str) -> None:
+        state = AnthropicContinuationState("lmux_anthropic.messages")
+        state.add_start(
+            WireContentBlockStartEvent.model_validate(
+                {"index": 0, "content_block": {"type": "thinking", "thinking": "Think"}}
+            )
+        )
+        state.add_delta(
+            WireContentBlockDeltaEvent.model_validate(
+                {"index": 0, "delta": {"type": "signature_delta", "signature": "opaque"}}
+            )
+        )
+        state.add_start(
+            WireContentBlockStartEvent.model_validate(
+                {"index": 1, "content_block": {"type": "tool_use", "id": "call_1", "name": "weather", "input": {}}}
+            )
+        )
+        state.add_delta(
+            WireContentBlockDeltaEvent.model_validate(
+                {"index": 1, "delta": {"type": "input_json_delta", "partial_json": partial_json}}
+            )
+        )
+
+        assert state.continuation() is None
+
+    def test_unsigned_truncated_tool_input_has_no_continuation(self) -> None:
+        state = AnthropicContinuationState("lmux_anthropic.messages")
+        state.add_start(
+            WireContentBlockStartEvent.model_validate(
+                {"index": 0, "content_block": {"type": "tool_use", "id": "call_1", "name": "weather", "input": {}}}
+            )
+        )
+        state.add_delta(
+            WireContentBlockDeltaEvent.model_validate(
+                {"index": 0, "delta": {"type": "input_json_delta", "partial_json": '{"city": "Den'}}
+            )
+        )
+
+        assert state.continuation() is None
+
+    def test_tool_delta_for_non_tool_block_drops_continuation(self) -> None:
+        state = AnthropicContinuationState("lmux_anthropic.messages")
+        state.add_start(
+            WireContentBlockStartEvent.model_validate(
+                {"index": 0, "content_block": {"type": "thinking", "thinking": "Think", "signature": "opaque"}}
+            )
+        )
+        state.add_delta(
+            WireContentBlockDeltaEvent.model_validate(
+                {"index": 0, "delta": {"type": "input_json_delta", "partial_json": "{}"}}
+            )
+        )
+
+        assert state.continuation() is None
+
 
 class TestMapMessageDelta:
     def test_final_chunk_with_usage(self) -> None:

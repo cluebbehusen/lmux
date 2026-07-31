@@ -952,6 +952,65 @@ class TestBedrockContinuationState:
         )
         assert state.continuation() is None
 
+    @pytest.mark.parametrize("partial_json", ["", '{"city": "Den', "[]"])
+    def test_unusable_tool_input_drops_signed_continuation(self, partial_json: str) -> None:
+        state = BedrockContinuationState()
+        events = [
+            {
+                "contentBlockDelta": {
+                    "contentBlockIndex": 0,
+                    "delta": {"reasoningContent": {"signature": "opaque"}},
+                }
+            },
+            {
+                "contentBlockStart": {
+                    "contentBlockIndex": 1,
+                    "start": {"toolUse": {"toolUseId": "call_1", "name": "weather"}},
+                }
+            },
+            {"contentBlockDelta": {"contentBlockIndex": 1, "delta": {"toolUse": {"input": partial_json}}}},
+        ]
+        for event in events:
+            state.add(WireStreamEvent.model_validate(event))
+
+        assert state.continuation() is None
+
+    def test_tool_delta_for_non_tool_block_drops_continuation(self) -> None:
+        state = BedrockContinuationState()
+        events = [
+            {
+                "contentBlockDelta": {
+                    "contentBlockIndex": 0,
+                    "delta": {"reasoningContent": {"signature": "opaque"}},
+                }
+            },
+            {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"toolUse": {"input": "{}"}}}},
+        ]
+        for event in events:
+            state.add(WireStreamEvent.model_validate(event))
+
+        assert state.continuation() is None
+
+    def test_unsigned_truncated_tool_input_has_no_continuation(self) -> None:
+        state = BedrockContinuationState()
+        state.add(
+            WireStreamEvent.model_validate(
+                {
+                    "contentBlockStart": {
+                        "contentBlockIndex": 0,
+                        "start": {"toolUse": {"toolUseId": "call_1", "name": "weather"}},
+                    }
+                }
+            )
+        )
+        state.add(
+            WireStreamEvent.model_validate(
+                {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"toolUse": {"input": '{"city": "Den'}}}}
+            )
+        )
+
+        assert state.continuation() is None
+
 
 # MARK: map_embedding_response
 

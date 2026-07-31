@@ -415,7 +415,14 @@ class BedrockContinuationState:
             self._add_delta(event.content_block_delta)
 
     def continuation(self) -> ProviderContinuation | None:
-        content = [self._completed_block(index) for index in sorted(self._blocks)]
+        if not any("reasoningContent" in block for block in self._blocks.values()):
+            return None
+        content: list[Json] = []
+        for index in sorted(self._blocks):
+            block = self._completed_block(index)
+            if block is None:
+                return None
+            content.append(block)
         return _continuation_from_content(content)
 
     def _add_start(self, event: WireContentBlockStartEvent) -> None:
@@ -445,11 +452,20 @@ class BedrockContinuationState:
         elif delta.tool_use is not None:
             self._tool_inputs[index] = self._tool_inputs.get(index, "") + delta.tool_use.input
 
-    def _completed_block(self, index: int) -> Json:
-        block = self._blocks[index]
+    def _completed_block(self, index: int) -> Json | None:
+        block = copy.deepcopy(self._blocks[index])
         partial_json = self._tool_inputs.get(index)
         if partial_json is not None:
-            block["toolUse"]["input"] = json.loads(partial_json)
+            tool_use = block.get("toolUse")
+            if not isinstance(tool_use, dict):
+                return None
+            try:
+                tool_input = json.loads(partial_json)
+            except json.JSONDecodeError:
+                return None
+            if not isinstance(tool_input, dict):
+                return None
+            tool_use["input"] = tool_input
         return block
 
 

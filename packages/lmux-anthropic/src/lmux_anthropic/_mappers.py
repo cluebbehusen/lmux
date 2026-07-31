@@ -460,14 +460,29 @@ class AnthropicContinuationState:
             self._tool_inputs[event.index] = self._tool_inputs.get(event.index, "") + delta.partial_json
 
     def continuation(self) -> ProviderContinuation | None:
-        content = [self._completed_block(index) for index in sorted(self._blocks)]
+        if not any(block.get("type") == "redacted_thinking" or "signature" in block for block in self._blocks.values()):
+            return None
+        content: list[Json] = []
+        for index in sorted(self._blocks):
+            block = self._completed_block(index)
+            if block is None:
+                return None
+            content.append(block)
         return _continuation_from_content(content, self._namespace)
 
-    def _completed_block(self, index: int) -> Json:
-        block = self._blocks[index]
+    def _completed_block(self, index: int) -> Json | None:
+        block = copy.deepcopy(self._blocks[index])
         partial_json = self._tool_inputs.get(index)
         if partial_json is not None:
-            block["input"] = json.loads(partial_json)
+            if block.get("type") != "tool_use":
+                return None
+            try:
+                tool_input = json.loads(partial_json)
+            except json.JSONDecodeError:
+                return None
+            if not isinstance(tool_input, dict):
+                return None
+            block["input"] = tool_input
         return block
 
 
