@@ -140,7 +140,8 @@ def _sse_stream() -> bytes:
     return ("\n\n".join(lines) + "\n\n").encode()
 
 
-def _signed_sse_stream() -> bytes:
+@pytest.fixture
+def signed_sse_stream() -> bytes:
     chunks = [
         {"candidates": [{"content": {"parts": [{"text": "Checking", "thoughtSignature": "opaque"}]}}]},
         {
@@ -325,11 +326,13 @@ class TestChatStream:
         assert route.calls.last.request.url.params["alt"] == "sse"
 
     def test_terminal_chunk_carries_accumulated_continuation(
-        self, provider: GoogleProvider, respx_mock: respx.MockRouter
+        self, provider: GoogleProvider, signed_sse_stream: bytes, respx_mock: respx.MockRouter
     ) -> None:
-        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=_signed_sse_stream()))
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=signed_sse_stream))
         chunks = list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
         assert chunks[0].continuation is None
+        assert chunks[1].tool_call_deltas is not None
+        assert chunks[1].tool_call_deltas[0].id == "call_1"
         assert chunks[1].continuation == ProviderContinuation(
             namespace="lmux_google.developer.generate_content",
             data={
@@ -397,12 +400,14 @@ class TestAchatStream:
         assert chunks[1].model == MODEL
 
     async def test_terminal_chunk_carries_accumulated_continuation(
-        self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter
+        self, api_auth: FakeAPIKeyAuth, signed_sse_stream: bytes, respx_mock: respx.MockRouter
     ) -> None:
-        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=_signed_sse_stream()))
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=signed_sse_stream))
         provider = GoogleProvider(auth=api_auth, vertexai=False)
         chunks = [chunk async for chunk in provider.achat_stream(MODEL, [UserMessage(content="Hi")])]
         assert chunks[0].continuation is None
+        assert chunks[1].tool_call_deltas is not None
+        assert chunks[1].tool_call_deltas[0].id == "call_1"
         assert chunks[1].continuation == ProviderContinuation(
             namespace="lmux_google.developer.generate_content",
             data={

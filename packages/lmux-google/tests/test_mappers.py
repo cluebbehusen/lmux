@@ -649,10 +649,19 @@ class TestMapGenerateContentChunk:
     def test_function_call_chunk_without_id(self) -> None:
         chunk = _response(parts=[{"functionCall": {"name": "f", "args": {}}}], finish_reason=None, usage=False)
         result = map_generate_content_chunk(
-            WireGenerateContentResponse.model_validate(chunk), "gemini-2.0-flash", "google"
+            WireGenerateContentResponse.model_validate(chunk),
+            "gemini-2.0-flash",
+            "google",
+            part_offset=3,
         )
-        assert result.tool_call_deltas is not None
-        assert result.tool_call_deltas[0].id == "call_0"
+        assert result.tool_call_deltas == [
+            ToolCallDelta(
+                index=3,
+                id="call_3",
+                type="function",
+                function=FunctionCallDelta(name="f", arguments="{}"),
+            )
+        ]
 
     def test_finish_reason_chunk(self) -> None:
         chunk = _response(has_content=False, finish_reason="STOP", usage=False)

@@ -314,6 +314,8 @@ def map_generate_content_chunk(
     chunk: WireGenerateContentResponse,
     model: str,
     provider_name: str,
+    *,
+    part_offset: int = 0,
 ) -> ChatChunk:
     """Convert a validated streaming ``generateContent`` chunk to an lmux ChatChunk."""
     delta: str | None = None
@@ -331,6 +333,7 @@ def map_generate_content_chunk(
         std_list: list[ServerToolDelta] = []
         std_index = 0
         for i, part in enumerate(parts):
+            part_index = part_offset + i
             if part.thought:
                 if part.text is not None:
                     thinking_pieces.append(part.text)
@@ -341,8 +344,8 @@ def map_generate_content_chunk(
                 fc = part.function_call
                 tcd_list.append(
                     ToolCallDelta(
-                        index=i,
-                        id=fc.id or f"call_{i}",
+                        index=part_index,
+                        id=fc.id or f"call_{part_index}",
                         type="function",
                         function=FunctionCallDelta(name=fc.name, arguments=json.dumps(fc.args or {})),
                     )
@@ -389,10 +392,12 @@ class GoogleContinuationState:
         self._has_signature = False
         self._namespace = _continuation_namespace(not vertexai)
 
-    def add(self, response: WireGenerateContentResponse) -> None:
+    def add(self, response: WireGenerateContentResponse) -> int:
+        part_offset = len(self._parts)
         parts = _candidate_parts(response)
         self._parts.extend(_dump_parts(parts))
         self._has_signature = self._has_signature or any(part.thought_signature is not None for part in parts)
+        return part_offset
 
     def continuation(self) -> ProviderContinuation | None:
         if not self._has_signature:

@@ -299,8 +299,8 @@ class GoogleProvider(
                     if "error" in chunk:
                         raise error_from_stream(chunk)  # noqa: TRY301
                     wire = WireGenerateContentResponse.model_validate(chunk)
-                    continuation_state.add(wire)
-                    mapped = self._map_stream_chunk(wire, model)
+                    part_offset = continuation_state.add(wire)
+                    mapped = self._map_stream_chunk(wire, model, part_offset=part_offset)
                     if mapped.finish_reason is not None:
                         mapped = mapped.model_copy(update={"continuation": continuation_state.continuation()})
                     yield mapped
@@ -347,8 +347,8 @@ class GoogleProvider(
                     if "error" in chunk:
                         raise error_from_stream(chunk)  # noqa: TRY301
                     wire = WireGenerateContentResponse.model_validate(chunk)
-                    continuation_state.add(wire)
-                    mapped = self._map_stream_chunk(wire, model)
+                    part_offset = continuation_state.add(wire)
+                    mapped = self._map_stream_chunk(wire, model, part_offset=part_offset)
                     if mapped.finish_reason is not None:
                         mapped = mapped.model_copy(update={"continuation": continuation_state.continuation()})
                     yield mapped
@@ -484,8 +484,8 @@ class GoogleProvider(
 
     # MARK: Internal Helpers
 
-    def _map_stream_chunk(self, chunk: WireGenerateContentResponse, model: str) -> ChatChunk:
-        mapped = map_generate_content_chunk(chunk, model, PROVIDER_NAME)
+    def _map_stream_chunk(self, chunk: WireGenerateContentResponse, model: str, *, part_offset: int = 0) -> ChatChunk:
+        mapped = map_generate_content_chunk(chunk, model, PROVIDER_NAME, part_offset=part_offset)
         if mapped.usage is not None:
             mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
         return mapped
