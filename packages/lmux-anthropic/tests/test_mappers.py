@@ -866,7 +866,6 @@ class TestModelThinkingMode:
             "claude-sonnet-5",
             "claude-fable-5",
             "claude-mythos-5",
-            "claude-orchid-5",
             "Claude-Sonnet-4-6",
             "CLAUDE-OPUS-4-8",
             "claude-mythos-preview",
@@ -900,6 +899,17 @@ class TestModelThinkingMode:
     def test_legacy_generations(self, model: str) -> None:
         assert model_thinking_mode(model) == "enabled"
 
-    @pytest.mark.parametrize("model", ["not-a-model", "", "claude-custom-deployment", "claude-deployment-2026"])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "not-a-model",
+            "",
+            "claude-custom-deployment",
+            "claude-deployment-2026",
+            "claude-prod-4-5",
+            "claude-4-5-prod",
+            "claude-orchid-5",
+        ],
+    )
     def test_unparseable_generations(self, model: str) -> None:
         assert model_thinking_mode(model) is None

@@ -148,6 +148,20 @@ print(response.cost)
 
 `resource` and the mutually exclusive `base_url` fall back to the `ANTHROPIC_FOUNDRY_RESOURCE` and `ANTHROPIC_FOUNDRY_BASE_URL` environment variables. Model IDs are Foundry deployment names, which default to the plain model IDs (`claude-sonnet-4-6`, ...). Foundry bills Anthropic's standard API pricing through the Microsoft Marketplace, so costs come from the same pricing table with no multiplier.
 
+`reasoning_effort` can select the correct thinking mode only when the deployment name contains a recognizable Claude model ID. For an opaque custom deployment name, configure the thinking mode explicitly for the deployed model:
+
+```python
+from lmux_anthropic import AnthropicParams
+
+response = provider.chat(
+    "claude-prod",
+    [UserMessage(content="Hello")],
+    provider_params=AnthropicParams(thinking={"type": "enabled", "budget_tokens": 8192}),
+)
+```
+
+Use `{"type": "adaptive"}` instead when the deployment targets a model that requires adaptive thinking.
+
 ### Foundry Auth
 
 The default `AnthropicFoundryEnvAuthProvider` reads an API key from `ANTHROPIC_FOUNDRY_API_KEY`. For Microsoft Entra ID, wrap a bearer-token provider:

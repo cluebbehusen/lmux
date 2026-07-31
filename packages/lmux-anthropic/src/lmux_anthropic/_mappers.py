@@ -249,12 +249,13 @@ def map_tool_choice(tc: ToolChoice) -> dict[str, str]:
 
 
 _ADAPTIVE_MIN = (4, 6)
+_MODEL_FAMILY = r"(?:fable|haiku|mythos|opus|sonnet)"
 _FAMILY_FIRST_GEN_RE = re.compile(
-    r"claude-[a-z][a-z0-9]*-(\d{1,2})(?:-(\d{1,2}))?(?=$|[-:@.])",
+    rf"claude-{_MODEL_FAMILY}-(\d{{1,2}})(?:-(\d{{1,2}}))?(?=$|[-:@.])",
     re.IGNORECASE,
 )
 _GENERATION_FIRST_GEN_RE = re.compile(
-    r"claude-(\d{1,2})(?:-(\d{1,2}))?-[a-z]",
+    rf"claude-(\d{{1,2}})(?:-(\d{{1,2}}))?-{_MODEL_FAMILY}(?=$|[-:@.])",
     re.IGNORECASE,
 )
 _ADAPTIVE_PREVIEW_RE = re.compile(r"claude-(?:mythos|fable)-preview(?=$|[-:@.])", re.IGNORECASE)

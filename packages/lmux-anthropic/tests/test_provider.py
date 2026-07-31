@@ -1144,6 +1144,28 @@ class TestFoundryChat:
         assert request.headers["api-key"] == "foundry-key"
         assert json.loads(request.content)["model"] == MODEL
 
+    def test_reasoning_effort_rejects_opaque_deployment(
+        self, foundry_sync_provider: AnthropicFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(_foundry_url()).mock(return_value=httpx.Response(200, json=_message()))
+        with pytest.raises(InvalidRequestError, match="unrecognized Claude model"):
+            foundry_sync_provider.chat("claude-prod-4-5", [UserMessage(content="Hi")], reasoning_effort="low")
+        assert not route.called
+
+    def test_opaque_deployment_accepts_explicit_thinking(
+        self, foundry_sync_provider: AnthropicFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(_foundry_url()).mock(return_value=httpx.Response(200, json=_message()))
+        foundry_sync_provider.chat(
+            "claude-prod-4-5",
+            [UserMessage(content="Hi")],
+            provider_params=AnthropicParams(thinking={"type": "enabled", "budget_tokens": 2048}),
+        )
+        assert json.loads(route.calls.last.request.content)["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": 2048,
+        }
+
     async def test_basic_achat(self, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_foundry_url()).mock(return_value=httpx.Response(200, json=_message()))
         provider = AnthropicFoundryProvider(auth=FakeFoundryAuth(), resource="my-resource")
