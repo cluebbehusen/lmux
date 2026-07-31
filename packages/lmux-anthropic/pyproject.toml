@@ -1,6 +1,6 @@
 [project]
 name = "lmux-anthropic"
-version = "0.14.1"
+version = "0.15.0"
 description = "Anthropic provider for lmux"
 requires-python = ">=3.13"
 license = "MIT"
@@ -14,7 +14,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  "lmux~=0.11",
+  "lmux~=0.12",
   "httpx~=0.28",
 ]
 

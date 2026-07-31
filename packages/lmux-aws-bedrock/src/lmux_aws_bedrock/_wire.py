@@ -1,8 +1,8 @@
 """Pydantic wire models for the Bedrock Converse (+ ConverseStream) and Titan embedding responses.
 
-Only the fields lmux consumes are declared; unknown fields are ignored (Pydantic's default),
-so new server fields do not break parsing. Bedrock uses camelCase on the wire, so a shared
-alias generator maps snake_case field names to camelCase (``tool_use_id`` -> ``toolUseId``).
+Only the fields lmux consumes are declared; unknown fields are retained so provider continuations
+can replay them without core changes. Bedrock uses camelCase on the wire, so a shared alias
+generator maps snake_case field names to camelCase (``tool_use_id`` -> ``toolUseId``).
 Content blocks and stream events are field-bags (no ``type`` tag), so each carries the shapes
 lmux reads as optional fields and the mapper dispatches on which are present. Nested containers
 default to empty (mirroring the old ``dict.get(..., {})`` access) so the mappers stay guard-free.
@@ -15,7 +15,7 @@ from pydantic.alias_generators import to_camel
 
 
 class _BedrockModel(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="allow")
 
 
 # MARK: Token usage (shared by the response and the stream metadata event)
@@ -45,10 +45,12 @@ class WireToolUse(_BedrockModel):
 
 class WireReasoningText(_BedrockModel):
     text: str | None = None
+    signature: str | None = None
 
 
 class WireReasoningContent(_BedrockModel):
-    reasoning_text: WireReasoningText = Field(default_factory=WireReasoningText)
+    reasoning_text: WireReasoningText | None = None
+    redacted_content: str | None = None
 
 
 class WireContentBlock(_BedrockModel):
@@ -80,6 +82,8 @@ class WireToolUseDelta(_BedrockModel):
 
 class WireReasoningDelta(_BedrockModel):
     text: str | None = None
+    signature: str | None = None
+    redacted_content: str | None = None
 
 
 class WireStreamDelta(_BedrockModel):

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_mock import MockerFixture
 
-from lmux.exceptions import UnsupportedFeatureError
+from lmux.exceptions import InvalidRequestError, UnsupportedFeatureError
 from lmux.types import (
     AssistantMessage,
     CachePointContent,
@@ -20,6 +20,7 @@ from lmux.types import (
     ImageContent,
     JsonObjectResponseFormat,
     JsonSchemaResponseFormat,
+    ProviderContinuation,
     SystemMessage,
     TextContent,
     TextResponseFormat,
@@ -32,6 +33,7 @@ from lmux.types import (
     UserMessage,
 )
 from lmux_anthropic._mappers import (
+    AnthropicContinuationState,
     CostCalculator,
     map_content_block_delta,
     map_content_block_start,
@@ -168,6 +170,44 @@ class TestMapMessages:
         assert len(content) == 2
         assert content[0] == {"type": "text", "text": "Let me check."}
         assert content[1]["type"] == "tool_use"
+
+    def test_matching_continuation_is_authoritative(self) -> None:
+        continuation = ProviderContinuation(
+            namespace="lmux_anthropic.messages",
+            data={
+                "content": [
+                    {"type": "thinking", "thinking": "Original", "signature": "opaque"},
+                    {"type": "tool_use", "id": "native", "name": "native_tool", "input": {}},
+                ]
+            },
+        )
+        normalized_call = ToolCall(
+            id="edited", function=FunctionCallResult(name="edited_tool", arguments='{"changed": true}')
+        )
+
+        _, messages = map_messages(
+            [AssistantMessage(content="Edited", tool_calls=[normalized_call], continuation=continuation)]
+        )
+
+        assert messages == [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "Original", "signature": "opaque"},
+                    {"type": "tool_use", "id": "native", "name": "native_tool", "input": {}},
+                ],
+            }
+        ]
+
+    def test_foreign_continuation_is_ignored(self) -> None:
+        continuation = ProviderContinuation(namespace="third_party.chat", data={"content": []})
+        _, messages = map_messages([AssistantMessage(content="Portable", continuation=continuation)])
+        assert messages == [{"role": "assistant", "content": [{"type": "text", "text": "Portable"}]}]
+
+    def test_malformed_matching_continuation_raises(self) -> None:
+        continuation = ProviderContinuation(namespace="lmux_anthropic.messages", data={"content": ["bad"]})
+        with pytest.raises(InvalidRequestError, match="list of content blocks"):
+            map_messages([AssistantMessage(continuation=continuation)])
 
     def test_tool_message(self) -> None:
         _, messages = map_messages([ToolMessage(content="72°F", tool_call_id="call_1")])
@@ -571,6 +611,51 @@ class TestMapMessageResponse:
         result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
         assert result.content == "Answer"
         assert result.reasoning == "Let me think about this..."
+        assert result.continuation is None
+
+    def test_signed_blocks_become_continuation(self, cost_fn: CostCalculator) -> None:
+        content = [
+            {
+                "type": "thinking",
+                "thinking": "Let me think.",
+                "signature": "opaque",
+                "future_field": {"kept": True},
+            },
+            {"type": "tool_use", "id": "call_1", "name": "get_weather", "input": {"city": "NYC"}},
+        ]
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "tool_use",
+            "content": content,
+            "usage": self._usage(),
+        }
+
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
+
+        assert result.continuation == ProviderContinuation(
+            namespace="lmux_anthropic.messages", data={"content": content}
+        )
+        assert result.to_assistant_message().continuation == result.continuation
+
+    def test_redacted_thinking_becomes_continuation(self, cost_fn: CostCalculator) -> None:
+        content = [{"type": "redacted_thinking", "data": "encrypted"}, {"type": "text", "text": "Answer"}]
+        message = {
+            "model": "claude-sonnet-4-6",
+            "stop_reason": "end_turn",
+            "content": content,
+            "usage": self._usage(),
+        }
+
+        result = map_message_response(
+            WireMessage.model_validate(message),
+            "anthropic",
+            cost_fn,
+            continuation_namespace="lmux_anthropic.vertex.messages",
+        )
+
+        assert result.continuation == ProviderContinuation(
+            namespace="lmux_anthropic.vertex.messages", data={"content": content}
+        )
 
     def test_thinking_blocks_only_no_text(self, cost_fn: CostCalculator) -> None:
         message = {
@@ -800,6 +885,63 @@ class TestMapContentBlockDelta:
     def test_unknown_delta_type_returns_none(self) -> None:
         event = {"type": "content_block_delta", "index": 0, "delta": {"type": "some_future_delta"}}
         assert map_content_block_delta(WireContentBlockDeltaEvent.model_validate(event)) is None
+
+
+class TestAnthropicContinuationState:
+    def test_reconstructs_ordered_signed_blocks(self) -> None:
+        state = AnthropicContinuationState("lmux_anthropic.messages")
+        starts = [
+            {"index": 0, "content_block": {"type": "thinking", "thinking": ""}},
+            {"index": 1, "content_block": {"type": "text", "text": ""}},
+            {
+                "index": 2,
+                "content_block": {"type": "tool_use", "id": "call_1", "name": "weather", "input": {}},
+            },
+        ]
+        for start in starts:
+            state.add_start(WireContentBlockStartEvent.model_validate(start))
+        deltas = [
+            {"index": 0, "delta": {"type": "thinking_delta", "thinking": "Think"}},
+            {"index": 0, "delta": {"type": "signature_delta", "signature": "opaque"}},
+            {"index": 1, "delta": {"type": "text_delta", "text": "Checking"}},
+            {"index": 2, "delta": {"type": "input_json_delta", "partial_json": '{"city"'}},
+            {"index": 2, "delta": {"type": "input_json_delta", "partial_json": ':"NYC"}'}},
+        ]
+        for delta in deltas:
+            state.add_delta(WireContentBlockDeltaEvent.model_validate(delta))
+
+        assert state.continuation() == ProviderContinuation(
+            namespace="lmux_anthropic.messages",
+            data={
+                "content": [
+                    {"type": "thinking", "thinking": "Think", "signature": "opaque"},
+                    {"type": "text", "text": "Checking"},
+                    {"type": "tool_use", "id": "call_1", "name": "weather", "input": {"city": "NYC"}},
+                ]
+            },
+        )
+
+    def test_redacted_block_is_preserved(self) -> None:
+        state = AnthropicContinuationState("lmux_anthropic.bedrock.messages")
+        state.add_start(
+            WireContentBlockStartEvent.model_validate(
+                {"index": 0, "content_block": {"type": "redacted_thinking", "data": "encrypted"}}
+            )
+        )
+        assert state.continuation() == ProviderContinuation(
+            namespace="lmux_anthropic.bedrock.messages",
+            data={"content": [{"type": "redacted_thinking", "data": "encrypted"}]},
+        )
+
+    def test_unsigned_content_has_no_continuation(self) -> None:
+        state = AnthropicContinuationState("lmux_anthropic.messages")
+        state.add_start(
+            WireContentBlockStartEvent.model_validate({"index": 0, "content_block": {"type": "text", "text": "Answer"}})
+        )
+        state.add_delta(
+            WireContentBlockDeltaEvent.model_validate({"index": 9, "delta": {"type": "text_delta", "text": "ignored"}})
+        )
+        assert state.continuation() is None
 
 
 class TestMapMessageDelta:

@@ -1,0 +1,77 @@
+{
+  "endpoint": "https://api.anthropic.com/v1/messages",
+  "request": {
+    "model": "claude-haiku-4-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "What is the weather in Denver? Use the get_weather tool."
+      }
+    ],
+    "max_tokens": 2048,
+    "stream": false,
+    "tools": [
+      {
+        "name": "get_weather",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ]
+        },
+        "description": "Get the current weather for a city."
+      }
+    ],
+    "thinking": {
+      "type": "enabled",
+      "budget_tokens": 1024
+    }
+  },
+  "response": {
+    "model": "claude-haiku-4-5-20251001",
+    "id": "msg_011Cda4GdaFbuFKem4fkbPFK",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "The user is asking for the weather in Denver and has explicitly requested that I use the get_weather tool. I have all the information I need - the city is \"Denver\". I'll call the get_weather function with city=\"Denver\".",
+        "signature": "EtIDCpMBCBAYAipAY1NUGl9ry+5qOJUVLGcsNfjFf4I4Gu5zC+3xRIt8i2CKucrtRETDeyQ3vxPOqEraBINJi5kh0zsrnkR5Rgw7uzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okZTQxYzY2NTYtODI4MC00NTgyLTkxZTItNmUwY2UzODA4M2VkEgxSaTtHdUKtydOgpJAaDKq6Q00dYE/0Ql4kgyIw1Sb2uKFCNw15YgmAuqLv2z+FSOUKOa7qzSpvu3eybw/i4Jm8njpFL3rgRGYCmcf0KusB9741GTO3IE/UJwe3+Y7oIDTmtqnVPgND5W6Ha0BbJ1zx0rA+hEo1GNhPXuRUugVUdJCP2iwUfINzonHymtCH2WXCMuWzX9coSwoNfiG9bXQFJujzV2m9zH/vUz5MWL97hIGKaG3Xfg4Td2c3PZgmSnYMRdsQvTDyScUJUyFQwAkYBzxhtQW9/x3gNFTHMjXiHjGb80DYl1gAGvJFebw3+WaEa5KqgOyHWEZ33Znxiye+Q4vqt25oyea/VLYbNbxrM+2He0EFtokU395yuB/K1WzhY/ldzoxtqXmxXgAyPylDgX1ss/dp7hiQBxgB"
+      },
+      {
+        "type": "tool_use",
+        "id": "toolu_01WFj2MQTcK16YcrXGGHLYEf",
+        "name": "get_weather",
+        "input": {
+          "city": "Denver"
+        },
+        "caller": {
+          "type": "direct"
+        }
+      }
+    ],
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+      "input_tokens": 602,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 110,
+      "output_tokens_details": {
+        "thinking_tokens": 55
+      },
+      "service_tier": "standard",
+      "inference_geo": "not_available"
+    }
+  }
+}

@@ -44,6 +44,7 @@ from lmux_anthropic._lazy import (
     vertex_auth_headers,
 )
 from lmux_anthropic._mappers import (
+    AnthropicContinuationState,
     map_content_block_delta,
     map_content_block_start,
     map_message_delta,
@@ -81,6 +82,10 @@ PROVIDER_NAME = "anthropic"
 VERTEX_PROVIDER_NAME = "anthropic-vertex"
 FOUNDRY_PROVIDER_NAME = "anthropic-foundry"
 BEDROCK_PROVIDER_NAME = "anthropic-bedrock"
+_CONTINUATION_NAMESPACE = "lmux_anthropic.messages"
+_VERTEX_CONTINUATION_NAMESPACE = "lmux_anthropic.vertex.messages"
+_FOUNDRY_CONTINUATION_NAMESPACE = "lmux_anthropic.foundry.messages"
+_BEDROCK_CONTINUATION_NAMESPACE = "lmux_anthropic.bedrock.messages"
 DEFAULT_MAX_TOKENS = 4096
 _MESSAGES_PATH = "v1/messages"
 _HTTP_ERROR = 400
@@ -114,6 +119,7 @@ class AnthropicProvider(
     """Anthropic API provider over httpx."""
 
     _provider_name: ClassVar[str] = PROVIDER_NAME
+    _continuation_namespace: ClassVar[str] = _CONTINUATION_NAMESPACE
 
     def __init__(  # noqa: PLR0913
         self,
@@ -360,7 +366,7 @@ class AnthropicProvider(
             tools, tool_choice, response_format, reasoning_effort, provider_params, stream=True,
         )  # fmt: skip
         as_of = self._resolve_pricing_as_of(provider_params)
-        stream = _StreamState(model)
+        stream = _StreamState(model, self._continuation_namespace)
         try:
             for payload in self._stream_events(model, self._transform_body(body, model)):
                 chunk = stream.feed(payload)
@@ -392,7 +398,7 @@ class AnthropicProvider(
             tools, tool_choice, response_format, reasoning_effort, provider_params, stream=True,
         )  # fmt: skip
         as_of = self._resolve_pricing_as_of(provider_params)
-        stream = _StreamState(model)
+        stream = _StreamState(model, self._continuation_namespace)
         try:
             async for payload in self._astream_events(model, self._transform_body(body, model)):
                 chunk = stream.feed(payload)
@@ -409,7 +415,10 @@ class AnthropicProvider(
         as_of = self._resolve_pricing_as_of(provider_params)
         cost_model = self._cost_model(model, message.model)
         response = map_message_response(
-            message, self._provider_name, lambda _m, u: self._calculate_cost(cost_model, u, as_of)
+            message,
+            self._provider_name,
+            lambda _m, u: self._calculate_cost(cost_model, u, as_of),
+            continuation_namespace=self._continuation_namespace,
         )
         return self._apply_multipliers(response, provider_params)
 
@@ -444,7 +453,7 @@ class AnthropicProvider(
         *,
         stream: bool,
     ) -> dict[str, Any]:
-        system, mapped_messages = map_messages(messages)
+        system, mapped_messages = map_messages(messages, continuation_namespace=self._continuation_namespace)
         body: dict[str, Any] = {
             "model": model,
             "messages": mapped_messages,
@@ -531,9 +540,10 @@ class AnthropicProvider(
 class _StreamState:
     """Accumulates message_start context and maps each streamed event to a chunk."""
 
-    def __init__(self, model: str) -> None:
+    def __init__(self, model: str, continuation_namespace: str) -> None:
         self.model: str = model
         self._start_usage: Usage | None = None
+        self._continuation = AnthropicContinuationState(continuation_namespace)
 
     def feed(self, event: dict[str, Any]) -> ChatChunk | None:
         """Map one streamed event to a ChatChunk, or None if it carries no delta."""
@@ -542,11 +552,16 @@ class _StreamState:
             self.model, self._start_usage = map_message_start(WireMessageStartEvent.model_validate(event))
             return None
         if event_type == "content_block_start":
-            return map_content_block_start(WireContentBlockStartEvent.model_validate(event))
+            start = WireContentBlockStartEvent.model_validate(event)
+            self._continuation.add_start(start)
+            return map_content_block_start(start)
         if event_type == "content_block_delta":
-            return map_content_block_delta(WireContentBlockDeltaEvent.model_validate(event))
+            delta = WireContentBlockDeltaEvent.model_validate(event)
+            self._continuation.add_delta(delta)
+            return map_content_block_delta(delta)
         if event_type == "message_delta" and self._start_usage is not None:
-            return map_message_delta(WireMessageDeltaEvent.model_validate(event), self._start_usage)
+            chunk = map_message_delta(WireMessageDeltaEvent.model_validate(event), self._start_usage)
+            return chunk.model_copy(update={"continuation": self._continuation.continuation()})
         return None
 
 
@@ -561,6 +576,7 @@ class AnthropicVertexProvider(AnthropicProvider):
     """
 
     _provider_name: ClassVar[str] = VERTEX_PROVIDER_NAME
+    _continuation_namespace: ClassVar[str] = _VERTEX_CONTINUATION_NAMESPACE
 
     def __init__(  # noqa: PLR0913
         self,
@@ -711,6 +727,7 @@ class AnthropicFoundryProvider(AnthropicProvider):
     """
 
     _provider_name: ClassVar[str] = FOUNDRY_PROVIDER_NAME
+    _continuation_namespace: ClassVar[str] = _FOUNDRY_CONTINUATION_NAMESPACE
 
     def __init__(  # noqa: PLR0913
         self,
@@ -821,6 +838,7 @@ class AnthropicBedrockProvider(AnthropicProvider):
     """
 
     _provider_name: ClassVar[str] = BEDROCK_PROVIDER_NAME
+    _continuation_namespace: ClassVar[str] = _BEDROCK_CONTINUATION_NAMESPACE
 
     def __init__(  # noqa: PLR0913
         self,

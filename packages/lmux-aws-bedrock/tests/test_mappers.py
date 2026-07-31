@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_mock import MockerFixture
 
-from lmux.exceptions import UnsupportedFeatureError
+from lmux.exceptions import InvalidRequestError, UnsupportedFeatureError
 from lmux.types import (
     AssistantMessage,
     CachePointContent,
@@ -24,6 +24,7 @@ from lmux.types import (
     ImageContent,
     JsonObjectResponseFormat,
     JsonSchemaResponseFormat,
+    ProviderContinuation,
     SystemMessage,
     TextContent,
     TextResponseFormat,
@@ -36,6 +37,7 @@ from lmux.types import (
     UserMessage,
 )
 from lmux_aws_bedrock._mappers import (
+    BedrockContinuationState,
     build_embedding_request_body,
     map_converse_response,
     map_embedding_response,
@@ -144,6 +146,42 @@ class TestMapMessages:
         assert msg["content"] == [
             {"toolUse": {"toolUseId": "tc1", "name": "f", "input": {}}},
         ]
+
+    def test_matching_continuation_is_authoritative(self) -> None:
+        continuation = ProviderContinuation(
+            namespace="lmux_aws_bedrock.converse",
+            data={
+                "content": [
+                    {"reasoningContent": {"reasoningText": {"text": "Original", "signature": "opaque"}}},
+                    {"toolUse": {"toolUseId": "native", "name": "native_tool", "input": {}}},
+                ]
+            },
+        )
+        normalized_call = ToolCall(id="edited", function=FunctionCallResult(name="edited_tool", arguments="{}"))
+
+        _, messages = map_messages(
+            [AssistantMessage(content="Edited", tool_calls=[normalized_call], continuation=continuation)]
+        )
+
+        assert messages == [
+            {
+                "role": "assistant",
+                "content": [
+                    {"reasoningContent": {"reasoningText": {"text": "Original", "signature": "opaque"}}},
+                    {"toolUse": {"toolUseId": "native", "name": "native_tool", "input": {}}},
+                ],
+            }
+        ]
+
+    def test_foreign_continuation_is_ignored(self) -> None:
+        continuation = ProviderContinuation(namespace="third_party.chat", data={"content": []})
+        _, messages = map_messages([AssistantMessage(content="Portable", continuation=continuation)])
+        assert messages == [{"role": "assistant", "content": [{"text": "Portable"}]}]
+
+    def test_malformed_matching_continuation_raises(self) -> None:
+        continuation = ProviderContinuation(namespace="lmux_aws_bedrock.converse", data={"content": ["bad"]})
+        with pytest.raises(InvalidRequestError, match="list of content blocks"):
+            map_messages([AssistantMessage(continuation=continuation)])
 
     def test_tool_message(self) -> None:
         system, messages = map_messages([ToolMessage(content="72F", tool_call_id="tc1")])
@@ -586,6 +624,51 @@ class TestMapConverseResponse:
         )
         assert result.content == "Answer"
         assert result.reasoning == "Let me think..."
+        assert result.continuation == ProviderContinuation(
+            namespace="lmux_aws_bedrock.converse",
+            data={
+                "content": [
+                    {"reasoningContent": {"reasoningText": {"text": "Let me think..."}}},
+                    {"text": "Answer"},
+                ]
+            },
+        )
+
+    def test_signed_reasoning_preserves_unknown_fields(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        content = [
+            {"reasoningContent": {"reasoningText": {"text": "Think", "signature": "opaque", "futureField": True}}},
+            {"toolUse": {"toolUseId": "call_1", "name": "weather", "input": {"city": "NYC"}}},
+        ]
+        response: Any = {
+            "output": {"message": {"content": content}},
+            "stopReason": "tool_use",
+            "usage": {"inputTokens": 10, "outputTokens": 5},
+        }
+
+        result = map_converse_response(
+            WireConverseResponse.model_validate(response), "anthropic.claude-4", "aws-bedrock", noop_cost_fn
+        )
+
+        assert result.continuation == ProviderContinuation(
+            namespace="lmux_aws_bedrock.converse", data={"content": content}
+        )
+
+    def test_redacted_reasoning_becomes_continuation(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        content = [{"reasoningContent": {"redactedContent": "encrypted"}}, {"text": "Answer"}]
+        response: Any = {
+            "output": {"message": {"content": content}},
+            "stopReason": "end_turn",
+            "usage": {"inputTokens": 10, "outputTokens": 5},
+        }
+
+        result = map_converse_response(
+            WireConverseResponse.model_validate(response), "anthropic.claude-4", "aws-bedrock", noop_cost_fn
+        )
+
+        assert result.reasoning is None
+        assert result.continuation == ProviderContinuation(
+            namespace="lmux_aws_bedrock.converse", data={"content": content}
+        )
 
     def test_reasoning_content_empty_text(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response: Any = {
@@ -771,6 +854,87 @@ class TestMapStreamEvent:
         }
         result = map_stream_event(WireStreamEvent.model_validate(event))
         assert result is None
+
+
+class TestBedrockContinuationState:
+    def test_reconstructs_ordered_reasoning_and_tool_blocks(self) -> None:
+        state = BedrockContinuationState()
+        events: list[Any] = [
+            {
+                "contentBlockDelta": {
+                    "contentBlockIndex": 0,
+                    "delta": {"reasoningContent": {"text": "Think"}},
+                }
+            },
+            {
+                "contentBlockDelta": {
+                    "contentBlockIndex": 0,
+                    "delta": {"reasoningContent": {"signature": "opaque"}},
+                }
+            },
+            {"contentBlockDelta": {"contentBlockIndex": 1, "delta": {"text": "Checking"}}},
+            {
+                "contentBlockStart": {
+                    "contentBlockIndex": 2,
+                    "start": {"toolUse": {"toolUseId": "call_1", "name": "weather"}},
+                }
+            },
+            {"contentBlockDelta": {"contentBlockIndex": 2, "delta": {"toolUse": {"input": '{"city"'}}}},
+            {"contentBlockDelta": {"contentBlockIndex": 2, "delta": {"toolUse": {"input": ':"NYC"}'}}}},
+        ]
+        for event in events:
+            state.add(WireStreamEvent.model_validate(event))
+
+        assert state.continuation() == ProviderContinuation(
+            namespace="lmux_aws_bedrock.converse",
+            data={
+                "content": [
+                    {"reasoningContent": {"reasoningText": {"text": "Think", "signature": "opaque"}}},
+                    {"text": "Checking"},
+                    {"toolUse": {"toolUseId": "call_1", "name": "weather", "input": {"city": "NYC"}}},
+                ]
+            },
+        )
+
+    def test_redacted_reasoning_replaces_text_variant(self) -> None:
+        state = BedrockContinuationState()
+        state.add(
+            WireStreamEvent.model_validate(
+                {
+                    "contentBlockDelta": {
+                        "contentBlockIndex": 0,
+                        "delta": {"reasoningContent": {"text": "hidden"}},
+                    }
+                }
+            )
+        )
+        state.add(
+            WireStreamEvent.model_validate(
+                {
+                    "contentBlockDelta": {
+                        "contentBlockIndex": 0,
+                        "delta": {"reasoningContent": {"redactedContent": "encrypted"}},
+                    }
+                }
+            )
+        )
+        assert state.continuation() == ProviderContinuation(
+            namespace="lmux_aws_bedrock.converse",
+            data={"content": [{"reasoningContent": {"redactedContent": "encrypted"}}]},
+        )
+
+    def test_unsigned_text_has_no_continuation(self) -> None:
+        state = BedrockContinuationState()
+        state.add(WireStreamEvent.model_validate({"messageStart": {"role": "assistant"}}))
+        state.add(
+            WireStreamEvent.model_validate({"contentBlockStart": {"contentBlockIndex": 0, "start": {"text": ""}}})
+        )
+        state.add(
+            WireStreamEvent.model_validate(
+                {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"unknown": "ignored"}}}
+            )
+        )
+        assert state.continuation() is None
 
 
 # MARK: map_embedding_response
