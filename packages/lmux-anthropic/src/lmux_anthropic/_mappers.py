@@ -4,9 +4,9 @@ import copy
 import json
 import re
 from collections.abc import Callable, Sequence
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-from lmux.exceptions import UnsupportedFeatureError
+from lmux.exceptions import InvalidRequestError, UnsupportedFeatureError
 from lmux.schema import add_additional_properties_false
 from lmux.types import (
     AssistantMessage,
@@ -21,6 +21,7 @@ from lmux.types import (
     ImageContent,
     JsonObjectResponseFormat,
     Message,
+    ProviderContinuation,
     ResponseFormat,
     SystemMessage,
     TextContent,
@@ -44,6 +45,7 @@ from lmux_anthropic._wire import (
     WireMessageDeltaEvent,
     WireMessageStartEvent,
     WireOutputTokensDetails,
+    WireSignatureDelta,
     WireTextBlock,
     WireTextDelta,
     WireThinkingBlock,
@@ -56,6 +58,7 @@ type CostCalculator = Callable[[str, Usage], Cost | None]
 type Json = dict[str, Any]
 
 _DATA_URI_PATTERN = re.compile(r"^data:(image/[^;]+);base64,(.+)$", re.DOTALL)
+_DEFAULT_CONTINUATION_NAMESPACE = "lmux_anthropic.messages"
 
 _STOP_REASON_MAP: dict[str, str] = {
     "end_turn": "stop",
@@ -76,7 +79,9 @@ def _map_stop_reason(stop_reason: str | None) -> str | None:
 # MARK: Input Mappers (lmux -> Anthropic Messages API JSON)
 
 
-def map_messages(messages: Sequence[Message]) -> tuple[str | list[Json] | None, list[Json]]:
+def map_messages(
+    messages: Sequence[Message], *, continuation_namespace: str = _DEFAULT_CONTINUATION_NAMESPACE
+) -> tuple[str | list[Json] | None, list[Json]]:
     """Convert lmux Messages to Anthropic format.
 
     Returns ``(system, messages_list)`` where ``system`` is extracted from any
@@ -104,7 +109,7 @@ def map_messages(messages: Sequence[Message]) -> tuple[str | list[Json] | None, 
             if isinstance(content, str) or content or not msg.content:
                 result.append({"role": "user", "content": content})
         elif isinstance(msg, AssistantMessage):
-            result.append(_map_assistant_message(msg))
+            result.append(_map_assistant_message(msg, continuation_namespace))
         else:
             _append_tool_result(result, msg)
 
@@ -189,7 +194,15 @@ def _map_image_content(img: ImageContent) -> Json:
     return {"type": "image", "source": {"type": "url", "url": img.url}}
 
 
-def _map_assistant_message(msg: AssistantMessage) -> Json:
+def _map_assistant_message(msg: AssistantMessage, continuation_namespace: str) -> Json:
+    continuation = msg.continuation
+    if continuation is not None and continuation.namespace == continuation_namespace:
+        content = continuation.data.get("content")
+        if not isinstance(content, list) or any(not isinstance(block, dict) for block in content):
+            error_message = "Anthropic continuation data must contain a list of content blocks"
+            raise InvalidRequestError(error_message, provider="anthropic")
+        return {"role": "assistant", "content": copy.deepcopy(cast("list[Json]", content))}
+
     content: list[Json] = []
     if msg.content is not None:
         content.append({"type": "text", "text": msg.content})
@@ -293,7 +306,13 @@ def map_response_format(rf: ResponseFormat) -> Json | None:
 # MARK: Output Mappers (Anthropic wire models -> lmux)
 
 
-def map_message_response(message: WireMessage, provider_name: str, cost_fn: CostCalculator) -> ChatResponse:
+def map_message_response(
+    message: WireMessage,
+    provider_name: str,
+    cost_fn: CostCalculator,
+    *,
+    continuation_namespace: str = _DEFAULT_CONTINUATION_NAMESPACE,
+) -> ChatResponse:
     """Convert a validated Anthropic Messages API response to an lmux ChatResponse."""
     text_parts: list[str] = []
     thinking_parts: list[str] = []
@@ -326,7 +345,19 @@ def map_message_response(message: WireMessage, provider_name: str, cost_fn: Cost
         model=message.model,
         provider=provider_name,
         finish_reason=_map_stop_reason(message.stop_reason),
+        continuation=_continuation_from_blocks(message.content, continuation_namespace),
     )
+
+
+def _continuation_from_blocks(blocks: list[Any], namespace: str) -> ProviderContinuation | None:
+    content = [block.model_dump(mode="json", exclude_none=True) for block in blocks]
+    return _continuation_from_content(content, namespace)
+
+
+def _continuation_from_content(content: list[Json], namespace: str) -> ProviderContinuation | None:
+    if not any(block.get("type") == "redacted_thinking" or "signature" in block for block in content):
+        return None
+    return ProviderContinuation(namespace=namespace, data={"content": content})
 
 
 def _map_usage(usage: WireUsage) -> Usage:
@@ -412,6 +443,58 @@ def map_message_delta(event: WireMessageDeltaEvent, start_usage: Usage) -> ChatC
         finish_reason=_map_stop_reason(event.delta.stop_reason),
         usage=usage,
     )
+
+
+class AnthropicContinuationState:
+    """Reconstruct native Anthropic content blocks from stream events."""
+
+    def __init__(self, namespace: str) -> None:
+        self._namespace = namespace
+        self._blocks: dict[int, Json] = {}
+        self._tool_inputs: dict[int, str] = {}
+
+    def add_start(self, event: WireContentBlockStartEvent) -> None:
+        self._blocks[event.index] = event.content_block.model_dump(mode="json", exclude_none=True)
+
+    def add_delta(self, event: WireContentBlockDeltaEvent) -> None:
+        block = self._blocks.get(event.index)
+        if block is None:
+            return
+        delta = event.delta
+        if isinstance(delta, WireTextDelta):
+            block["text"] = f"{block.get('text', '')}{delta.text}"
+        elif isinstance(delta, WireThinkingDelta):
+            block["thinking"] = f"{block.get('thinking', '')}{delta.thinking}"
+        elif isinstance(delta, WireSignatureDelta):
+            block["signature"] = f"{block.get('signature', '')}{delta.signature}"
+        elif isinstance(delta, WireInputJsonDelta):
+            self._tool_inputs[event.index] = self._tool_inputs.get(event.index, "") + delta.partial_json
+
+    def continuation(self) -> ProviderContinuation | None:
+        if not any(block.get("type") == "redacted_thinking" or "signature" in block for block in self._blocks.values()):
+            return None
+        content: list[Json] = []
+        for index in sorted(self._blocks):
+            block = self._completed_block(index)
+            if block is None:
+                return None
+            content.append(block)
+        return _continuation_from_content(content, self._namespace)
+
+    def _completed_block(self, index: int) -> Json | None:
+        block = copy.deepcopy(self._blocks[index])
+        partial_json = self._tool_inputs.get(index)
+        if partial_json is not None:
+            if block.get("type") != "tool_use":
+                return None
+            try:
+                tool_input = json.loads(partial_json)
+            except json.JSONDecodeError:
+                return None
+            if not isinstance(tool_input, dict):
+                return None
+            block["input"] = tool_input
+        return block
 
 
 def _map_delta_usage(delta_usage: WireDeltaUsage, start_usage: Usage) -> Usage:

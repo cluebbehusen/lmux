@@ -48,6 +48,7 @@ from lmux_aws_bedrock._exceptions import (
 )
 from lmux_aws_bedrock._lazy import bedrock_base_url, create_async_client, create_sync_client
 from lmux_aws_bedrock._mappers import (
+    BedrockContinuationState,
     build_embedding_request_body,
     map_converse_response,
     map_messages,
@@ -328,10 +329,17 @@ class BedrockProvider(
         try:
             self._raise_for_stream_status(response)
             decoder = EventStreamDecoder()
+            continuation_state = BedrockContinuationState()
             for raw in response.iter_bytes():
                 for headers, payload in decoder.feed(raw):
-                    chunk = self._map_stream_event(_decode_event(headers, payload), model, as_of)
+                    event = WireStreamEvent.model_validate(_decode_event(headers, payload))
+                    continuation_state.add(event)
+                    chunk = self._map_stream_event(event, model, as_of)
                     if chunk is not None:
+                        if chunk.finish_reason is not None or event.metadata is not None:
+                            continuation = continuation_state.continuation()
+                            if continuation is not None:
+                                chunk = chunk.model_copy(update={"continuation": continuation})
                         yield chunk
         except LmuxError:
             raise
@@ -370,10 +378,17 @@ class BedrockProvider(
         try:
             await self._araise_for_stream_status(response)
             decoder = EventStreamDecoder()
+            continuation_state = BedrockContinuationState()
             async for raw in response.aiter_bytes():
                 for headers, payload in decoder.feed(raw):
-                    chunk = self._map_stream_event(_decode_event(headers, payload), model, as_of)
+                    event = WireStreamEvent.model_validate(_decode_event(headers, payload))
+                    continuation_state.add(event)
+                    chunk = self._map_stream_event(event, model, as_of)
                     if chunk is not None:
+                        if chunk.finish_reason is not None or event.metadata is not None:
+                            continuation = continuation_state.continuation()
+                            if continuation is not None:
+                                chunk = chunk.model_copy(update={"continuation": continuation})
                         yield chunk
         except LmuxError:
             raise
@@ -395,9 +410,9 @@ class BedrockProvider(
             await response.aread()
             raise_for_status(response)
 
-    def _map_stream_event(self, event: dict[str, Any], model: str, as_of: date) -> ChatChunk | None:
+    def _map_stream_event(self, event: WireStreamEvent, model: str, as_of: date) -> ChatChunk | None:
         """Map one decoded event to a ChatChunk, stamping cost on the usage chunk (None if not user-facing)."""
-        chunk = map_stream_event(WireStreamEvent.model_validate(event))
+        chunk = map_stream_event(event)
         if chunk is None:
             return None
         return self._finalize_chunk(chunk, model, as_of)

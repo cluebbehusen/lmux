@@ -1,0 +1,88 @@
+{
+  "endpoint": "https://bedrock-runtime.us-east-1.amazonaws.com/model/us.anthropic.claude-haiku-4-5-20251001-v1%3A0/converse",
+  "request": {
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "text": "What is the weather in Denver? Use the get_weather tool."
+          }
+        ]
+      }
+    ],
+    "inferenceConfig": {
+      "maxTokens": 2048
+    },
+    "toolConfig": {
+      "tools": [
+        {
+          "toolSpec": {
+            "name": "get_weather",
+            "inputSchema": {
+              "json": {
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "city"
+                ]
+              }
+            },
+            "description": "Get the current weather for a city."
+          }
+        }
+      ]
+    },
+    "additionalModelRequestFields": {
+      "thinking": {
+        "type": "enabled",
+        "budget_tokens": 1024
+      }
+    }
+  },
+  "response": {
+    "metrics": {
+      "latencyMs": 1388
+    },
+    "output": {
+      "message": {
+        "content": [
+          {
+            "reasoningContent": {
+              "reasoningText": {
+                "signature": "Eu4CCkgIEBABGAIqQD5ueuT90DIGEG+I/+6MUzqS5ev8yzRVkd+uTbkvd7+xjaUzV2fpIeZhOqG4yn6OVCgMBsxoLD302vCN1Ti7S9ISDExV64x/m0jLtb+H1BoMPFWVCen0O29KJR5HIjATycS00rYzNPk5JsQehpmf+Ju8CnXmjCJPwz5T/OvsrYxGupDhpIMCqOtorizRoHcq0wGcMi52yu2ZVn0JQhua38TUNTX+9xF6MEMHT5oCBqMxmt454bYR3mbUmqMP6bWecuFae1iJg7RsSuik4MwEBWn9ZJkVzNimcwPt2pHZC2MlGXNcliwtjx6Wbe9pCMADC3dxutDac+a00g6q5GFW8tQr2nKyAVJyNhy/oMGJB2KGOS4/q5dxvNLQHlSN830pxI15dZ72u34lA3tokubEvs6BsqGArTT0fdF8UnllTjLlSSc+kI6tEU9y2OS4q3mZU+4muTDPEJcfRl53jVWQigGU+G9XGAE=",
+                "text": "The user is asking me to get the weather in Denver and specifically wants me to use the get_weather tool. I have the required parameter (city = \"Denver\"), so I can proceed with the function call."
+              }
+            }
+          },
+          {
+            "toolUse": {
+              "input": {
+                "city": "Denver"
+              },
+              "name": "get_weather",
+              "toolUseId": "tooluse_75CXvC2GmgoA4JqdXiDEdw",
+              "type": "tool_use"
+            }
+          }
+        ],
+        "role": "assistant"
+      }
+    },
+    "stopReason": "tool_use",
+    "usage": {
+      "cacheReadInputTokenCount": 0,
+      "cacheReadInputTokens": 0,
+      "cacheWriteInputTokenCount": 0,
+      "cacheWriteInputTokens": 0,
+      "inputTokens": 602,
+      "outputTokens": 104,
+      "serverToolUsage": {},
+      "totalTokens": 706
+    }
+  }
+}

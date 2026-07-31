@@ -1,14 +1,14 @@
 """Pydantic wire models for the Anthropic Messages API response and stream events.
 
-Only the fields lmux consumes are declared; unknown fields are ignored (Pydantic's default), so
-new server fields do not break parsing. Content blocks and streaming deltas are discriminated
-unions with an explicit unknown-tag fallback, so an unrecognized ``type`` validates into the
-fallback variant instead of raising.
+Only the fields lmux consumes are declared. Content blocks retain unknown fields so provider
+continuations can replay them without core changes. Content blocks and streaming deltas are
+discriminated unions with an explicit unknown-tag fallback, so an unrecognized ``type`` validates
+into the fallback variant instead of raising.
 """
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Discriminator, Tag
+from pydantic import BaseModel, ConfigDict, Discriminator, Tag
 
 # MARK: Usage (shared by the response, message_start, and message_delta)
 
@@ -43,20 +43,34 @@ class WireDeltaUsage(BaseModel):
 
 # MARK: Content blocks (response ``content[]`` and content_block_start)
 
-_KNOWN_BLOCKS = frozenset({"text", "thinking", "tool_use"})
+_KNOWN_BLOCKS = frozenset({"text", "thinking", "redacted_thinking", "tool_use"})
 
 
 class WireTextBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     type: Literal["text"]
     text: str
 
 
 class WireThinkingBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     type: Literal["thinking"]
     thinking: str
+    signature: str | None = None
+
+
+class WireRedactedThinkingBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: Literal["redacted_thinking"]
+    data: str
 
 
 class WireToolUseBlock(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     type: Literal["tool_use"]
     id: str
     name: str
@@ -64,7 +78,9 @@ class WireToolUseBlock(BaseModel):
 
 
 class WireUnknownBlock(BaseModel):
-    """Fallback for block types lmux does not consume (e.g. ``redacted_thinking``)."""
+    """Fallback for block types lmux does not consume."""
+
+    model_config = ConfigDict(extra="allow")
 
     type: str
 
@@ -77,6 +93,7 @@ def _content_block_tag(value: Any) -> str:  # noqa: ANN401 — pydantic passes t
 WireContentBlock = Annotated[
     Annotated[WireTextBlock, Tag("text")]
     | Annotated[WireThinkingBlock, Tag("thinking")]
+    | Annotated[WireRedactedThinkingBlock, Tag("redacted_thinking")]
     | Annotated[WireToolUseBlock, Tag("tool_use")]
     | Annotated[WireUnknownBlock, Tag("unknown")],
     Discriminator(_content_block_tag),
@@ -85,7 +102,7 @@ WireContentBlock = Annotated[
 
 # MARK: Streaming content_block_delta payloads
 
-_KNOWN_DELTAS = frozenset({"text_delta", "input_json_delta", "thinking_delta"})
+_KNOWN_DELTAS = frozenset({"text_delta", "input_json_delta", "thinking_delta", "signature_delta"})
 
 
 class WireTextDelta(BaseModel):
@@ -103,8 +120,13 @@ class WireThinkingDelta(BaseModel):
     thinking: str
 
 
+class WireSignatureDelta(BaseModel):
+    type: Literal["signature_delta"]
+    signature: str
+
+
 class WireUnknownDelta(BaseModel):
-    """Fallback for delta types lmux does not consume (e.g. ``signature_delta``)."""
+    """Fallback for delta types lmux does not consume."""
 
     type: str
 
@@ -118,6 +140,7 @@ WireStreamDelta = Annotated[
     Annotated[WireTextDelta, Tag("text_delta")]
     | Annotated[WireInputJsonDelta, Tag("input_json_delta")]
     | Annotated[WireThinkingDelta, Tag("thinking_delta")]
+    | Annotated[WireSignatureDelta, Tag("signature_delta")]
     | Annotated[WireUnknownDelta, Tag("unknown")],
     Discriminator(_stream_delta_tag),
 ]
@@ -162,3 +185,4 @@ class WireMessageDeltaBody(BaseModel):
 class WireMessageDeltaEvent(BaseModel):
     delta: WireMessageDeltaBody
     usage: WireDeltaUsage
+    model_config = ConfigDict(extra="allow")

@@ -54,6 +54,20 @@ for chunk in provider.chat_stream("anthropic.claude-sonnet-4-20250514-v1:0", [Us
         print(chunk.delta, end="")
 ```
 
+### Tool continuations
+
+Bedrock reasoning blocks carry signatures that must be returned unmodified when a tool result continues the assistant turn. `lmux-aws-bedrock` preserves the native ordered Converse blocks in `response.continuation`; use `to_assistant_message()` to keep them with the normalized response:
+
+```python
+from lmux import ToolMessage
+
+response = provider.chat(model, messages, tools=tools, reasoning_effort="high")
+messages.append(response.to_assistant_message())
+messages.append(ToolMessage(content=tool_result, tool_call_id=response.tool_calls[0].id))
+```
+
+A matching Converse continuation is replayed exactly. Other providers ignore it and use the normalized content and tool calls.
+
 ### Embeddings
 
 ```python

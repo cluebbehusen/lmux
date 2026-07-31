@@ -36,6 +36,20 @@ for chunk in provider.chat_stream("claude-sonnet-4-20250514", [UserMessage(conte
         print(chunk.delta, end="")
 ```
 
+### Tool continuations
+
+Extended thinking and redacted thinking blocks must be returned unmodified when a tool result continues the assistant turn. `lmux-anthropic` preserves the native ordered blocks in `response.continuation`; use `to_assistant_message()` to keep them with the normalized response:
+
+```python
+from lmux import ToolMessage
+
+response = provider.chat(model, messages, tools=tools, reasoning_effort="high")
+messages.append(response.to_assistant_message())
+messages.append(ToolMessage(content=tool_result, tool_call_id=response.tool_calls[0].id))
+```
+
+Continuations are scoped to the Anthropic API surface that produced them, including Vertex AI, Microsoft Foundry, and Amazon Bedrock. A matching continuation is replayed exactly; other providers ignore it and use the normalized content and tool calls.
+
 ### Async
 
 All methods have async variants: `achat`, `achat_stream`.

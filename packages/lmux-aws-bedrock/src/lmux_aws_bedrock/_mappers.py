@@ -18,7 +18,7 @@ if TYPE_CHECKING:
         ToolTypeDef,
     )
 
-from lmux.exceptions import UnsupportedFeatureError
+from lmux.exceptions import InvalidRequestError, UnsupportedFeatureError
 from lmux.schema import add_additional_properties_false
 from lmux.types import (
     AssistantMessage,
@@ -34,6 +34,7 @@ from lmux.types import (
     ImageContent,
     JsonObjectResponseFormat,
     Message,
+    ProviderContinuation,
     ResponseFormat,
     SystemMessage,
     TextContent,
@@ -58,8 +59,10 @@ from lmux_aws_bedrock._wire import (
 )
 
 type CostCalculator = Callable[[str, Usage], Cost | None]
+type Json = dict[str, Any]
 
 PROVIDER_NAME = "aws-bedrock"
+_CONTINUATION_NAMESPACE = "lmux_aws_bedrock.converse"
 
 _DATA_URI_PATTERN = re.compile(r"^data:image/([^;]+);base64,(.+)$", re.DOTALL)
 
@@ -77,7 +80,7 @@ _STOP_REASON_MAP: dict[str, str] = {
 
 
 def map_messages(
-    messages: Sequence[Message],
+    messages: Sequence[Message], *, continuation_namespace: str = _CONTINUATION_NAMESPACE
 ) -> tuple[list["SystemContentBlockTypeDef"] | None, list["MessageTypeDef"]]:
     """Convert lmux Messages to Converse API format.
 
@@ -98,7 +101,7 @@ def map_messages(
             if content or not msg.content:
                 result.append({"role": "user", "content": content})
         elif isinstance(msg, AssistantMessage):
-            result.append(_map_assistant_message(msg))
+            result.append(_map_assistant_message(msg, continuation_namespace))
         else:
             _append_tool_result(result, msg)
 
@@ -177,7 +180,15 @@ def _map_image_content(img: ImageContent) -> "ContentBlockTypeDef":
     raise UnsupportedFeatureError(msg, provider=PROVIDER_NAME)
 
 
-def _map_assistant_message(msg: AssistantMessage) -> "MessageTypeDef":
+def _map_assistant_message(msg: AssistantMessage, continuation_namespace: str) -> "MessageTypeDef":
+    continuation = msg.continuation
+    if continuation is not None and continuation.namespace == continuation_namespace:
+        content = continuation.data.get("content")
+        if not isinstance(content, list) or any(not isinstance(block, dict) for block in content):
+            error_message = "Bedrock continuation data must contain a list of content blocks"
+            raise InvalidRequestError(error_message, provider=PROVIDER_NAME)
+        return {"role": "assistant", "content": copy.deepcopy(cast("list[ContentBlockTypeDef]", content))}
+
     content: list[ContentBlockTypeDef] = []
     if msg.content is not None:
         content.append({"text": msg.content})
@@ -312,7 +323,7 @@ def map_converse_response(
     for block in response.output.message.content:
         if block.reasoning_content is not None:
             reasoning_text = block.reasoning_content.reasoning_text
-            if reasoning_text.text:
+            if reasoning_text is not None and reasoning_text.text:
                 reasoning_parts.append(reasoning_text.text)
         elif block.text is not None:
             text_parts.append(block.text)
@@ -340,7 +351,19 @@ def map_converse_response(
         model=model,
         provider=provider_name,
         finish_reason=finish_reason,
+        continuation=_continuation_from_blocks(response.output.message.content),
     )
+
+
+def _continuation_from_blocks(blocks: list[Any]) -> ProviderContinuation | None:
+    content = [block.model_dump(mode="json", by_alias=True, exclude_none=True) for block in blocks]
+    return _continuation_from_content(content)
+
+
+def _continuation_from_content(content: list[Json]) -> ProviderContinuation | None:
+    if not any("reasoningContent" in block for block in content):
+        return None
+    return ProviderContinuation(namespace=_CONTINUATION_NAMESPACE, data={"content": content})
 
 
 def _map_stop_reason(stop_reason: str | None) -> str | None:
@@ -387,6 +410,74 @@ def map_stream_event(event: WireStreamEvent) -> ChatChunk | None:
         return _map_metadata_event(event.metadata)
     # messageStart, contentBlockStop — not interesting
     return None
+
+
+class BedrockContinuationState:
+    """Reconstruct native Converse content blocks from stream events."""
+
+    def __init__(self) -> None:
+        self._blocks: dict[int, Json] = {}
+        self._tool_inputs: dict[int, str] = {}
+
+    def add(self, event: WireStreamEvent) -> None:
+        if event.content_block_start is not None:
+            self._add_start(event.content_block_start)
+        if event.content_block_delta is not None:
+            self._add_delta(event.content_block_delta)
+
+    def continuation(self) -> ProviderContinuation | None:
+        if not any("reasoningContent" in block for block in self._blocks.values()):
+            return None
+        content: list[Json] = []
+        for index in sorted(self._blocks):
+            block = self._completed_block(index)
+            if block is None:
+                return None
+            content.append(block)
+        return _continuation_from_content(content)
+
+    def _add_start(self, event: WireContentBlockStartEvent) -> None:
+        tool_use = event.start.tool_use
+        if tool_use is not None:
+            self._blocks[event.content_block_index] = {
+                "toolUse": {"toolUseId": tool_use.tool_use_id, "name": tool_use.name, "input": {}}
+            }
+
+    def _add_delta(self, event: WireContentBlockDeltaEvent) -> None:
+        index = event.content_block_index
+        delta = event.delta
+        if delta.reasoning_content is not None:
+            reasoning_delta = delta.reasoning_content
+            if reasoning_delta.redacted_content is not None:
+                self._blocks[index] = {"reasoningContent": {"redactedContent": reasoning_delta.redacted_content}}
+                return
+            block = self._blocks.setdefault(index, {"reasoningContent": {"reasoningText": {}}})
+            reasoning_text = block["reasoningContent"]["reasoningText"]
+            if reasoning_delta.text is not None:
+                reasoning_text["text"] = f"{reasoning_text.get('text', '')}{reasoning_delta.text}"
+            if reasoning_delta.signature is not None:
+                reasoning_text["signature"] = f"{reasoning_text.get('signature', '')}{reasoning_delta.signature}"
+        elif delta.text is not None:
+            block = self._blocks.setdefault(index, {"text": ""})
+            block["text"] = f"{block.get('text', '')}{delta.text}"
+        elif delta.tool_use is not None:
+            self._tool_inputs[index] = self._tool_inputs.get(index, "") + delta.tool_use.input
+
+    def _completed_block(self, index: int) -> Json | None:
+        block = copy.deepcopy(self._blocks[index])
+        partial_json = self._tool_inputs.get(index)
+        if partial_json is not None:
+            tool_use = block.get("toolUse")
+            if not isinstance(tool_use, dict):
+                return None
+            try:
+                tool_input = json.loads(partial_json)
+            except json.JSONDecodeError:
+                return None
+            if not isinstance(tool_input, dict):
+                return None
+            tool_use["input"] = tool_input
+        return block
 
 
 def _map_content_block_delta(data: WireContentBlockDeltaEvent) -> ChatChunk | None:

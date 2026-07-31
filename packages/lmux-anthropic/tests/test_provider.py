@@ -572,6 +572,47 @@ class TestChatStream:
         assert chunks[-1].cost.total_cost > 0
         assert json.loads(route.calls.last.request.content)["stream"] is True
 
+    def test_truncated_tool_input_yields_length_chunk(
+        self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        events = _sse(
+            [
+                (
+                    "message_start",
+                    {
+                        "type": "message_start",
+                        "message": {"model": MODEL, "usage": {"input_tokens": 10, "output_tokens": 1}},
+                    },
+                ),
+                (
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": 0,
+                        "content_block": {"type": "tool_use", "id": "call_1", "name": "get_weather", "input": {}},
+                    },
+                ),
+                (
+                    "content_block_delta",
+                    {
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {"type": "input_json_delta", "partial_json": '{"city": "Den'},
+                    },
+                ),
+                (
+                    "message_delta",
+                    {"type": "message_delta", "delta": {"stop_reason": "max_tokens"}, "usage": {"output_tokens": 64}},
+                ),
+            ]
+        )
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=events))
+
+        chunks = list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+        assert chunks[-1].finish_reason == "length"
+        assert chunks[-1].continuation is None
+
     def test_mid_stream_error_raises_after_partial(
         self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
     ) -> None:
