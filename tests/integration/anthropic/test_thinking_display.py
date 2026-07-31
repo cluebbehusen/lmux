@@ -1,12 +1,14 @@
 """Claude adaptive thinking returns its summarized display through lmux."""
 
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from lmux.types import ChatResponse, UserMessage
+from lmux_anthropic.params import AnthropicParams
 from lmux_anthropic.provider import AnthropicProvider
 
 _MODEL = "claude-sonnet-5"
@@ -19,7 +21,11 @@ _RATES = {"input_rate": 2.00 / 1_000_000, "output_rate": 10.00 / 1_000_000}
 
 def _chat(auth: Any, transport: Any) -> ChatResponse:  # noqa: ANN401 — harness-supplied per mode
     return AnthropicProvider(auth=auth, transport=transport).chat(
-        _MODEL, [UserMessage(content=_PROMPT)], max_tokens=_MAX_TOKENS, reasoning_effort="high"
+        _MODEL,
+        [UserMessage(content=_PROMPT)],
+        max_tokens=_MAX_TOKENS,
+        reasoning_effort="high",
+        provider_params=AnthropicParams(pricing_as_of=date(2026, 7, 31)),
     )
 
 
