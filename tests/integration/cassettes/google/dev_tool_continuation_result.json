@@ -1,0 +1,99 @@
+{
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is the weather in Denver? Use the tool."
+          }
+        ]
+      },
+      {
+        "role": "model",
+        "parts": [
+          {
+            "thoughtSignature": "Eo0DCooDARFNMg8zpzCnHUfpNV+Y7AusDtOTsqSBAh7gdru76L68awUe1PHNngveo3DG8iuSQaGsB1G+zYPOX0AslLDizlFxdXoEW7kKZ9Y6kC7yYb5m8YOON1+0xjlgcdynpvQ8SVTE5feAkgoeVH3pb9wlH1PDMuVUp5KaVNGMT1cAdJxmfC++zNI2xSHdpvDNDMqQFHtt4u5fstnRznwX4xDTx9XgzOA3S2mvMSDt/tXYLMz5AAfWrQWWZqhVPceUntIhujjZMW7XV4Rh7dXdpUq2CFMjsKIKhnL1tKKgRoG9iWuYkGCnQFajNSSOnEL4nvoOA5q2jQ5FJRGo1LpUE7oz+D/aH5D4/88CcnrTiknhaB8cYvH4w1xuFISLsnKYBnYoyIcx7AoPRyBpl+XC/cZIKvydtlIV2njNChJkaEIIKi0iSYGHfVnLNHB+NLH9R5+w/W+9ocsXhgmMbs+qqvA32kpukpPw2Qsd1Xluu84NoWgDH8PoJT+le4Q/IOUrgJwZG/oOE118ETXOvw==",
+            "functionCall": {
+              "id": "rc4zzh3g",
+              "name": "get_weather",
+              "args": {
+                "city": "Denver"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "parts": [
+          {
+            "functionResponse": {
+              "name": "get_weather",
+              "response": {
+                "tempF": 68,
+                "conditions": "clear"
+              },
+              "id": "rc4zzh3g"
+            }
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "get_weather",
+            "description": "Get the current weather for a city.",
+            "parametersJsonSchema": {
+              "type": "object",
+              "properties": {
+                "city": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "city"
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "maxOutputTokens": 2048
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "The weather in Denver is currently clear with a temperature of 68\u00b0F."
+            }
+          ],
+          "role": "model"
+        },
+        "finishReason": "STOP",
+        "index": 0
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 178,
+      "candidatesTokenCount": 17,
+      "totalTokenCount": 195,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 178
+        }
+      ],
+      "serviceTier": "standard"
+    },
+    "modelVersion": "gemini-3-flash-preview",
+    "responseId": "zoNsar-yAYu0jMcPuriAIA"
+  }
+}

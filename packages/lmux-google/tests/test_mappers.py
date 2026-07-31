@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from lmux.exceptions import InvalidRequestError
 from lmux.types import (
     AssistantMessage,
     CachePointContent,
@@ -20,6 +21,7 @@ from lmux.types import (
     ImageContent,
     JsonObjectResponseFormat,
     JsonSchemaResponseFormat,
+    ProviderContinuation,
     ServerToolDelta,
     ServerToolResult,
     SystemMessage,
@@ -176,6 +178,63 @@ class TestMapMessages:
         tc = ToolCall(id="tc1", function=FunctionCallResult(name="f", arguments="{}"))
         _system, contents = map_messages([AssistantMessage(content=None, tool_calls=[tc])])
         assert contents == [{"role": "model", "parts": [{"functionCall": {"name": "f", "args": {}}}]}]
+
+    def test_matching_continuation_is_authoritative(self) -> None:
+        continuation = ProviderContinuation(
+            namespace="lmux_google.vertex.generate_content",
+            data={
+                "parts": [
+                    {"text": "Original", "thoughtSignature": "opaque"},
+                    {"functionCall": {"name": "get_weather", "args": {"city": "NYC"}}},
+                ]
+            },
+        )
+        normalized_call = ToolCall(id="call_1", function=FunctionCallResult(name="edited", arguments="{}"))
+        _, contents = map_messages(
+            [
+                AssistantMessage(content="Edited", tool_calls=[normalized_call], continuation=continuation),
+                ToolMessage(content='{"temperature": 72}', tool_call_id="call_1"),
+            ]
+        )
+        assert contents == [
+            {
+                "role": "model",
+                "parts": [
+                    {"text": "Original", "thoughtSignature": "opaque"},
+                    {"functionCall": {"name": "get_weather", "args": {"city": "NYC"}}},
+                ],
+            },
+            {
+                "role": "user",
+                "parts": [{"functionResponse": {"name": "get_weather", "response": {"temperature": 72}}}],
+            },
+        ]
+
+    def test_foreign_continuation_is_ignored(self) -> None:
+        continuation = ProviderContinuation(namespace="third_party.chat", data={"parts": [{"text": "Native"}]})
+        _, contents = map_messages([AssistantMessage(content="Portable", continuation=continuation)])
+        assert contents == [{"role": "model", "parts": [{"text": "Portable"}]}]
+
+    def test_malformed_matching_continuation_raises(self) -> None:
+        continuation = ProviderContinuation(namespace="lmux_google.vertex.generate_content", data={"parts": ["bad"]})
+        with pytest.raises(InvalidRequestError, match="list of part objects"):
+            map_messages([AssistantMessage(content="Portable", continuation=continuation)])
+
+    def test_continuation_function_call_without_name_is_not_used_for_tool_lookup(self) -> None:
+        continuation = ProviderContinuation(
+            namespace="lmux_google.developer.generate_content",
+            data={"parts": [{"functionCall": {"id": "call_x", "args": {}}}]},
+        )
+        _, contents = map_messages(
+            [
+                AssistantMessage(continuation=continuation),
+                ToolMessage(content='{"ok": true}', tool_call_id="call_x"),
+            ],
+            include_tool_call_ids=True,
+        )
+        assert contents[1]["parts"] == [
+            {"functionResponse": {"name": "call_x", "response": {"ok": True}, "id": "call_x"}}
+        ]
 
     def test_tool_message_json_content(self) -> None:
         tc = ToolCall(id="tc1", function=FunctionCallResult(name="get_weather", arguments="{}"))
@@ -336,6 +395,28 @@ class TestMapGenerateContentResponse:
             ToolCall(id="call_0", function=FunctionCallResult(name="get_weather", arguments='{"city": "NYC"}'))
         ]
         assert result.finish_reason == "tool_calls"
+
+    def test_thought_signature_becomes_continuation(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        parts = [
+            {"text": "Let me check.", "thoughtSignature": "opaque", "futureField": {"kept": True}},
+            {"functionCall": {"name": "get_weather", "args": {"city": "NYC"}, "futureCallField": 7}},
+        ]
+        response = _response(parts=parts)
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-3-flash-preview", "google", noop_cost_fn
+        )
+        assert result.continuation == ProviderContinuation(
+            namespace="lmux_google.developer.generate_content",
+            data={"parts": parts},
+        )
+        assert result.to_assistant_message().continuation == result.continuation
+
+    def test_response_without_signature_has_no_continuation(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = _response(parts=[{"text": "Hello"}])
+        result = map_generate_content_response(
+            WireGenerateContentResponse.model_validate(response), "gemini-2.5-flash", "google", noop_cost_fn
+        )
+        assert result.continuation is None
 
     def test_function_call_without_id(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = _response(parts=[{"functionCall": {"name": "search", "args": {}}}])

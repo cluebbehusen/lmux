@@ -41,6 +41,7 @@ from lmux_google._lazy import (
     vertex_base_url,
 )
 from lmux_google._mappers import (
+    GoogleContinuationState,
     Json,
     map_batch_embeddings_response,
     map_embed_content_response,
@@ -217,7 +218,11 @@ class GoogleProvider(
             raise map_transport_error(e) from e
         raise_for_status(response)
         return map_generate_content_response(
-            parse_body(response, WireGenerateContentResponse), model, PROVIDER_NAME, self._calculate_cost
+            parse_body(response, WireGenerateContentResponse),
+            model,
+            PROVIDER_NAME,
+            self._calculate_cost,
+            vertexai=self._vertexai,
         )
 
     @override
@@ -249,7 +254,11 @@ class GoogleProvider(
             raise map_transport_error(e) from e
         raise_for_status(response)
         return map_generate_content_response(
-            parse_body(response, WireGenerateContentResponse), model, PROVIDER_NAME, self._calculate_cost
+            parse_body(response, WireGenerateContentResponse),
+            model,
+            PROVIDER_NAME,
+            self._calculate_cost,
+            vertexai=self._vertexai,
         )
 
     @override
@@ -280,6 +289,7 @@ class GoogleProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         try:
+            continuation_state = GoogleContinuationState(vertexai=self._vertexai)
             with client.stream("POST", path, json=body, headers=headers) as response:
                 if response.status_code >= _HTTP_ERROR:
                     response.read()
@@ -288,7 +298,12 @@ class GoogleProvider(
                     chunk = json.loads(data)
                     if "error" in chunk:
                         raise error_from_stream(chunk)  # noqa: TRY301
-                    yield self._map_stream_chunk(chunk, model)
+                    wire = WireGenerateContentResponse.model_validate(chunk)
+                    continuation_state.add(wire)
+                    mapped = self._map_stream_chunk(wire, model)
+                    if mapped.finish_reason is not None:
+                        mapped = mapped.model_copy(update={"continuation": continuation_state.continuation()})
+                    yield mapped
         except LmuxError:
             raise
         except Exception as e:
@@ -322,6 +337,7 @@ class GoogleProvider(
         except Exception as e:
             raise map_transport_error(e) from e
         try:
+            continuation_state = GoogleContinuationState(vertexai=self._vertexai)
             async with client.stream("POST", path, json=body, headers=headers) as response:
                 if response.status_code >= _HTTP_ERROR:
                     await response.aread()
@@ -330,7 +346,12 @@ class GoogleProvider(
                     chunk = json.loads(data)
                     if "error" in chunk:
                         raise error_from_stream(chunk)  # noqa: TRY301
-                    yield self._map_stream_chunk(chunk, model)
+                    wire = WireGenerateContentResponse.model_validate(chunk)
+                    continuation_state.add(wire)
+                    mapped = self._map_stream_chunk(wire, model)
+                    if mapped.finish_reason is not None:
+                        mapped = mapped.model_copy(update={"continuation": continuation_state.continuation()})
+                    yield mapped
         except LmuxError:
             raise
         except Exception as e:
@@ -463,8 +484,8 @@ class GoogleProvider(
 
     # MARK: Internal Helpers
 
-    def _map_stream_chunk(self, chunk: Json, model: str) -> ChatChunk:
-        mapped = map_generate_content_chunk(WireGenerateContentResponse.model_validate(chunk), model, PROVIDER_NAME)
+    def _map_stream_chunk(self, chunk: WireGenerateContentResponse, model: str) -> ChatChunk:
+        mapped = map_generate_content_chunk(chunk, model, PROVIDER_NAME)
         if mapped.usage is not None:
             mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
         return mapped

@@ -1,7 +1,7 @@
 """Pydantic wire models for Gemini REST response bodies.
 
-Only the fields lmux consumes are declared; unknown fields are ignored (Pydantic's default),
-so new server fields do not break parsing. Gemini uses camelCase on the wire, so a shared
+Only the fields lmux consumes are declared; unknown fields are retained so provider
+continuations can replay them without core changes. Gemini uses camelCase on the wire, so a shared
 alias generator maps snake_case field names to their camelCase aliases (``function_call`` ->
 ``functionCall``). A part is a field-bag (no ``type`` tag), so ``WirePart`` carries every part
 shape lmux reads as optional fields and the mapper dispatches on which are present.
@@ -14,7 +14,7 @@ from pydantic.alias_generators import to_camel
 
 
 class _GeminiModel(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="allow")
 
 
 # MARK: generateContent (response + streaming chunk share this shape)
@@ -39,6 +39,7 @@ class WireCodeExecutionResult(_GeminiModel):
 class WirePart(_GeminiModel):
     text: str | None = None
     thought: bool | None = None
+    thought_signature: str | None = None
     function_call: WireFunctionCall | None = None
     executable_code: WireExecutableCode | None = None
     code_execution_result: WireCodeExecutionResult | None = None
