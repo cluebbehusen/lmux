@@ -408,7 +408,33 @@ class TestChat:
         route = _ok_converse(converse_response, respx_mock)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], reasoning_effort="medium")
         body = json.loads(route.calls.last.request.content)
+        assert body["additionalModelRequestFields"]["thinking"] == {"type": "enabled", "budget_tokens": 4095}
+        assert body["inferenceConfig"]["maxTokens"] == 4096
+
+    def test_reasoning_effort_honors_high_max_tokens(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(MODEL, [UserMessage(content="Hi")], max_tokens=100000, reasoning_effort="medium")
+        body = json.loads(route.calls.last.request.content)
         assert body["additionalModelRequestFields"]["thinking"] == {"type": "enabled", "budget_tokens": 8192}
+        assert body["inferenceConfig"]["maxTokens"] == 100000
+
+    def test_reasoning_effort_rejects_too_small_max_tokens(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_converse(converse_response, respx_mock)
+        with pytest.raises(InvalidRequestError, match="max_tokens must be greater than 1024"):
+            sync_provider.chat(MODEL, [UserMessage(content="Hi")], max_tokens=1024, reasoning_effort="low")
+        assert not route.called
+
+    def test_reasoning_effort_rejects_unrecognized_model(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_converse(converse_response, respx_mock, model="custom-deployment")
+        with pytest.raises(InvalidRequestError, match="unrecognized Claude model"):
+            sync_provider.chat("custom-deployment", [UserMessage(content="Hi")], reasoning_effort="low")
+        assert not route.called
 
     def test_reasoning_effort_deep_merges_with_provider_params(
         self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
@@ -420,9 +446,11 @@ class TestChat:
             reasoning_effort="high",
             provider_params=BedrockParams(additional_model_request_fields={"some_field": "value"}),
         )
-        additional = json.loads(route.calls.last.request.content)["additionalModelRequestFields"]
-        assert additional["thinking"] == {"type": "enabled", "budget_tokens": 32768}
+        body = json.loads(route.calls.last.request.content)
+        additional = body["additionalModelRequestFields"]
+        assert additional["thinking"] == {"type": "enabled", "budget_tokens": 4095}
         assert additional["some_field"] == "value"
+        assert body["inferenceConfig"]["maxTokens"] == 4096
 
     def test_provider_params_thinking_overrides_reasoning_effort(
         self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
@@ -436,8 +464,28 @@ class TestChat:
                 additional_model_request_fields={"thinking": {"type": "enabled", "budget_tokens": 99999}}
             ),
         )
-        additional = json.loads(route.calls.last.request.content)["additionalModelRequestFields"]
+        body = json.loads(route.calls.last.request.content)
+        additional = body["additionalModelRequestFields"]
         assert additional["thinking"] == {"type": "enabled", "budget_tokens": 99999}
+        assert body["inferenceConfig"]["maxTokens"] == 100000
+
+    def test_provider_params_non_integer_thinking_budget_is_untouched(
+        self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_converse(converse_response, respx_mock)
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            provider_params=BedrockParams(
+                additional_model_request_fields={"thinking": {"type": "enabled", "budget_tokens": "provider-defined"}}
+            ),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["additionalModelRequestFields"]["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": "provider-defined",
+        }
+        assert "inferenceConfig" not in body
 
     def test_reasoning_effort_does_not_mutate_provider_params(
         self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter

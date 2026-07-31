@@ -44,7 +44,7 @@ from lmux_aws_bedrock._mappers import (
     map_stream_event,
     map_tool_choice,
     map_tools,
-    model_uses_adaptive_thinking,
+    model_thinking_mode,
 )
 from lmux_aws_bedrock._wire import (
     WireConverseResponse,
@@ -841,7 +841,7 @@ class TestMapToolChoice:
         assert map_tool_choice(ToolChoiceFunction(name="get_weather")) == {"tool": {"name": "get_weather"}}
 
 
-class TestModelUsesAdaptiveThinking:
+class TestModelThinkingMode:
     @pytest.mark.parametrize(
         "model",
         [
@@ -851,6 +851,11 @@ class TestModelUsesAdaptiveThinking:
             "claude-sonnet-4-6",
             "claude-sonnet-5",
             "claude-fable-5",
+            "claude-mythos-5",
+            "claude-orchid-5",
+            "Claude-Sonnet-4-6",
+            "CLAUDE-OPUS-4-8",
+            "claude-mythos-preview",
             "global.anthropic.claude-opus-4-8",
             "global.anthropic.claude-sonnet-5",
             "us.anthropic.claude-opus-4-6-v1",
@@ -859,7 +864,7 @@ class TestModelUsesAdaptiveThinking:
         ],
     )
     def test_adaptive_generations(self, model: str) -> None:
-        assert model_uses_adaptive_thinking(model) is True
+        assert model_thinking_mode(model) == "adaptive"
 
     @pytest.mark.parametrize(
         "model",
@@ -876,9 +881,11 @@ class TestModelUsesAdaptiveThinking:
             "claude-3-7-sonnet",
             "claude-3-5-sonnet",
             "claude-3-opus",
-            "not-a-model",
-            "",
         ],
     )
-    def test_legacy_and_unparseable_generations(self, model: str) -> None:
-        assert model_uses_adaptive_thinking(model) is False
+    def test_legacy_generations(self, model: str) -> None:
+        assert model_thinking_mode(model) == "enabled"
+
+    @pytest.mark.parametrize("model", ["not-a-model", "", "claude-custom-deployment", "claude-deployment-2026"])
+    def test_unparseable_generations(self, model: str) -> None:
+        assert model_thinking_mode(model) is None
