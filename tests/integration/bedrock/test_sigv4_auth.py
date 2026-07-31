@@ -25,9 +25,9 @@ _RATES = {"input_rate": 0.035 / 1_000_000, "output_rate": 0.14 / 1_000_000}
 
 
 def _chat(auth: Any, transport: Any) -> ChatResponse:  # noqa: ANN401 — harness-supplied per mode
-    return BedrockProvider(auth=auth, transport=transport, region=_REGION).chat(
-        _MODEL, [UserMessage(content=_PROMPT)], max_tokens=16
-    )
+    return BedrockProvider(
+        auth=auth, transport=transport, region=_REGION, default_headers={"X-Lmux-Integration": "default-headers"}
+    ).chat(_MODEL, [UserMessage(content=_PROMPT)], max_tokens=16)
 
 
 @pytest.mark.verified
