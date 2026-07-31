@@ -12,6 +12,7 @@ from lmux.types import (
     Cost,
     FunctionCallResult,
     ImageContent,
+    ProviderContinuation,
     ServerToolResult,
     TextContent,
     ToolCall,
@@ -36,6 +37,9 @@ class TestAssistantToolCalls:
         assert msg.content is None
         assert msg.tool_calls is not None
         assert msg.tool_calls[0].function.name == "get_weather"
+
+    def test_assistant_message_defaults_to_no_continuation(self) -> None:
+        assert AssistantMessage().continuation is None
 
 
 class TestSerialization:
@@ -78,6 +82,41 @@ class TestSerialization:
         restored = ChatResponse.model_validate(data)
         assert restored == r
 
+    def test_provider_continuation_roundtrip(self) -> None:
+        continuation = ProviderContinuation(
+            namespace="example.chat",
+            data={"blocks": [{"type": "thinking", "signature": "opaque"}]},
+        )
+        response = ChatResponse(
+            content="Calling a tool.",
+            tool_calls=[
+                ToolCall(id="tc_1", function=FunctionCallResult(name="get_weather", arguments='{"city":"NYC"}'))
+            ],
+            usage=None,
+            cost=None,
+            model="example-model",
+            provider="example",
+            continuation=continuation,
+        )
+
+        restored = ChatResponse.model_validate_json(response.model_dump_json())
+
+        assert restored == response
+        assert restored.to_assistant_message() == AssistantMessage(
+            content="Calling a tool.",
+            tool_calls=response.tool_calls,
+            continuation=continuation,
+        )
+
+    def test_chunk_carries_provider_continuation(self) -> None:
+        continuation = ProviderContinuation(namespace="example.chat", data={"sequence": [1, 2, 3]})
+        chunk = ChatChunk(finish_reason="tool_calls", continuation=continuation)
+        assert ChatChunk.model_validate(chunk.model_dump()) == chunk
+
+    def test_provider_continuation_rejects_non_json_data(self) -> None:
+        with pytest.raises(pydantic.ValidationError):
+            ProviderContinuation(namespace="example.chat", data={"value": object()})
+
 
 class _RouteMetadata(BaseProviderMetadata):
     """Test-only provider metadata subclass."""
@@ -89,7 +128,9 @@ class TestProviderMetadata:
     def test_defaults_to_none(self) -> None:
         r = ChatResponse(content="x", usage=None, cost=None, model="m", provider="p")
         assert r.provider_metadata is None
+        assert r.continuation is None
         assert ChatChunk(delta="x").provider_metadata is None
+        assert ChatChunk(delta="x").continuation is None
 
     def test_subclass_metadata_serializes(self) -> None:
         # SerializeAsAny: subclass fields must survive even though the field is declared at the base type.

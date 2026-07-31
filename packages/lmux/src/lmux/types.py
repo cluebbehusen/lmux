@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, SerializeAsAny
+from pydantic import BaseModel, Field, JsonValue, SerializeAsAny
 
 # MARK: Provider Params
 
@@ -20,6 +20,19 @@ class BaseProviderMetadata(BaseModel):
     produced (e.g. which endpoint a routing provider selected). Callers narrow with
     ``isinstance``. Defaults to ``None``; most providers never set it.
     """
+
+
+class ProviderContinuation(BaseModel):
+    """Opaque provider state needed to continue an assistant turn faithfully.
+
+    Provider packages own their namespace and data schema. Callers should preserve
+    the object unchanged or drop it; they should not construct or edit its contents.
+    Continuations can be large or sensitive and are included in normal Pydantic
+    serialization.
+    """
+
+    namespace: str
+    data: dict[str, JsonValue]
 
 
 # MARK: Content Parts
@@ -180,6 +193,7 @@ class AssistantMessage(BaseModel):
     role: Literal["assistant"] = "assistant"
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
+    continuation: ProviderContinuation | None = None
 
 
 class ToolMessage(BaseModel):
@@ -276,6 +290,15 @@ class ChatResponse[MetadataT: BaseProviderMetadata = BaseProviderMetadata](BaseM
     provider: str
     finish_reason: str | None = None
     provider_metadata: SerializeAsAny[MetadataT | None] = None
+    continuation: ProviderContinuation | None = None
+
+    def to_assistant_message(self) -> AssistantMessage:
+        """Convert this response into an assistant turn, preserving continuation state."""
+        return AssistantMessage(
+            content=self.content,
+            tool_calls=self.tool_calls,
+            continuation=self.continuation,
+        )
 
 
 class ChatChunk[MetadataT: BaseProviderMetadata = BaseProviderMetadata](BaseModel):
@@ -291,6 +314,7 @@ class ChatChunk[MetadataT: BaseProviderMetadata = BaseProviderMetadata](BaseMode
     model: str | None = None
     provider: str | None = None
     provider_metadata: SerializeAsAny[MetadataT | None] = None
+    continuation: ProviderContinuation | None = None
 
 
 # MARK: Embedding Response
