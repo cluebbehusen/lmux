@@ -360,7 +360,11 @@ class TestChat:
     ) -> None:
         route = _ok(respx_mock)
         sync_provider.chat("claude-sonnet-4-5", [UserMessage(content="Hi")], reasoning_effort="medium")
-        assert json.loads(route.calls.last.request.content)["thinking"] == {"type": "enabled", "budget_tokens": 4095}
+        assert json.loads(route.calls.last.request.content)["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": 4095,
+            "display": "summarized",
+        }
 
     def test_reasoning_effort_high_max_tokens(
         self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
@@ -369,7 +373,11 @@ class TestChat:
         sync_provider.chat(
             "claude-sonnet-4-5", [UserMessage(content="Hi")], max_tokens=100000, reasoning_effort="medium"
         )
-        assert json.loads(route.calls.last.request.content)["thinking"] == {"type": "enabled", "budget_tokens": 8192}
+        assert json.loads(route.calls.last.request.content)["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": 8192,
+            "display": "summarized",
+        }
 
     def test_reasoning_effort_rejects_too_small_max_tokens(
         self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
@@ -395,7 +403,7 @@ class TestChat:
         route = _ok(respx_mock)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], reasoning_effort="high")
         body = json.loads(route.calls.last.request.content)
-        assert body["thinking"] == {"type": "adaptive"}
+        assert body["thinking"] == {"type": "adaptive", "display": "summarized"}
         assert body["output_config"] == {"effort": "high"}
 
     def test_reasoning_effort_adaptive_merges_response_format(
@@ -657,7 +665,11 @@ class TestChatStream:
     def test_reasoning_effort_passthrough(self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
         route = respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=_default_stream()))
         list(sync_provider.chat_stream("claude-sonnet-4-5", [UserMessage(content="Hi")], reasoning_effort="medium"))
-        assert json.loads(route.calls.last.request.content)["thinking"] == {"type": "enabled", "budget_tokens": 4095}
+        assert json.loads(route.calls.last.request.content)["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": 4095,
+            "display": "summarized",
+        }
 
     def test_status_error_on_open(self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_URL).mock(return_value=httpx.Response(500, json={"error": {"message": "boom"}}))

@@ -102,12 +102,12 @@ def _thinking_for_effort(
         )
         raise InvalidRequestError(msg, provider=PROVIDER_NAME)
     if thinking_mode == "adaptive":
-        return {"type": "adaptive"}, {"effort": reasoning_effort}
+        return {"type": "adaptive", "display": "summarized"}, {"effort": reasoning_effort}
     budget = min(_THINKING_BUDGETS[reasoning_effort], max_tokens - 1)
     if budget < _MIN_THINKING_BUDGET:
         msg = f"max_tokens must be greater than {_MIN_THINKING_BUDGET} when reasoning_effort is set"
         raise InvalidRequestError(msg, provider=PROVIDER_NAME)
-    return {"type": "enabled", "budget_tokens": budget}, None
+    return {"type": "enabled", "budget_tokens": budget, "display": "summarized"}, None
 
 
 def _today() -> date:
