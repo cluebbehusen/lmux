@@ -96,7 +96,6 @@ _HTTP_ERROR = 400
 _BEDROCK_ANTHROPIC_VERSION = "bedrock-2023-05-31"
 _INVOKE = "invoke"
 _INVOKE_STREAM = "invoke-with-response-stream"
-_JSON_CONTENT_TYPE = "application/json"
 _EXCEPTION_MESSAGE_TYPE = "exception"
 _ERROR_MESSAGE_TYPE = "error"
 
@@ -898,6 +897,7 @@ class AnthropicBedrockProvider(AnthropicProvider):
         timeout: float | None = None,
         max_retries: int | None = None,
         default_max_tokens: int = DEFAULT_MAX_TOKENS,
+        default_headers: Mapping[str, str] | None = None,
         transport: "httpx.BaseTransport | None" = None,
         async_transport: "httpx.AsyncBaseTransport | None" = None,
     ) -> None:
@@ -906,6 +906,7 @@ class AnthropicBedrockProvider(AnthropicProvider):
             timeout=timeout,
             max_retries=max_retries,
             default_max_tokens=default_max_tokens,
+            default_headers=default_headers,
             transport=transport,
             async_transport=async_transport,
         )
@@ -950,10 +951,11 @@ class AnthropicBedrockProvider(AnthropicProvider):
         self, client: "httpx.Client | httpx.AsyncClient", path: str, body: dict[str, Any]
     ) -> "httpx.Request":
         """Build a POST request with the JSON body and attach Bedrock auth (bearer header or SigV4)."""
-        request = client.build_request(
-            "POST", path, content=json.dumps(body).encode(), headers={"content-type": _JSON_CONTENT_TYPE}
-        )
-        self._resolve_auth().apply(request)
+        from lmux_bedrock_shared.auth import bedrock_request_headers  # noqa: PLC0415
+
+        headers = bedrock_request_headers(self._default_headers)
+        request = client.build_request("POST", path, content=json.dumps(body).encode(), headers=headers)
+        self._resolve_auth().apply(request, headers)
         return request
 
     # MARK: Request shaping

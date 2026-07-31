@@ -324,6 +324,34 @@ class TestChat:
             "inferenceConfig": {"temperature": 0.5, "maxTokens": 100, "topP": 0.9, "stopSequences": ["END"]},
         }
 
+    def test_default_headers_are_signed_and_managed_headers_win(
+        self, converse_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_converse(converse_response, respx_mock)
+        provider = BedrockProvider(
+            auth=FakeAuth(),
+            default_headers={
+                "X-Trace-ID": "first",
+                "x-trace-id": "trace-123",
+                "Authorization": "Bearer wrong",
+                "CONTENT-TYPE": "text/plain",
+                "Transfer-Encoding": "chunked",
+                "User-Agent": "lmux-test",
+                "X-AMZ-DATE": "wrong",
+            },
+        )
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        signed_headers = headers["authorization"].split("SignedHeaders=", 1)[1].split(",", 1)[0].split(";")
+        assert headers["x-trace-id"] == "trace-123"
+        assert headers["content-type"] == "application/json"
+        assert headers["x-amz-date"] != "wrong"
+        assert headers.get_list("x-trace-id") == ["trace-123"]
+        assert headers["user-agent"] == "lmux-test"
+        assert "transfer-encoding" not in headers
+        assert "x-trace-id" in signed_headers
+        assert "user-agent" not in signed_headers
+
     def test_chat_with_tools_and_choice(
         self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
@@ -1160,6 +1188,18 @@ class TestBearerAuth:
         provider = BedrockProvider(auth=FakeAuth())
         result = provider.chat(MODEL, [UserMessage(content="Hi")])
         assert result.content == "Hello!"
+        assert route.calls.last.request.headers["authorization"] == "Bearer bt-secret"
+
+    def test_default_headers_preserve_bearer_auth(
+        self, converse_response: dict[str, Any], respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "bt-secret")
+        route = _ok_converse(converse_response, respx_mock)
+        provider = BedrockProvider(
+            auth=FakeAuth(), default_headers={"X-Trace-ID": "trace-123", "authorization": "Bearer wrong"}
+        )
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers["x-trace-id"] == "trace-123"
         assert route.calls.last.request.headers["authorization"] == "Bearer bt-secret"
 
     def test_bearer_token_honors_session_region(

@@ -12,9 +12,9 @@ from lmux_bedrock_shared.sigv4 import sign
 _NOW = datetime.datetime(2026, 7, 11, 12, 0, 0, tzinfo=datetime.UTC)
 
 
-def _sign(url: str, body: bytes, token: str | None) -> dict[str, str]:
+def _sign(url: str, body: bytes, token: str | None, headers: dict[str, str] | None = None) -> dict[str, str]:
     return sign(
-        method="POST", url=url, headers={"Content-Type": "application/json"}, body=body,
+        method="POST", url=url, headers=headers or {"Content-Type": "application/json"}, body=body,
         access_key="AKIDEXAMPLE", secret_key="SECRETKEY", region="us-east-1",  # noqa: S106
         service="bedrock", now=_NOW, session_token=token,
     )  # fmt: skip
@@ -38,6 +38,22 @@ class TestSigV4Signature:
             _signature(_sign(url, b'{"a":2}', None))
             == "ab3e75faeaa140ce4b34217725698bf637ee92c316cc89ea4b17b668044ce409"
         )
+
+    def test_header_whitespace_is_canonicalized(self) -> None:
+        url = "https://bedrock-runtime.us-east-1.amazonaws.com/model/m/converse"
+        spaced = _sign(
+            url,
+            b"{}",
+            None,
+            {"Content-Type": "application/json", "X-Trace": "  alpha \t beta  "},
+        )
+        normalized = _sign(
+            url,
+            b"{}",
+            None,
+            {"Content-Type": "application/json", "X-Trace": "alpha beta"},
+        )
+        assert _signature(spaced) == _signature(normalized)
 
 
 class TestSigV4Output:

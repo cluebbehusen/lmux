@@ -168,6 +168,32 @@ class TestChat:
         assert response.cost is not None
         assert response.cost.input_cost == 5.5  # us.anthropic.claude-opus-4-8 == list x1.1
 
+    def test_default_headers_are_signed_and_managed_headers_win(self, respx_mock: respx.MockRouter) -> None:
+        route = respx_mock.post(_url(MODEL, "invoke")).mock(return_value=httpx.Response(200, json=_message()))
+        provider = AnthropicBedrockProvider(
+            auth=FakeAuth(),
+            default_headers={
+                "X-Trace-ID": "first",
+                "x-trace-id": "trace-123",
+                "Authorization": "Bearer wrong",
+                "CONTENT-TYPE": "text/plain",
+                "Transfer-Encoding": "chunked",
+                "User-Agent": "lmux-test",
+                "X-AMZ-DATE": "wrong",
+            },
+        )
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        signed_headers = headers["authorization"].split("SignedHeaders=", 1)[1].split(",", 1)[0].split(";")
+        assert headers["x-trace-id"] == "trace-123"
+        assert headers["content-type"] == "application/json"
+        assert headers["x-amz-date"] != "wrong"
+        assert headers.get_list("x-trace-id") == ["trace-123"]
+        assert headers["user-agent"] == "lmux-test"
+        assert "transfer-encoding" not in headers
+        assert "x-trace-id" in signed_headers
+        assert "user-agent" not in signed_headers
+
     async def test_achat_signs_and_maps(self, respx_mock: respx.MockRouter) -> None:
         provider = AnthropicBedrockProvider(auth=FakeAuth())
         respx_mock.post(_url(MODEL, "invoke")).mock(return_value=httpx.Response(200, json=_message()))
@@ -263,6 +289,19 @@ class TestBearerAuth:
         route = respx_mock.post(_url(MODEL, "invoke")).mock(return_value=httpx.Response(200, json=_message()))
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert route.calls.last.request.headers["Authorization"] == "Bearer bt-secret"
+
+    def test_default_headers_preserve_bearer_auth(
+        self, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("AWS_BEARER_TOKEN_BEDROCK", "bt-secret")
+        provider = AnthropicBedrockProvider(
+            auth=FakeAuth(_Session(region_name="us-east-1")),
+            default_headers={"X-Trace-ID": "trace-123", "authorization": "Bearer wrong"},
+        )
+        route = respx_mock.post(_url(MODEL, "invoke")).mock(return_value=httpx.Response(200, json=_message()))
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers["x-trace-id"] == "trace-123"
+        assert route.calls.last.request.headers["authorization"] == "Bearer bt-secret"
 
 
 # MARK: Streaming

@@ -258,6 +258,7 @@ AnthropicProvider(
 )
 ```
 
-`default_headers` is also accepted by `AnthropicVertexProvider` and `AnthropicFoundryProvider`. It is useful for
-gateway authentication, tracing, and routing. Provider-managed authentication, API-version, and content-type headers
-take precedence over caller values, case-insensitively.
+`default_headers` is also accepted by `AnthropicVertexProvider`, `AnthropicFoundryProvider`, and
+`AnthropicBedrockProvider`. It is useful for gateway authentication, tracing, and routing. Provider-managed
+authentication, API-version, and content-type headers take precedence over caller values, case-insensitively. Bedrock
+custom headers are included in the SigV4 signature.

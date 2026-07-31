@@ -146,7 +146,12 @@ BedrockProvider(
     use_fips=...,      # bool, default False: target the FIPS 140-3 endpoint (bedrock-runtime-fips.<region>.amazonaws.com)
     timeout=...,       # request timeout in seconds
     max_retries=...,   # retry count for transient failures
+    default_headers=...,  # Optional headers included with every request
     transport=...,        # Optional httpx.BaseTransport for the sync client (proxies, testing)
     async_transport=...,  # Optional httpx.AsyncBaseTransport for the async client
 )
 ```
+
+`default_headers` is useful for gateway authentication, tracing, and routing. Bedrock-managed authentication and
+content-type headers take precedence over caller values, case-insensitively. With SigV4 authentication, custom headers
+are included in the request signature.

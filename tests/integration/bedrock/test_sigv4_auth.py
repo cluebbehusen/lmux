@@ -19,13 +19,18 @@ _MODEL = "amazon.nova-micro-v1:0"
 _REGION = "us-east-1"
 _PROMPT = "Reply with exactly the word: pong"
 _CASSETTE = Path(__file__).parent.parent / "cassettes" / "bedrock" / "sigv4_auth.json"
+_DEFAULT_HEADERS = {
+    "X-Lmux-Integration": "replaced",
+    "x-lmux-integration": "default  headers",
+    "User-Agent": "lmux-integration",
+}
 
 # amazon.nova-micro-v1 published rates ($/token, us-east-1).
 _RATES = {"input_rate": 0.035 / 1_000_000, "output_rate": 0.14 / 1_000_000}
 
 
 def _chat(auth: Any, transport: Any) -> ChatResponse:  # noqa: ANN401 — harness-supplied per mode
-    return BedrockProvider(auth=auth, transport=transport, region=_REGION).chat(
+    return BedrockProvider(auth=auth, transport=transport, region=_REGION, default_headers=_DEFAULT_HEADERS).chat(
         _MODEL, [UserMessage(content=_PROMPT)], max_tokens=16
     )
 

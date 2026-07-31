@@ -67,10 +67,9 @@ from lmux_aws_bedrock.auth import BedrockEnvAuthProvider
 from lmux_aws_bedrock.cost import calculate_bedrock_cost
 from lmux_aws_bedrock.params import BedrockParams
 from lmux_bedrock_shared import EventStreamDecoder
-from lmux_bedrock_shared.auth import BedrockAuthContext, resolve_auth_context
+from lmux_bedrock_shared.auth import BedrockAuthContext, bedrock_request_headers, resolve_auth_context
 
 PROVIDER_NAME = PROVIDER
-_JSON_CONTENT_TYPE = "application/json"
 _DEFAULT_MAX_TOKENS = 4096
 _MIN_THINKING_BUDGET = 1024
 _THINKING_BUDGETS = {"low": 1024, "medium": 8192, "high": 32768}
@@ -132,6 +131,7 @@ class BedrockProvider(
         use_fips: bool = False,
         timeout: float | None = None,
         max_retries: int | None = None,
+        default_headers: Mapping[str, str] | None = None,
         transport: "httpx.BaseTransport | None" = None,
         async_transport: "httpx.AsyncBaseTransport | None" = None,
     ) -> None:
@@ -141,6 +141,7 @@ class BedrockProvider(
         self._use_fips: bool = use_fips
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
+        self._default_headers: Mapping[str, str] | None = default_headers
         self._transport: httpx.BaseTransport | None = transport
         self._async_transport: httpx.AsyncBaseTransport | None = async_transport
         self._auth_ctx: BedrockAuthContext | None = None
@@ -214,8 +215,9 @@ class BedrockProvider(
 
     def _build_request(self, client: "httpx.Client | httpx.AsyncClient", path: str, body: bytes) -> "httpx.Request":
         """Build a signed/authorized POST request for a Bedrock endpoint."""
-        request = client.build_request("POST", path, content=body, headers={"content-type": _JSON_CONTENT_TYPE})
-        self._resolve_auth().apply(request)
+        headers = bedrock_request_headers(self._default_headers)
+        request = client.build_request("POST", path, content=body, headers=headers)
+        self._resolve_auth().apply(request, headers)
         return request
 
     @staticmethod
