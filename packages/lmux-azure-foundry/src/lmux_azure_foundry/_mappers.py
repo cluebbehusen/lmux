@@ -25,6 +25,7 @@ from lmux.types import (
     Message,
     ResponseFormat,
     ResponseInputItem,
+    ResponseInputMessage,
     ResponseResponse,
     SystemMessage,
     TextContent,
@@ -143,7 +144,26 @@ def map_response_input(input: str | Sequence[ResponseInputItem]) -> str | list[J
     """Convert lmux ResponseInputItem sequence to OpenAI-compatible dicts."""
     if isinstance(input, str):
         return input
-    return [item.model_dump(exclude_none=True) for item in input]
+    result: list[Json] = []
+    for item in input:
+        if not isinstance(item, ResponseInputMessage):
+            result.append(item.model_dump(exclude_none=True))
+            continue
+        if isinstance(item.content, str):
+            content: str | list[Json] = item.content
+        else:
+            content = [
+                _map_response_content_part(part) for part in item.content if not isinstance(part, CachePointContent)
+            ]
+        if isinstance(content, str) or content or not item.content:
+            result.append({"role": item.role, "content": content})
+    return result
+
+
+def _map_response_content_part(part: TextContent | ImageContent) -> Json:
+    if isinstance(part, TextContent):
+        return {"type": "input_text", "text": part.text}
+    return {"type": "input_image", "image_url": part.url, "detail": part.detail}
 
 
 # MARK: Output Mappers (Azure Foundry wire models -> lmux)

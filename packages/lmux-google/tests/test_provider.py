@@ -19,6 +19,7 @@ from lmux.types import (
     FunctionDefinition,
     JsonObjectResponseFormat,
     JsonSchemaResponseFormat,
+    ProviderContinuation,
     SystemMessage,
     TextResponseFormat,
     Tool,
@@ -137,6 +138,23 @@ def _sse_stream() -> bytes:
     ]
     lines = [f"data: {json.dumps(c)}" for c in chunks]
     return ("\n\n".join(lines) + "\n\n").encode()
+
+
+@pytest.fixture
+def signed_sse_stream() -> bytes:
+    chunks = [
+        {"candidates": [{"content": {"parts": [{"text": "Checking", "thoughtSignature": "opaque"}]}}]},
+        {
+            "candidates": [
+                {
+                    "content": {"parts": [{"functionCall": {"name": "get_weather", "args": {"city": "NYC"}}}]},
+                    "finishReason": "STOP",
+                }
+            ],
+            "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5},
+        },
+    ]
+    return ("\n\n".join(f"data: {json.dumps(chunk)}" for chunk in chunks) + "\n\n").encode()
 
 
 def _ok(respx_mock: respx.MockRouter, response: dict[str, Any], url: str = _CHAT_URL) -> respx.Route:
@@ -317,7 +335,40 @@ class TestChatStream:
         assert chunks[1].cost.total_cost > 0
         assert chunks[1].provider == "google"
         assert chunks[1].model == MODEL
+        assert chunks[1].continuation is None
         assert route.calls.last.request.url.params["alt"] == "sse"
+
+    def test_terminal_chunk_carries_accumulated_continuation(
+        self, provider: GoogleProvider, signed_sse_stream: bytes, respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=signed_sse_stream))
+        chunks = list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+        assert chunks[0].continuation is None
+        assert chunks[1].tool_call_deltas is not None
+        assert chunks[1].tool_call_deltas[0].id == "call_1"
+        assert chunks[1].continuation == ProviderContinuation(
+            namespace="lmux_google.developer.generate_content",
+            data={
+                "parts": [
+                    {"text": "Checking", "thoughtSignature": "opaque"},
+                    {"functionCall": {"name": "get_weather", "args": {"city": "NYC"}}},
+                ]
+            },
+        )
+
+    def test_empty_candidate_shapes_have_no_continuation(
+        self, provider: GoogleProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        chunks = [
+            {"candidates": []},
+            {"candidates": [{"content": {}}]},
+            {"candidates": [{"finishReason": "STOP"}]},
+        ]
+        sse = ("\n\n".join(f"data: {json.dumps(chunk)}" for chunk in chunks) + "\n\n").encode()
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=sse))
+        mapped = list(provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+        assert mapped[-1].finish_reason == "stop"
+        assert mapped[-1].continuation is None
 
     def test_status_error_on_open(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(500, json={"error": {"message": "boom"}}))
@@ -360,6 +411,25 @@ class TestAchatStream:
         assert chunks[1].cost is not None
         assert chunks[1].provider == "google"
         assert chunks[1].model == MODEL
+
+    async def test_terminal_chunk_carries_accumulated_continuation(
+        self, api_auth: FakeAPIKeyAuth, signed_sse_stream: bytes, respx_mock: respx.MockRouter
+    ) -> None:
+        respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(200, content=signed_sse_stream))
+        provider = GoogleProvider(auth=api_auth, vertexai=False)
+        chunks = [chunk async for chunk in provider.achat_stream(MODEL, [UserMessage(content="Hi")])]
+        assert chunks[0].continuation is None
+        assert chunks[1].tool_call_deltas is not None
+        assert chunks[1].tool_call_deltas[0].id == "call_1"
+        assert chunks[1].continuation == ProviderContinuation(
+            namespace="lmux_google.developer.generate_content",
+            data={
+                "parts": [
+                    {"text": "Checking", "thoughtSignature": "opaque"},
+                    {"functionCall": {"name": "get_weather", "args": {"city": "NYC"}}},
+                ]
+            },
+        )
 
     async def test_status_error_on_open(self, api_auth: FakeAPIKeyAuth, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_STREAM_URL).mock(return_value=httpx.Response(500, json={"error": {"message": "boom"}}))

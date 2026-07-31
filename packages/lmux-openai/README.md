@@ -56,6 +56,30 @@ response = provider.create_response("gpt-4o", "Hello")
 print(response.output_text)
 ```
 
+### Explicit prompt caching
+
+GPT-5.6 and later models accept explicit cache breakpoints in both Chat Completions and Responses. Place `CachePointContent` after the stable content block you want cached:
+
+```python
+from lmux import CachePointContent, ResponseInputMessage, TextContent
+from lmux_openai import OpenAIParams
+
+input_items = [
+    ResponseInputMessage(
+        role="developer",
+        content=[TextContent(text=stable_instructions), CachePointContent()],
+    ),
+    ResponseInputMessage(role="user", content="What changed?"),
+]
+response = provider.create_response(
+    "gpt-5.6-terra",
+    input_items,
+    provider_params=OpenAIParams(prompt_cache_key="knowledge-base-v1"),
+)
+```
+
+When at least one breakpoint is present, lmux sets `prompt_cache_options.mode` to `"explicit"`, disabling OpenAI's implicit breakpoint so only the marked prefixes are read or written. Cache points are dropped for older models, which continue using automatic prompt caching. `CachePointContent.ttl` is not mapped because OpenAI's TTL is request-wide and currently fixed at `"30m"`.
+
 ### Async
 
 All methods have async variants: `achat`, `achat_stream`, `aembed`, `acreate_response`.
