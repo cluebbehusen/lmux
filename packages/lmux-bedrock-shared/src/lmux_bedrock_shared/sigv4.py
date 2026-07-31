@@ -42,6 +42,10 @@ def _canonical_query(query: str) -> str:
     return "&".join(f"{k}={v}" for k, v in sorted(pairs))
 
 
+def _canonical_header_value(value: str) -> str:
+    return " ".join(value.split())
+
+
 def sign(  # noqa: PLR0913
     *,
     method: str,
@@ -61,7 +65,7 @@ def sign(  # noqa: PLR0913
     date = now.strftime("%Y%m%d")
     payload_hash = _sha256_hex(body)
 
-    signed: dict[str, str] = {k.lower(): v.strip() for k, v in headers.items()}
+    signed: dict[str, str] = {k.lower(): _canonical_header_value(v) for k, v in headers.items()}
     signed["host"] = parts.netloc
     signed["x-amz-date"] = amz_date
     if session_token:

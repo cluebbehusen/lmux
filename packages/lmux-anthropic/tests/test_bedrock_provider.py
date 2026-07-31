@@ -173,9 +173,12 @@ class TestChat:
         provider = AnthropicBedrockProvider(
             auth=FakeAuth(),
             default_headers={
-                "X-Trace-ID": "trace-123",
+                "X-Trace-ID": "first",
+                "x-trace-id": "trace-123",
                 "Authorization": "Bearer wrong",
                 "CONTENT-TYPE": "text/plain",
+                "Transfer-Encoding": "chunked",
+                "User-Agent": "lmux-test",
                 "X-AMZ-DATE": "wrong",
             },
         )
@@ -185,7 +188,11 @@ class TestChat:
         assert headers["x-trace-id"] == "trace-123"
         assert headers["content-type"] == "application/json"
         assert headers["x-amz-date"] != "wrong"
+        assert headers.get_list("x-trace-id") == ["trace-123"]
+        assert headers["user-agent"] == "lmux-test"
+        assert "transfer-encoding" not in headers
         assert "x-trace-id" in signed_headers
+        assert "user-agent" not in signed_headers
 
     async def test_achat_signs_and_maps(self, respx_mock: respx.MockRouter) -> None:
         provider = AnthropicBedrockProvider(auth=FakeAuth())

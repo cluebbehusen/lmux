@@ -21,6 +21,11 @@ _REGION = "us-east-1"
 _MAX_TOKENS = 16
 _PROMPT = "Reply with exactly the word: pong"
 _CASSETTE = Path(__file__).parent.parent / "cassettes" / "anthropic" / "bedrock_sigv4_auth.json"
+_DEFAULT_HEADERS = {
+    "X-Lmux-Integration": "replaced",
+    "x-lmux-integration": "default  headers",
+    "User-Agent": "lmux-integration",
+}
 
 # claude-haiku-4-5 on Bedrock published rates ($/token, us-east-1).
 _RATES = {"input_rate": 1.10 / 1_000_000, "output_rate": 5.50 / 1_000_000}
@@ -28,7 +33,7 @@ _RATES = {"input_rate": 1.10 / 1_000_000, "output_rate": 5.50 / 1_000_000}
 
 def _chat(auth: Any, transport: Any) -> ChatResponse:  # noqa: ANN401 — harness-supplied per mode
     return AnthropicBedrockProvider(
-        auth=auth, transport=transport, region=_REGION, default_headers={"X-Lmux-Integration": "default-headers"}
+        auth=auth, transport=transport, region=_REGION, default_headers=_DEFAULT_HEADERS
     ).chat(_MODEL, [UserMessage(content=_PROMPT)], max_tokens=_MAX_TOKENS)
 
 

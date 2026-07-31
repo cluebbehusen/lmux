@@ -25,13 +25,38 @@ BEARER_TOKEN_ENV = "AWS_BEARER_TOKEN_BEDROCK"  # noqa: S105
 _SERVICE = "bedrock"
 _JSON_CONTENT_TYPE = "application/json"
 _MANAGED_HEADERS = frozenset(
-    {"authorization", "content-length", "content-type", "host", "x-amz-date", "x-amz-security-token"}
+    {
+        "authorization",
+        "content-length",
+        "content-type",
+        "host",
+        "transfer-encoding",
+        "x-amz-date",
+        "x-amz-security-token",
+    }
+)
+_UNSIGNED_HEADERS = frozenset(
+    {
+        "connection",
+        "expect",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+        "user-agent",
+        "x-amzn-trace-id",
+    }
 )
 
 
 def bedrock_request_headers(default_headers: Mapping[str, str] | None) -> dict[str, str]:
     """Build request headers while reserving fields owned by HTTP and Bedrock auth."""
-    headers = {name: value for name, value in (default_headers or {}).items() if name.lower() not in _MANAGED_HEADERS}
+    headers = {
+        name.lower(): value for name, value in (default_headers or {}).items() if name.lower() not in _MANAGED_HEADERS
+    }
     headers["content-type"] = _JSON_CONTENT_TYPE
     return headers
 
@@ -67,10 +92,13 @@ class BedrockAuthContext:
         # keys over the provider's lifetime, so signing with a snapshot taken at client creation
         # would start failing once the original token expires.
         frozen = credentials.get_frozen_credentials()
+        signable_headers = {
+            name: value for name, value in headers_to_sign.items() if name.lower() not in _UNSIGNED_HEADERS
+        }
         signed = sign(
             method=request.method,
             url=str(request.url),
-            headers=headers_to_sign,
+            headers=signable_headers,
             body=request.content,
             access_key=frozen.access_key or "",
             secret_key=frozen.secret_key or "",
