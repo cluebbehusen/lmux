@@ -572,6 +572,54 @@ class TestCreateResponse:
         assert body["prompt_cache_key"] == "tenant-42"
         assert body["prompt_cache_retention"] == "24h"
 
+    def test_explicit_cache_gpt56_emits_breakpoint_and_option(
+        self, sync_provider: OpenAIProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(responses_body, _RESPONSES_URL, respx_mock)
+        sync_provider.create_response(
+            "gpt-5.6-luna",
+            [
+                ResponseInputMessage(
+                    role="developer",
+                    content=[TextContent(text="Stable instructions"), CachePointContent()],
+                )
+            ],
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["input"] == [
+            {
+                "role": "developer",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "Stable instructions",
+                        "prompt_cache_breakpoint": {"mode": "explicit"},
+                    }
+                ],
+            }
+        ]
+        assert body["prompt_cache_options"] == {"mode": "explicit"}
+
+    def test_cache_point_dropped_for_older_responses_model(
+        self, sync_provider: OpenAIProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(responses_body, _RESPONSES_URL, respx_mock)
+        sync_provider.create_response(
+            "gpt-5.5",
+            [ResponseInputMessage(role="user", content=[TextContent(text="Stable"), CachePointContent()])],
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["input"] == [{"role": "user", "content": [{"type": "input_text", "text": "Stable"}]}]
+        assert "prompt_cache_options" not in body
+
+    def test_gpt56_responses_without_cache_point_keeps_implicit_mode(
+        self, sync_provider: OpenAIProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(responses_body, _RESPONSES_URL, respx_mock)
+        sync_provider.create_response("gpt-5.6-luna", [ResponseInputMessage(role="user", content="Hi")])
+        body = json.loads(route.calls.last.request.content)
+        assert "prompt_cache_options" not in body
+
     def test_status_error_mapped(self, sync_provider: OpenAIProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_RESPONSES_URL).mock(return_value=httpx.Response(400, json={"error": {"message": "bad"}}))
         with pytest.raises(InvalidRequestError):

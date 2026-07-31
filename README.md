@@ -104,7 +104,7 @@ Streaming returns reasoning in `chunk.reasoning_delta`. Each provider maps the e
 | OpenAI / Azure Foundry | `reasoning_effort`                                                                                                                       |
 | Anthropic              | adaptive `thinking` + `output_config.effort` on Claude 4.6+; `thinking` with budget tokens (capped to `max_tokens - 1`) on 4.5 and older |
 | Google                 | `thinking_config` with `thinking_budget` and `include_thoughts`                                                                          |
-| AWS Bedrock            | `additionalModelRequestFields.thinking` — adaptive + `output_config.effort` on Claude 4.6+, budget tokens on 4.5 and older               |
+| AWS Bedrock            | `additionalModelRequestFields.thinking` — adaptive + `output_config.effort` on Claude 4.6+, capped budget tokens on 4.5 and older        |
 | Groq                   | `reasoning_effort` + `include_reasoning`                                                                                                 |
 
 For fine-grained control, use provider-specific params instead (e.g., `AnthropicParams(thinking=...)`). Provider params always take precedence over the top-level `reasoning_effort`.

@@ -88,6 +88,8 @@ response = provider.chat(
 | `cache_control` | `dict`                      | Top-level prompt-cache control — auto-places a breakpoint on the last cacheable block (e.g. `{"type": "ephemeral"}`) |
 | `pricing_as_of` | `datetime.date`             | Override the date used for dated pricing (e.g. a model's introductory-rate window); defaults to the current date     |
 
+For manual thinking, an integer `budget_tokens` raises the default `max_tokens` when needed. An explicit `max_tokens` is preserved instead, along with the provider-specific thinking configuration. Ensure those explicit values are compatible with the deployed model; manual thinking normally requires `budget_tokens < max_tokens`, except when interleaved thinking applies.
+
 ## Prompt Caching
 
 Two ways to opt in:
@@ -161,6 +163,20 @@ print(response.cost)
 ```
 
 `resource` and the mutually exclusive `base_url` fall back to the `ANTHROPIC_FOUNDRY_RESOURCE` and `ANTHROPIC_FOUNDRY_BASE_URL` environment variables. Model IDs are Foundry deployment names, which default to the plain model IDs (`claude-sonnet-4-6`, ...). Foundry bills Anthropic's standard API pricing through the Microsoft Marketplace, so costs come from the same pricing table with no multiplier.
+
+`reasoning_effort` can select the correct thinking mode only when the deployment name contains a recognizable Claude model ID. For an opaque custom deployment name, configure the thinking mode explicitly for the deployed model:
+
+```python
+from lmux_anthropic import AnthropicParams
+
+response = provider.chat(
+    "claude-prod",
+    [UserMessage(content="Hello")],
+    provider_params=AnthropicParams(thinking={"type": "enabled", "budget_tokens": 8192}),
+)
+```
+
+Use `{"type": "adaptive"}` instead when the deployment targets a model that requires adaptive thinking.
 
 ### Foundry Auth
 

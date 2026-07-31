@@ -117,6 +117,10 @@ response = provider.chat(
 | `additional_model_response_field_paths` | `list[str]`       | Extra response fields to return                                        |
 | `pricing_as_of`                         | `datetime.date`   | Override the date used for dated pricing; defaults to the current date |
 
+For Claude 4.5 and older, `reasoning_effort` maps to a manual thinking budget capped below `maxTokens`. When `max_tokens` is omitted, lmux sends `maxTokens: 4096`, so medium and high effort both use a 4095-token thinking budget. Pass a larger `max_tokens` to use their full mapped budgets.
+
+An integer manual-thinking budget in `additional_model_request_fields` raises the default `maxTokens` when needed. An explicit `max_tokens` is preserved instead, along with the provider-specific fields. Ensure those explicit values are compatible with the deployed model; manual thinking normally requires `budget_tokens < maxTokens`, except when interleaved thinking applies.
+
 ## Prompt Caching
 
 Place `CachePointContent` parts in `UserMessage` content to emit Converse `cachePoint` blocks marking the end of a stable prompt prefix. A cache point with no preceding block in its message is placed after whatever came before it (the prior message, or the system blocks). Markers with nothing cacheable before them are dropped, and adjacent duplicates are coalesced — the first marker wins.

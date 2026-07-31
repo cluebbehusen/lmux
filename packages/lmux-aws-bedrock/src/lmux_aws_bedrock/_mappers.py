@@ -4,7 +4,7 @@ import copy
 import json
 import re
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime.literals import CacheTTLType, ImageFormatType
@@ -250,22 +250,33 @@ def map_tool_choice(tc: ToolChoice) -> dict[str, object]:
 
 
 _ADAPTIVE_MIN = (4, 6)
-_MODEL_GEN_RE = re.compile(r"claude-(?:opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2})(?=$|[-:@]))?")
+_MODEL_FAMILY = r"(?:fable|haiku|mythos|opus|sonnet)"
+_FAMILY_FIRST_GEN_RE = re.compile(
+    rf"claude-{_MODEL_FAMILY}-(\d{{1,2}})(?:-(\d{{1,2}}))?(?=$|[-:@.])",
+    re.IGNORECASE,
+)
+_GENERATION_FIRST_GEN_RE = re.compile(
+    rf"claude-(\d{{1,2}})(?:-(\d{{1,2}}))?-{_MODEL_FAMILY}(?=$|[-:@.])",
+    re.IGNORECASE,
+)
+_ADAPTIVE_PREVIEW_RE = re.compile(r"claude-mythos-preview(?=$|[-:@.])", re.IGNORECASE)
 
 
-def model_uses_adaptive_thinking(model: str) -> bool:
-    """Return True for Claude generations >= 4.6 (adaptive thinking + effort).
+def model_thinking_mode(model: str) -> Literal["adaptive", "enabled"] | None:
+    """Return the thinking mode required by a recognizable Claude model id.
 
-    Returns False for <= 4.5 (legacy manual ``budget_tokens`` thinking) and for
-    any unparseable string (the legacy path is the safe default: pre-4.6 models
-    accept ``budget_tokens``, newer ones require adaptive).
+    Claude generations 4.6 and newer use adaptive thinking. Older generations
+    use manual ``budget_tokens`` thinking. Opaque deployment names return None
+    because neither mode is a safe default across Claude generations.
     """
-    match = _MODEL_GEN_RE.search(model)
+    if _ADAPTIVE_PREVIEW_RE.search(model) is not None:
+        return "adaptive"
+    match = _FAMILY_FIRST_GEN_RE.search(model) or _GENERATION_FIRST_GEN_RE.search(model)
     if match is None:
-        return False
+        return None
     major = int(match.group(1))
     minor = int(match.group(2)) if match.group(2) is not None else 0
-    return (major, minor) >= _ADAPTIVE_MIN
+    return "adaptive" if (major, minor) >= _ADAPTIVE_MIN else "enabled"
 
 
 def map_response_format(rf: ResponseFormat) -> dict[str, object] | None:

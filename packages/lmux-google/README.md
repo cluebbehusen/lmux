@@ -65,6 +65,18 @@ for chunk in provider.chat_stream("gemini-2.5-pro", [UserMessage(content="Hello"
         print(chunk.delta, end="")
 ```
 
+### Tool continuations
+
+Gemini 3 models require their thought signatures on follow-up tool calls. `lmux-google` captures the native assistant parts in `response.continuation`; use `to_assistant_message()` to preserve them:
+
+```python
+response = provider.chat(model, messages, tools=tools)
+messages.append(response.to_assistant_message())
+messages.append(ToolMessage(content=tool_result, tool_call_id=response.tool_calls[0].id))
+```
+
+The provider replays a matching Google continuation exactly. If no matching continuation is present, it builds the assistant turn from normalized content and tool calls as before.
+
 ### Embeddings
 
 ```python
