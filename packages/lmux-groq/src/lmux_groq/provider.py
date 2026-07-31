@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
@@ -51,6 +51,7 @@ class GroqProvider(
         base_url: str | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
+        default_headers: Mapping[str, str] | None = None,
         transport: "httpx.BaseTransport | None" = None,
         async_transport: "httpx.AsyncBaseTransport | None" = None,
     ) -> None:
@@ -58,6 +59,7 @@ class GroqProvider(
         self._base_url: str | None = base_url
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
+        self._default_headers: Mapping[str, str] | None = default_headers
         self._transport: httpx.BaseTransport | None = transport
         self._async_transport: httpx.AsyncBaseTransport | None = async_transport
         self._sync_client: httpx.Client | None = None
@@ -84,6 +86,7 @@ class GroqProvider(
                 base_url=self._base_url,
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                default_headers=self._default_headers,
                 transport=self._transport,
             )
         return self._sync_client
@@ -96,6 +99,7 @@ class GroqProvider(
                 base_url=self._base_url,
                 timeout=self._timeout,
                 max_retries=self._max_retries,
+                default_headers=self._default_headers,
                 transport=self._async_transport,
             )
             self._async_loop = loop

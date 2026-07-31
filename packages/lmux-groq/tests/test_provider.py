@@ -145,6 +145,27 @@ class TestChat:
             "stop": ["END"],
         }
 
+    def test_default_headers_preserve_managed_headers(
+        self,
+        fake_auth: FakeAuth,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+    ) -> None:
+        route = mount_completion(completion)
+        provider = GroqProvider(
+            auth=fake_auth,
+            default_headers={
+                "X-Trace-ID": "trace-123",
+                "authorization": "Bearer wrong",
+                "CONTENT-TYPE": "text/plain",
+            },
+        )
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert headers["x-trace-id"] == "trace-123"
+        assert headers["authorization"] == "Bearer gsk-fake-key"
+        assert headers["content-type"] == "application/json"
+
     def test_tools_and_choice(
         self,
         sync_provider: GroqProvider,

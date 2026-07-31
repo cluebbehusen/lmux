@@ -183,6 +183,21 @@ class TestChat:
         assert request.headers.get("api-key") == "fake-api-key"
         assert "authorization" not in request.headers
 
+    def test_default_headers_preserve_managed_headers(
+        self, fake_auth: FakeAuth, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_chat(completion, respx_mock)
+        provider = AzureFoundryProvider(
+            endpoint=ENDPOINT,
+            auth=fake_auth,
+            default_headers={"X-Trace-ID": "trace-123", "API-KEY": "wrong", "CONTENT-TYPE": "text/plain"},
+        )
+        provider.chat("gpt-4o", [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert headers["x-trace-id"] == "trace-123"
+        assert headers["api-key"] == "fake-api-key"
+        assert headers["content-type"] == "application/json"
+
     def test_request_body(
         self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:

@@ -12,6 +12,7 @@ layout and auth differ from vanilla OpenAI:
   header (static Entra token or a per-request token-provider callable).
 """
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 from lmux._http import create_async_client as _create_async
@@ -43,17 +44,26 @@ def auth_headers(credential: AzureFoundryCredential) -> dict[str, str]:
     return {"Authorization": f"Bearer {credential()}"}
 
 
+def _headers(default_headers: Mapping[str, str] | None) -> dict[str, str]:
+    headers = dict(default_headers or {})
+    for existing in [key for key in headers if key.lower() == "content-type"]:
+        del headers[existing]
+    headers["Content-Type"] = "application/json"
+    return headers
+
+
 def create_sync_client(
     *,
     endpoint: str,
     timeout: float | None = None,
     max_retries: int | None = None,
+    default_headers: Mapping[str, str] | None = None,
     transport: "httpx.BaseTransport | None" = None,
 ) -> "httpx.Client":
     """Create an httpx client for the Azure AI Foundry (OpenAI-compatible) API."""
     return _create_sync(
         base_url=build_base_url(endpoint),
-        headers={"Content-Type": "application/json"},
+        headers=_headers(default_headers),
         timeout=timeout,
         max_retries=max_retries,
         transport=transport,
@@ -65,12 +75,13 @@ def create_async_client(
     endpoint: str,
     timeout: float | None = None,
     max_retries: int | None = None,
+    default_headers: Mapping[str, str] | None = None,
     transport: "httpx.AsyncBaseTransport | None" = None,
 ) -> "httpx.AsyncClient":
     """Create an async httpx client for the Azure AI Foundry (OpenAI-compatible) API."""
     return _create_async(
         base_url=build_base_url(endpoint),
-        headers={"Content-Type": "application/json"},
+        headers=_headers(default_headers),
         timeout=timeout,
         max_retries=max_retries,
         transport=transport,

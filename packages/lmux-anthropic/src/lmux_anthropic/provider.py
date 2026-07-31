@@ -123,6 +123,7 @@ class AnthropicProvider(
         timeout: float | None = None,
         max_retries: int | None = None,
         default_max_tokens: int = DEFAULT_MAX_TOKENS,
+        default_headers: Mapping[str, str] | None = None,
         transport: "httpx.BaseTransport | None" = None,
         async_transport: "httpx.AsyncBaseTransport | None" = None,
     ) -> None:
@@ -131,6 +132,7 @@ class AnthropicProvider(
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
         self._default_max_tokens: int = default_max_tokens
+        self._default_headers: Mapping[str, str] | None = default_headers
         self._transport: httpx.BaseTransport | None = transport
         self._async_transport: httpx.AsyncBaseTransport | None = async_transport
         self._sync_client: httpx.Client | None = None
@@ -174,6 +176,7 @@ class AnthropicProvider(
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
+            default_headers=self._default_headers,
             transport=self._transport,
         )
 
@@ -183,6 +186,7 @@ class AnthropicProvider(
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
+            default_headers=self._default_headers,
             transport=self._async_transport,
         )
 
@@ -572,12 +576,14 @@ class AnthropicVertexProvider(AnthropicProvider):
         timeout: float | None = None,
         max_retries: int | None = None,
         default_max_tokens: int = DEFAULT_MAX_TOKENS,
+        default_headers: Mapping[str, str] | None = None,
     ) -> None:
         super().__init__(
             base_url=base_url,
             timeout=timeout,
             max_retries=max_retries,
             default_max_tokens=default_max_tokens,
+            default_headers=default_headers,
         )
         self._vertex_auth: AuthProvider[VertexAuthResult] = auth or AnthropicVertexADCAuthProvider()
         self._project_id: str | None = project_id
@@ -649,6 +655,7 @@ class AnthropicVertexProvider(AnthropicProvider):
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
+            default_headers=self._default_headers,
         )
 
     @override
@@ -661,6 +668,7 @@ class AnthropicVertexProvider(AnthropicProvider):
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
+            default_headers=self._default_headers,
         )
 
     @override
@@ -721,12 +729,14 @@ class AnthropicFoundryProvider(AnthropicProvider):
         timeout: float | None = None,
         max_retries: int | None = None,
         default_max_tokens: int = DEFAULT_MAX_TOKENS,
+        default_headers: Mapping[str, str] | None = None,
     ) -> None:
         super().__init__(
             base_url=base_url,
             timeout=timeout,
             max_retries=max_retries,
             default_max_tokens=default_max_tokens,
+            default_headers=default_headers,
         )
         self._foundry_auth: AuthProvider[FoundryAuthResult] = auth or AnthropicFoundryEnvAuthProvider()
         self._resource: str | None = resource
@@ -775,6 +785,7 @@ class AnthropicFoundryProvider(AnthropicProvider):
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
+            default_headers=self._default_headers,
         )
 
     @override
@@ -785,6 +796,7 @@ class AnthropicFoundryProvider(AnthropicProvider):
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
+            default_headers=self._default_headers,
         )
 
     @staticmethod

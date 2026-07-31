@@ -119,7 +119,11 @@ GoogleProvider(
     vertexai=...,   # Use Vertex AI (default: True) vs. AI Studio
     timeout=...,    # request timeout in seconds
     max_retries=..., # retry count for transient failures
+    default_headers=...,  # Optional headers included with every request
     transport=...,        # Optional httpx.BaseTransport for the sync client (proxies, testing)
     async_transport=...,  # Optional httpx.AsyncBaseTransport for the async client
 )
 ```
+
+`default_headers` is useful for gateway authentication, tracing, and routing. Google-managed authentication,
+quota-project, and content-type headers take precedence over caller values, case-insensitively.

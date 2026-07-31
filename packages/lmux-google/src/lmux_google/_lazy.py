@@ -39,9 +39,20 @@ def vertex_base_url(location: str | None) -> str:
     return "https://aiplatform.googleapis.com"
 
 
-def api_key_headers(api_key: str) -> Mapping[str, str]:
+def merge_headers(default_headers: Mapping[str, str] | None, managed_headers: Mapping[str, str]) -> Mapping[str, str]:
+    """Merge caller headers while keeping provider-managed headers authoritative."""
+    managed_names = {name.lower() for name in managed_headers}
+    headers = {name: value for name, value in (default_headers or {}).items() if name.lower() not in managed_names}
+    headers.update(managed_headers)
+    return headers
+
+
+def api_key_headers(api_key: str, default_headers: Mapping[str, str] | None = None) -> Mapping[str, str]:
     """Auth headers for the Gemini Developer API (API-key transport)."""
-    return {"x-goog-api-key": api_key, "Content-Type": "application/json"}
+    return merge_headers(
+        default_headers,
+        {"x-goog-api-key": api_key, "Content-Type": "application/json"},
+    )
 
 
 def bearer_headers(token: str, quota_project: str | None = None) -> Mapping[str, str]:

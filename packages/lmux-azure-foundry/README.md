@@ -128,7 +128,11 @@ AzureFoundryProvider(
     api_version=...,   # API version (default: "2025-04-01-preview")
     timeout=...,       # Request timeout in seconds
     max_retries=...,   # Max retry attempts
+    default_headers=...,  # Optional headers included with every request
     transport=...,        # Optional httpx.BaseTransport for the sync client (proxies, testing)
     async_transport=...,  # Optional httpx.AsyncBaseTransport for the async client
 )
 ```
+
+`default_headers` is useful for gateway authentication, tracing, and routing. Foundry-managed authentication and
+content-type headers take precedence over caller values, case-insensitively.

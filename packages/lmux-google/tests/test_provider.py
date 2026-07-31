@@ -160,6 +160,19 @@ class TestChat:
         assert route.called
         assert route.calls.last.request.headers["x-goog-api-key"] == "test-api-key"
 
+    def test_default_headers(
+        self, api_auth: FakeAPIKeyAuth, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock, gen_response)
+        provider = GoogleProvider(
+            auth=api_auth,
+            vertexai=False,
+            default_headers={"X-Trace-ID": "trace-123", "X-GOOG-API-KEY": "wrong"},
+        )
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers["x-trace-id"] == "trace-123"
+        assert route.calls.last.request.headers["x-goog-api-key"] == "test-api-key"
+
     def test_request_body(
         self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
@@ -462,6 +475,22 @@ class TestVertexTransport:
         route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
         result = provider.chat(MODEL, [UserMessage(content="Hi")])
         assert result.content == "Hello!"
+        assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
+
+    def test_default_headers_preserve_bearer_auth(
+        self, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(
+            auth=FakeCredentialsAuth(creds),
+            project="my-proj",
+            location="us-central1",
+            default_headers={"X-Trace-ID": "trace-123", "authorization": "Bearer wrong"},
+        )
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert route.calls.last.request.headers["x-trace-id"] == "trace-123"
         assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
 
     def test_vertex_global_location(self, gen_response: dict[str, Any], respx_mock: respx.MockRouter) -> None:

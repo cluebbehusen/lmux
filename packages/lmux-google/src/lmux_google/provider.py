@@ -38,6 +38,7 @@ from lmux_google._lazy import (
     bearer_token,
     create_async_client,
     create_sync_client,
+    merge_headers,
     vertex_base_url,
 )
 from lmux_google._mappers import (
@@ -86,6 +87,7 @@ class GoogleProvider(
         vertexai: bool = True,
         timeout: float | None = None,
         max_retries: int | None = None,
+        default_headers: Mapping[str, str] | None = None,
         transport: "httpx.BaseTransport | None" = None,
         async_transport: "httpx.AsyncBaseTransport | None" = None,
     ) -> None:
@@ -95,6 +97,7 @@ class GoogleProvider(
         self._vertexai: bool = vertexai
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
+        self._default_headers: Mapping[str, str] | None = default_headers
         self._transport: httpx.BaseTransport | None = transport
         self._async_transport: httpx.AsyncBaseTransport | None = async_transport
         self._sync_client: httpx.Client | None = None
@@ -125,8 +128,8 @@ class GoogleProvider(
         # short-lived and applied per request (see _request_headers) so they refresh rather
         # than freeze on a long-lived provider.
         if isinstance(auth_result, str):
-            return api_key_headers(auth_result)
-        return {"Content-Type": "application/json"}
+            return api_key_headers(auth_result, self._default_headers)
+        return merge_headers(self._default_headers, {"Content-Type": "application/json"})
 
     def _request_headers(self) -> Mapping[str, str]:
         if self._credentials is None:
