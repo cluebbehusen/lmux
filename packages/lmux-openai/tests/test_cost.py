@@ -109,19 +109,39 @@ class TestCalculateOpenAICost:
         assert cost.cache_creation_cost == pytest.approx(200 * cache_write_rate / 1_000_000)
 
     @pytest.mark.parametrize(
-        ("model", "input_rate", "output_rate"),
+        ("model", "input_rate", "output_rate", "cache_read_rate", "cache_write_rate"),
         [
-            ("gpt-5.6-sol", 10.00, 45.00),
-            ("gpt-5.6-terra", 4.00, 18.00),
-            ("gpt-5.6-luna", 0.40, 1.80),
+            ("gpt-5.6-sol", 10.00, 45.00, 1.00, 12.50),
+            ("gpt-5.6-terra", 4.00, 18.00, 0.40, 5.00),
+            ("gpt-5.6-luna", 0.40, 1.80, 0.04, 0.50),
         ],
     )
-    def test_gpt_5_6_long_context_tier(self, model: str, input_rate: float, output_rate: float) -> None:
-        usage = Usage(input_tokens=300_000, output_tokens=1000)
+    def test_gpt_5_6_long_context_tier(
+        self,
+        model: str,
+        input_rate: float,
+        output_rate: float,
+        cache_read_rate: float,
+        cache_write_rate: float,
+    ) -> None:
+        usage = Usage(
+            input_tokens=300_000,
+            output_tokens=1000,
+            cache_read_tokens=100_000,
+            cache_creation_tokens=50_000,
+        )
         cost = calculate_openai_cost(model, usage)
-        assert cost is not None
-        assert cost.input_cost == pytest.approx(300_000 * input_rate / 1_000_000)
-        assert cost.output_cost == pytest.approx(1000 * output_rate / 1_000_000)
+        input_cost = 150_000 * (input_rate / 1_000_000)
+        output_cost = 1000 * (output_rate / 1_000_000)
+        cache_read_cost = 100_000 * (cache_read_rate / 1_000_000)
+        cache_creation_cost = 50_000 * (cache_write_rate / 1_000_000)
+        assert cost == Cost(
+            input_cost=input_cost,
+            output_cost=output_cost,
+            cache_read_cost=cache_read_cost,
+            cache_creation_cost=cache_creation_cost,
+            total_cost=input_cost + output_cost + cache_read_cost + cache_creation_cost,
+        )
 
     def test_gpt_5_6_bare_alias_matches_sol(self) -> None:
         """The bare gpt-5.6 alias mirrors gpt-5.6-sol, not the cheaper gpt-5 prefix."""
