@@ -305,8 +305,10 @@ class BedrockProvider(
                     continuation_state.add(event)
                     chunk = self._map_stream_event(event, model, as_of)
                     if chunk is not None:
-                        if chunk.finish_reason is not None:
-                            chunk = chunk.model_copy(update={"continuation": continuation_state.continuation()})
+                        if chunk.finish_reason is not None or event.metadata is not None:
+                            continuation = continuation_state.continuation()
+                            if continuation is not None:
+                                chunk = chunk.model_copy(update={"continuation": continuation})
                         yield chunk
         except LmuxError:
             raise
@@ -352,8 +354,10 @@ class BedrockProvider(
                     continuation_state.add(event)
                     chunk = self._map_stream_event(event, model, as_of)
                     if chunk is not None:
-                        if chunk.finish_reason is not None:
-                            chunk = chunk.model_copy(update={"continuation": continuation_state.continuation()})
+                        if chunk.finish_reason is not None or event.metadata is not None:
+                            continuation = continuation_state.continuation()
+                            if continuation is not None:
+                                chunk = chunk.model_copy(update={"continuation": continuation})
                         yield chunk
         except LmuxError:
             raise

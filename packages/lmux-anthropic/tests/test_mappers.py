@@ -199,6 +199,22 @@ class TestMapMessages:
             }
         ]
 
+    def test_matching_continuation_is_not_mutated_by_following_cache_point(self) -> None:
+        continuation = ProviderContinuation(
+            namespace="lmux_anthropic.messages",
+            data={"content": [{"type": "thinking", "thinking": "Original", "signature": "opaque"}]},
+        )
+        original = continuation.model_copy(deep=True)
+
+        map_messages(
+            [
+                AssistantMessage(continuation=continuation),
+                UserMessage(content=[CachePointContent(), TextContent(text="Next")]),
+            ]
+        )
+
+        assert continuation == original
+
     def test_foreign_continuation_is_ignored(self) -> None:
         continuation = ProviderContinuation(namespace="third_party.chat", data={"content": []})
         _, messages = map_messages([AssistantMessage(content="Portable", continuation=continuation)])

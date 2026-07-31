@@ -201,7 +201,7 @@ def _map_assistant_message(msg: AssistantMessage, continuation_namespace: str) -
         if not isinstance(content, list) or any(not isinstance(block, dict) for block in content):
             error_message = "Anthropic continuation data must contain a list of content blocks"
             raise InvalidRequestError(error_message, provider="anthropic")
-        return {"role": "assistant", "content": cast("list[Json]", content)}
+        return {"role": "assistant", "content": copy.deepcopy(cast("list[Json]", content))}
 
     content: list[Json] = []
     if msg.content is not None:

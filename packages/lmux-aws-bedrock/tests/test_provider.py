@@ -35,6 +35,7 @@ from lmux.types import (
     FunctionDefinition,
     JsonObjectResponseFormat,
     JsonSchemaResponseFormat,
+    ProviderContinuation,
     SystemMessage,
     TextResponseFormat,
     Tool,
@@ -153,6 +154,20 @@ _STREAM_EVENTS: list[tuple[str, dict[str, Any] | None]] = [
 def _no_bearer_token(monkeypatch: pytest.MonkeyPatch) -> None:
     """Default every test to the SigV4 path; bearer-token tests opt back in."""
     monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
+
+
+@pytest.fixture
+def signed_stream_events() -> list[tuple[str, dict[str, Any] | None]]:
+    return [
+        ("messageStart", {"role": "assistant"}),
+        ("contentBlockDelta", {"delta": {"reasoningContent": {"text": "Think"}}, "contentBlockIndex": 0}),
+        (
+            "contentBlockDelta",
+            {"delta": {"reasoningContent": {"signature": "opaque"}}, "contentBlockIndex": 0},
+        ),
+        ("messageStop", {"stopReason": "end_turn"}),
+        ("metadata", {"usage": {"inputTokens": 10, "outputTokens": 5}, "metrics": {"latencyMs": 100}}),
+    ]
 
 
 @pytest.fixture
@@ -540,6 +555,25 @@ class TestChatStream:
         assert chunks[2].model == MODEL
         assert chunks[2].provider == "aws-bedrock"
 
+    def test_terminal_metadata_carries_continuation(
+        self,
+        sync_provider: BedrockProvider,
+        signed_stream_events: list[tuple[str, dict[str, Any] | None]],
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(
+            return_value=httpx.Response(200, content=_stream_bytes(signed_stream_events))
+        )
+        chunks = list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+        continuation = ProviderContinuation(
+            namespace="lmux_aws_bedrock.converse",
+            data={"content": [{"reasoningContent": {"reasoningText": {"text": "Think", "signature": "opaque"}}}]},
+        )
+        assert chunks[-2].finish_reason == "stop"
+        assert chunks[-2].continuation == continuation
+        assert chunks[-1].usage is not None
+        assert chunks[-1].continuation == continuation
+
     def test_cost_on_metadata_chunk(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_url("amazon.nova-pro-v1", "converse-stream")).mock(
             return_value=httpx.Response(200, content=_stream_bytes(_STREAM_EVENTS))
@@ -636,6 +670,25 @@ class TestAchatStream:
         assert chunks[0].model is None
         assert chunks[2].model == MODEL
         assert chunks[2].provider == "aws-bedrock"
+
+    async def test_terminal_metadata_carries_continuation(
+        self,
+        async_provider: BedrockProvider,
+        signed_stream_events: list[tuple[str, dict[str, Any] | None]],
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(
+            return_value=httpx.Response(200, content=_stream_bytes(signed_stream_events))
+        )
+        chunks = [chunk async for chunk in async_provider.achat_stream(MODEL, [UserMessage(content="Hi")])]
+        continuation = ProviderContinuation(
+            namespace="lmux_aws_bedrock.converse",
+            data={"content": [{"reasoningContent": {"reasoningText": {"text": "Think", "signature": "opaque"}}}]},
+        )
+        assert chunks[-2].finish_reason == "stop"
+        assert chunks[-2].continuation == continuation
+        assert chunks[-1].usage is not None
+        assert chunks[-1].continuation == continuation
 
     async def test_transport_error_on_open(self, async_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_url(MODEL, "converse-stream")).mock(side_effect=httpx.ConnectError("refused"))
