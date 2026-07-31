@@ -13,6 +13,7 @@ from lmux.types import (
     FunctionCallResult,
     ImageContent,
     ProviderContinuation,
+    ResponseInputMessage,
     ServerToolResult,
     TextContent,
     ToolCall,
@@ -28,6 +29,19 @@ class TestMultimodalContent:
         assert isinstance(msg.content, list)
         assert len(msg.content) == 2
         assert image.detail == "high"
+
+    def test_responses_message_with_parts(self) -> None:
+        message = ResponseInputMessage(
+            role="developer",
+            content=[TextContent(text="Stable instructions"), CachePointContent()],
+        )
+        assert message.model_dump() == {
+            "role": "developer",
+            "content": [
+                {"type": "text", "text": "Stable instructions"},
+                {"type": "cache_point", "ttl": None},
+            ],
+        }
 
 
 class TestAssistantToolCalls:

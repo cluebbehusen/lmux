@@ -1,5 +1,6 @@
 """Internal mappers between lmux types and OpenAI (REST) JSON."""
 
+import re
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -19,6 +20,7 @@ from lmux.types import (
     Message,
     ResponseFormat,
     ResponseInputItem,
+    ResponseInputMessage,
     ResponseResponse,
     SystemMessage,
     TextContent,
@@ -44,17 +46,20 @@ from lmux_openai._wire import (
 type CostCalculator = Callable[[str, Usage], Cost | None]
 type Json = dict[str, Any]
 
+_GPT_MODEL_RE = re.compile(r"^gpt-(\d+)(?:\.(\d+))?(?:-|$)")
+
 
 # MARK: Input Mappers (lmux -> OpenAI JSON)
 
 
 def supports_explicit_prompt_cache(model: str) -> bool:
-    """gpt-5.6+ supports explicit prompt-cache breakpoints; older models reject the field.
-
-    Matched by prefix on the gpt-5.6 family — extend this as OpenAI ships later families that support
-    explicit caching. An unrecognized newer model simply falls back to implicit caching until then.
-    """
-    return model.startswith("gpt-5.6")
+    """Return whether the model is in the GPT-5.6-or-later explicit-cache generation."""
+    match = _GPT_MODEL_RE.match(model)
+    if match is None:
+        return False
+    major = int(match.group(1))
+    minor = int(match.group(2) or 0)
+    return (major, minor) >= (5, 6)
 
 
 def map_messages(messages: Sequence[Message], *, explicit_cache: bool = False) -> list[Json]:
@@ -116,6 +121,15 @@ def _map_user_content(
     Returns ``(mapped, leading_cache_point)`` — a cache point with no preceding block in this message
     is returned so the caller can attach it to whatever precedes the message.
     """
+    return _map_content_with_cache_points(content, explicit_cache=explicit_cache, mapper=_map_content_part)
+
+
+def _map_content_with_cache_points(
+    content: str | list[ContentPart],
+    *,
+    explicit_cache: bool,
+    mapper: Callable[[TextContent | ImageContent], Json],
+) -> tuple[str | list[Json], CachePointContent | None]:
     if isinstance(content, str):
         return content, None
     blocks: list[Json] = []
@@ -130,11 +144,11 @@ def _map_user_content(
             elif "prompt_cache_breakpoint" not in blocks[-1]:
                 blocks[-1]["prompt_cache_breakpoint"] = {"mode": "explicit"}
         else:
-            blocks.append(_map_content_part(part))
+            blocks.append(mapper(part))
     return blocks, leading_cache_point
 
 
-def _attach_breakpoint(message: Json) -> None:
+def _attach_breakpoint(message: Json, *, text_type: str = "text") -> None:
     """Attach a prompt_cache_breakpoint to the last content block of ``message`` (the first marker wins)."""
     content = message.get("content")
     if content is None:
@@ -142,7 +156,7 @@ def _attach_breakpoint(message: Json) -> None:
     if isinstance(content, str):
         if not content:
             return
-        message["content"] = [{"type": "text", "text": content, "prompt_cache_breakpoint": {"mode": "explicit"}}]
+        message["content"] = [{"type": text_type, "text": content, "prompt_cache_breakpoint": {"mode": "explicit"}}]
         return
     blocks: list[Json] = content
     if blocks and "prompt_cache_breakpoint" not in blocks[-1]:
@@ -191,11 +205,33 @@ def map_response_format(rf: ResponseFormat) -> Json:
     return {"type": "json_schema", "json_schema": schema_dict}
 
 
-def map_response_input(input: str | Sequence[ResponseInputItem]) -> str | list[Json]:  # noqa: A002
+def map_response_input(
+    input: str | Sequence[ResponseInputItem],  # noqa: A002
+    *,
+    explicit_cache: bool = False,
+) -> str | list[Json]:
     """Convert lmux ResponseInputItem sequence to OpenAI-compatible dicts."""
     if isinstance(input, str):
         return input
-    return [item.model_dump(exclude_none=True) for item in input]
+    result: list[Json] = []
+    for item in input:
+        if not isinstance(item, ResponseInputMessage):
+            result.append(item.model_dump(exclude_none=True))
+            continue
+        content, leading_cache_point = _map_content_with_cache_points(
+            item.content, explicit_cache=explicit_cache, mapper=_map_response_content_part
+        )
+        if leading_cache_point is not None and result:
+            _attach_breakpoint(result[-1], text_type="input_text")
+        if isinstance(content, str) or content or not item.content:
+            result.append({"role": item.role, "content": content})
+    return result
+
+
+def _map_response_content_part(part: TextContent | ImageContent) -> Json:
+    if isinstance(part, TextContent):
+        return {"type": "input_text", "text": part.text}
+    return {"type": "input_image", "image_url": part.url, "detail": part.detail}
 
 
 # MARK: Output Mappers (OpenAI wire models -> lmux)

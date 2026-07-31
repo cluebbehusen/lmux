@@ -432,7 +432,10 @@ class OpenAIProvider(
         input: str | Sequence[ResponseInputItem],  # noqa: A002
         provider_params: OpenAIParams | None,
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {"model": model, "input": map_response_input(input)}
+        mapped_input = map_response_input(input, explicit_cache=supports_explicit_prompt_cache(model))
+        body: dict[str, Any] = {"model": model, "input": mapped_input}
+        if isinstance(mapped_input, list) and has_cache_breakpoint(mapped_input):
+            body["prompt_cache_options"] = {"mode": "explicit"}
         if provider_params is not None:
             body.update(OpenAIProvider._provider_params_kwargs(provider_params))
             body.update(OpenAIProvider._cache_kwargs(provider_params))
