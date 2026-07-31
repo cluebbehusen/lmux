@@ -1,0 +1,129 @@
+{
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request": {
+    "model": "gpt-5.6-luna",
+    "input": [
+      {
+        "role": "developer",
+        "content": [
+          {
+            "type": "input_text",
+            "text": "Reply with exactly the word: pong",
+            "prompt_cache_breakpoint": {
+              "mode": "explicit"
+            }
+          }
+        ]
+      }
+    ],
+    "prompt_cache_options": {
+      "mode": "explicit"
+    },
+    "stream": false
+  },
+  "response": {
+    "id": "resp_0d101dbe6b9a8f7b006a6c8850f300819690ecd030f943a2f2",
+    "object": "response",
+    "created_at": 1785497680,
+    "status": "completed",
+    "background": false,
+    "billing": {
+      "payer": "developer"
+    },
+    "completed_at": 1785497681,
+    "error": null,
+    "frequency_penalty": 0.0,
+    "incomplete_details": null,
+    "instructions": null,
+    "max_output_tokens": null,
+    "max_tool_calls": null,
+    "model": "gpt-5.6-luna",
+    "moderation": null,
+    "output": [
+      {
+        "id": "rs_0d101dbe6b9a8f7b006a6c8851ae88819689ddc9e4fea5bb2d",
+        "type": "reasoning",
+        "content": [],
+        "encrypted_content": "gAAAAABqbIhSi_mFFG0MTBfkHj-4iOWvMjEm8VrlunJHZbm4-Pp7qiloIkVnXXm8OR2TxCsT0A1hJNjr4yGlHMhJNTNMDguU3c-A5Eps-nWRouIRh3HHf1WnZANIapFDKm1sMdwIgmkwczEpuCI5lKujFUSY0w9VgjzQKjwwVJ3VboaDvFC3GfSJX6x_F8imbTpu2dHy3ZXn8zW2NzlpoMwC2qVVrVqfrr8ooMkDAUBc304SjeFbkY0v-GuAj3Wy-HeVyFaOuDSbakNlpIaR1EUtKVRGjUqAUbMFCTmSRQcki5NY2Rz0nmbSFSK7Pu0SEr_uNWihKJDi2B4hVt9upTnskkEW-uHFYzk8PXtoDL_nMqYIWafaaRCaHJM6FF-qYxJ_OuDSJw8fmf3Con-C7ZRd2dXqFk9uqc2nkJyU2jNsHdJ7rwyNRQKJO4sek9wjuPlXHqhmV1Ecavl7xR5gNU22mxk0rY8QaoVYubdqivjLJpStPsunn_OTI2OB2w3KuZT87i2pe7X3DncG72DEtOrznSRbfzrh7oVjLYKGErUoEQNHcYXbQWerc7WV8bPSTerjblLTSigIw8-Dp2TOmq8bCw1BlbCqKpimLAJWUE2r8piFIZxwKvXJmLYvxpLfwKfafQlCIB_C7Wl56UEj4h26PculV6h9LPOXZVBF4B-ugwL9m2lrVzTQS0QnN0a2H6SRFs6X00AKh1GLfxRL3ui_ygMEVqUcA174BR77Fks4iIHZ3POZOuGU-Mpr5I3VVOaYL3epeOo1m0_-NEA05SJfuopr_7Su7oaKA_NQG1_SuUqf5zNRD64P5HgidrTV25PTue9K6VhowXsjCZbZwyAc-owM08-D8J9QQZkDD4orSVrS6X0jHLfQykdjpx29imf7xlu5orvI6sytskfpJ03OfTt0FL4vjN9ruLHPbj2nu_E1jX5A5nVLqqYBnsUWid3GWiSkp43T",
+        "summary": []
+      },
+      {
+        "id": "msg_0d101dbe6b9a8f7b006a6c8851dbe881968b74537d32452a43",
+        "type": "message",
+        "status": "completed",
+        "content": [
+          {
+            "type": "output_text",
+            "annotations": [],
+            "logprobs": [],
+            "text": "pong"
+          }
+        ],
+        "phase": "final_answer",
+        "role": "assistant"
+      }
+    ],
+    "parallel_tool_calls": true,
+    "presence_penalty": 0.0,
+    "previous_response_id": null,
+    "prompt_cache_key": null,
+    "prompt_cache_options": {
+      "mode": "explicit",
+      "ttl": "30m"
+    },
+    "prompt_cache_retention": "24h",
+    "reasoning": {
+      "context": "all_turns",
+      "effort": "medium",
+      "mode": "standard",
+      "summary": null
+    },
+    "safety_identifier": null,
+    "service_tier": "default",
+    "store": true,
+    "temperature": 1.0,
+    "text": {
+      "format": {
+        "type": "text"
+      },
+      "verbosity": "medium"
+    },
+    "tool_choice": "auto",
+    "tool_usage": {
+      "image_gen": {
+        "input_tokens": 0,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "output_tokens": 0,
+        "output_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 0
+        },
+        "total_tokens": 0
+      },
+      "web_search": {
+        "num_requests": 0
+      }
+    },
+    "tools": [],
+    "top_logprobs": 0,
+    "top_p": 0.98,
+    "truncation": "disabled",
+    "usage": {
+      "input_tokens": 13,
+      "input_tokens_details": {
+        "cache_write_tokens": 0,
+        "cached_tokens": 0
+      },
+      "output_tokens": 16,
+      "output_tokens_details": {
+        "reasoning_tokens": 9
+      },
+      "total_tokens": 29
+    },
+    "user": null,
+    "metadata": {}
+  }
+}

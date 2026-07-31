@@ -20,6 +20,7 @@ You don't need to install this directly; provider packages (e.g., `lmux-openai`)
 - `ChatChunk`: streaming chunk with `delta`, `tool_call_deltas`, `usage`, `cost`, plus the serving `model`/`provider` stamped on the terminal chunk and optional metadata and continuation state
 - `EmbeddingResponse`: embedding result with `embeddings`, `usage`, `cost`
 - `ResponseResponse`: Responses API result with `output_text`, `usage`, `cost`
+- `ResponseInputMessage`: Responses API message input, supporting text and multimodal content (`TextContent`, `ImageContent`, `CachePointContent`)
 
 ### Provider continuations
 

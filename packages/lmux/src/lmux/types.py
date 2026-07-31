@@ -337,7 +337,7 @@ class ResponseInputMessage(BaseModel):
     """A message item in Responses API input."""
 
     role: Literal["user", "assistant", "system", "developer"]
-    content: str
+    content: str | list[ContentPart]
 
 
 class ResponseInputFunctionCall(BaseModel):

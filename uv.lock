@@ -664,7 +664,7 @@ wheels = [
 
 [[package]]
 name = "lmux"
-version = "0.12.0"
+version = "0.13.0"
 source = { editable = "packages/lmux" }
 dependencies = [
     { name = "pydantic" },
@@ -820,7 +820,7 @@ requires-dist = [{ name = "lmux", editable = "packages/lmux" }]
 
 [[package]]
 name = "lmux-openai"
-version = "0.9.0"
+version = "0.10.0"
 source = { editable = "packages/lmux-openai" }
 dependencies = [
     { name = "httpx" },
