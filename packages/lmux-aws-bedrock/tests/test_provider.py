@@ -543,6 +543,34 @@ class TestChatStream:
         body = json.loads(route.calls.last.request.content)
         assert "modelId" not in body
 
+    def test_truncated_tool_input_yields_length_chunk(
+        self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        events: list[tuple[str, dict[str, Any] | None]] = [
+            (
+                "contentBlockStart",
+                {
+                    "contentBlockIndex": 0,
+                    "start": {"toolUse": {"toolUseId": "call_1", "name": "get_weather"}},
+                },
+            ),
+            (
+                "contentBlockDelta",
+                {"contentBlockIndex": 0, "delta": {"toolUse": {"input": '{"city": "Den'}}},
+            ),
+            ("messageStop", {"stopReason": "max_tokens"}),
+            ("metadata", {"usage": {"inputTokens": 10, "outputTokens": 64}, "metrics": {"latencyMs": 100}}),
+        ]
+        respx_mock.post(_url(MODEL, "converse-stream")).mock(
+            return_value=httpx.Response(200, content=_stream_bytes(events))
+        )
+
+        chunks = list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+        assert chunks[-2].finish_reason == "length"
+        assert chunks[-2].continuation is None
+        assert chunks[-1].continuation is None
+
     def test_terminal_chunk_stamps_model_and_provider(
         self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter
     ) -> None:
