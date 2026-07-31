@@ -86,8 +86,8 @@ class TestCalculateOpenAICost:
         ("model", "input_rate", "output_rate", "cache_read_rate", "cache_write_rate"),
         [
             ("gpt-5.6-sol", 5.00, 30.00, 0.50, 6.25),
-            ("gpt-5.6-terra", 2.50, 15.00, 0.25, 3.125),
-            ("gpt-5.6-luna", 1.00, 6.00, 0.10, 1.25),
+            ("gpt-5.6-terra", 2.00, 12.00, 0.20, 2.50),
+            ("gpt-5.6-luna", 0.20, 1.20, 0.02, 0.25),
         ],
     )
     def test_gpt_5_6_family_base_pricing(
@@ -108,13 +108,20 @@ class TestCalculateOpenAICost:
         assert cost.cache_read_cost == pytest.approx(100 * cache_read_rate / 1_000_000)
         assert cost.cache_creation_cost == pytest.approx(200 * cache_write_rate / 1_000_000)
 
-    def test_gpt_5_6_long_context_tier(self) -> None:
-        # Above 272k input tokens gpt-5.6-sol switches to the long-context tier (10.00 / 45.00).
+    @pytest.mark.parametrize(
+        ("model", "input_rate", "output_rate"),
+        [
+            ("gpt-5.6-sol", 10.00, 45.00),
+            ("gpt-5.6-terra", 4.00, 18.00),
+            ("gpt-5.6-luna", 0.40, 1.80),
+        ],
+    )
+    def test_gpt_5_6_long_context_tier(self, model: str, input_rate: float, output_rate: float) -> None:
         usage = Usage(input_tokens=300_000, output_tokens=1000)
-        cost = calculate_openai_cost("gpt-5.6-sol", usage)
+        cost = calculate_openai_cost(model, usage)
         assert cost is not None
-        assert cost.input_cost == pytest.approx(300_000 * 10.00 / 1_000_000)
-        assert cost.output_cost == pytest.approx(1000 * 45.00 / 1_000_000)
+        assert cost.input_cost == pytest.approx(300_000 * input_rate / 1_000_000)
+        assert cost.output_cost == pytest.approx(1000 * output_rate / 1_000_000)
 
     def test_gpt_5_6_bare_alias_matches_sol(self) -> None:
         """The bare gpt-5.6 alias mirrors gpt-5.6-sol, not the cheaper gpt-5 prefix."""
