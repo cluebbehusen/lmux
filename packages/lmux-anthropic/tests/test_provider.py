@@ -371,6 +371,24 @@ class TestChat:
         )
         assert json.loads(route.calls.last.request.content)["thinking"] == {"type": "enabled", "budget_tokens": 8192}
 
+    def test_reasoning_effort_rejects_too_small_max_tokens(
+        self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock)
+        with pytest.raises(InvalidRequestError, match="max_tokens must be greater than 1024"):
+            sync_provider.chat(
+                "claude-sonnet-4-5", [UserMessage(content="Hi")], max_tokens=1024, reasoning_effort="low"
+            )
+        assert not route.called
+
+    def test_reasoning_effort_rejects_unrecognized_model(
+        self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock)
+        with pytest.raises(InvalidRequestError, match="unrecognized Claude model"):
+            sync_provider.chat("custom-deployment", [UserMessage(content="Hi")], reasoning_effort="low")
+        assert not route.called
+
     def test_reasoning_effort_adaptive_model(
         self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
     ) -> None:
@@ -406,6 +424,7 @@ class TestChat:
         )
         body = json.loads(route.calls.last.request.content)
         assert body["thinking"] == {"type": "enabled", "budget_tokens": 2048}
+        assert body["max_tokens"] == 4096
         assert "output_config" not in body
 
     def test_provider_params(self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
@@ -424,11 +443,39 @@ class TestChat:
         )
         body = json.loads(route.calls.last.request.content)
         assert body["thinking"] == {"type": "enabled", "budget_tokens": 5000}
+        assert body["max_tokens"] == 5001
         assert body["metadata"] == {"user_id": "u1"}
         assert body["top_k"] == 40
         assert body["service_tier"] == "auto"
         assert body["inference_geo"] == "us"
         assert body["cache_control"] == {"type": "ephemeral"}
+
+    def test_provider_params_non_integer_thinking_budget_is_untouched(
+        self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock)
+        sync_provider.chat(
+            MODEL,
+            [UserMessage(content="Hi")],
+            provider_params=AnthropicParams(thinking={"type": "enabled", "budget_tokens": "provider-defined"}),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["thinking"] == {"type": "enabled", "budget_tokens": "provider-defined"}
+        assert body["max_tokens"] == 4096
+
+    def test_provider_params_thinking_preserves_explicit_max_tokens(
+        self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok(respx_mock)
+        sync_provider.chat(
+            "claude-sonnet-4-5",
+            [UserMessage(content="Hi")],
+            max_tokens=4096,
+            provider_params=AnthropicParams(thinking={"type": "enabled", "budget_tokens": 32768}),
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert body["max_tokens"] == 4096
+        assert body["thinking"] == {"type": "enabled", "budget_tokens": 32768}
 
     def test_empty_provider_params(self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
         route = _ok(respx_mock)
@@ -1110,6 +1157,28 @@ class TestFoundryChat:
         request = route.calls.last.request
         assert request.headers["api-key"] == "foundry-key"
         assert json.loads(request.content)["model"] == MODEL
+
+    def test_reasoning_effort_rejects_opaque_deployment(
+        self, foundry_sync_provider: AnthropicFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(_foundry_url()).mock(return_value=httpx.Response(200, json=_message()))
+        with pytest.raises(InvalidRequestError, match="unrecognized Claude model"):
+            foundry_sync_provider.chat("claude-prod-4-5", [UserMessage(content="Hi")], reasoning_effort="low")
+        assert not route.called
+
+    def test_opaque_deployment_accepts_explicit_thinking(
+        self, foundry_sync_provider: AnthropicFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        route = respx_mock.post(_foundry_url()).mock(return_value=httpx.Response(200, json=_message()))
+        foundry_sync_provider.chat(
+            "claude-prod-4-5",
+            [UserMessage(content="Hi")],
+            provider_params=AnthropicParams(thinking={"type": "enabled", "budget_tokens": 2048}),
+        )
+        assert json.loads(route.calls.last.request.content)["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": 2048,
+        }
 
     async def test_basic_achat(self, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_foundry_url()).mock(return_value=httpx.Response(200, json=_message()))
