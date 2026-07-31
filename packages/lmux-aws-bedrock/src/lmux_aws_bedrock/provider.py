@@ -517,11 +517,15 @@ class BedrockProvider(
             existing = {**kwargs.get("additionalModelRequestFields", {})}
             if "thinking" not in existing:
                 if model_uses_adaptive_thinking(model):
-                    existing["thinking"] = {"type": "adaptive"}
+                    existing["thinking"] = {"type": "adaptive", "display": "summarized"}
                     existing["output_config"] = {**existing.get("output_config", {}), "effort": reasoning_effort}
                 else:
                     budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
-                    existing["thinking"] = {"type": "enabled", "budget_tokens": budget}
+                    existing["thinking"] = {
+                        "type": "enabled",
+                        "budget_tokens": budget,
+                        "display": "summarized",
+                    }
             kwargs["additionalModelRequestFields"] = existing
 
         return kwargs

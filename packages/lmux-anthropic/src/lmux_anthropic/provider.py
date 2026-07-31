@@ -473,12 +473,12 @@ class AnthropicProvider(
         provider_sets_thinking = provider_params is not None and provider_params.thinking is not None
         if reasoning_effort is not None and not provider_sets_thinking:
             if model_uses_adaptive_thinking(model):
-                body["thinking"] = {"type": "adaptive"}
+                body["thinking"] = {"type": "adaptive", "display": "summarized"}
                 body["output_config"] = {**body.get("output_config", {}), "effort": reasoning_effort}
             else:
                 budget = {"low": 1024, "medium": 8192, "high": 32768}[reasoning_effort]
                 budget = min(budget, body["max_tokens"] - 1)
-                body["thinking"] = {"type": "enabled", "budget_tokens": budget}
+                body["thinking"] = {"type": "enabled", "budget_tokens": budget, "display": "summarized"}
         if provider_params is not None:
             body.update(self._provider_params_kwargs(provider_params))
         return body

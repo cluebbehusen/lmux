@@ -408,7 +408,11 @@ class TestChat:
         route = _ok_converse(converse_response, respx_mock)
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], reasoning_effort="medium")
         body = json.loads(route.calls.last.request.content)
-        assert body["additionalModelRequestFields"]["thinking"] == {"type": "enabled", "budget_tokens": 8192}
+        assert body["additionalModelRequestFields"]["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": 8192,
+            "display": "summarized",
+        }
 
     def test_reasoning_effort_deep_merges_with_provider_params(
         self, sync_provider: BedrockProvider, converse_response: dict[str, Any], respx_mock: respx.MockRouter
@@ -421,7 +425,11 @@ class TestChat:
             provider_params=BedrockParams(additional_model_request_fields={"some_field": "value"}),
         )
         additional = json.loads(route.calls.last.request.content)["additionalModelRequestFields"]
-        assert additional["thinking"] == {"type": "enabled", "budget_tokens": 32768}
+        assert additional["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": 32768,
+            "display": "summarized",
+        }
         assert additional["some_field"] == "value"
 
     def test_provider_params_thinking_overrides_reasoning_effort(
@@ -458,7 +466,7 @@ class TestChat:
         route = _ok_converse(converse_response, respx_mock, model="anthropic.claude-opus-4-8")
         sync_provider.chat("anthropic.claude-opus-4-8", [UserMessage(content="Hi")], reasoning_effort="high")
         additional = json.loads(route.calls.last.request.content)["additionalModelRequestFields"]
-        assert additional["thinking"] == {"type": "adaptive"}
+        assert additional["thinking"] == {"type": "adaptive", "display": "summarized"}
         assert additional["output_config"] == {"effort": "high"}
 
     def test_status_error_mapped(self, sync_provider: BedrockProvider, respx_mock: respx.MockRouter) -> None:
