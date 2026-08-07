@@ -1,0 +1,150 @@
+{
+  "endpoint": "https://bedrock-runtime.us-east-1.amazonaws.com/model/us.anthropic.claude-haiku-4-5-20251001-v1%3A0/invoke",
+  "request": {
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "fa21482af63541f39498872bdb5c8908\n\nSentence 0: the quick brown fox jumps over the lazy dog. Sentence 1: the quick brown fox jumps over the lazy dog. Sentence 2: the quick brown fox jumps over the lazy dog. Sentence 3: the quick brown fox jumps over the lazy dog. Sentence 4: the quick brown fox jumps over the lazy dog. Sentence 5: the quick brown fox jumps over the lazy dog. Sentence 6: the quick brown fox jumps over the lazy dog. Sentence 7: the quick brown fox jumps over the lazy dog. Sentence 8: the quick brown fox jumps over the lazy dog. Sentence 9: the quick brown fox jumps over the lazy dog. Sentence 10: the quick brown fox jumps over the lazy dog. Sentence 11: the quick brown fox jumps over the lazy dog. Sentence 12: the quick brown fox jumps over the lazy dog. Sentence 13: the quick brown fox jumps over the lazy dog. Sentence 14: the quick brown fox jumps over the lazy dog. Sentence 15: the quick brown fox jumps over the lazy dog. Sentence 16: the quick brown fox jumps over the lazy dog. Sentence 17: the quick brown fox jumps over the lazy dog. Sentence 18: the quick brown fox jumps over the lazy dog. Sentence 19: the quick brown fox jumps over the lazy dog. Sentence 20: the quick brown fox jumps over the lazy dog. Sentence 21: the quick brown fox jumps over the lazy dog. Sentence 22: the quick brown fox jumps over the lazy dog. Sentence 23: the quick brown fox jumps over the lazy dog. Sentence 24: the quick brown fox jumps over the lazy dog. Sentence 25: the quick brown fox jumps over the lazy dog. Sentence 26: the quick brown fox jumps over the lazy dog. Sentence 27: the quick brown fox jumps over the lazy dog. Sentence 28: the quick brown fox jumps over the lazy dog. Sentence 29: the quick brown fox jumps over the lazy dog. Sentence 30: the quick brown fox jumps over the lazy dog. Sentence 31: the quick brown fox jumps over the lazy dog. Sentence 32: the quick brown fox jumps over the lazy dog. Sentence 33: the quick brown fox jumps over the lazy dog. Sentence 34: the quick brown fox jumps over the lazy dog. Sentence 35: the quick brown fox jumps over the lazy dog. Sentence 36: the quick brown fox jumps over the lazy dog. Sentence 37: the quick brown fox jumps over the lazy dog. Sentence 38: the quick brown fox jumps over the lazy dog. Sentence 39: the quick brown fox jumps over the lazy dog. Sentence 40: the quick brown fox jumps over the lazy dog. Sentence 41: the quick brown fox jumps over the lazy dog. Sentence 42: the quick brown fox jumps over the lazy dog. Sentence 43: the quick brown fox jumps over the lazy dog. Sentence 44: the quick brown fox jumps over the lazy dog. Sentence 45: the quick brown fox jumps over the lazy dog. Sentence 46: the quick brown fox jumps over the lazy dog. Sentence 47: the quick brown fox jumps over the lazy dog. Sentence 48: the quick brown fox jumps over the lazy dog. Sentence 49: the quick brown fox jumps over the lazy dog. Sentence 50: the quick brown fox jumps over the lazy dog. Sentence 51: the quick brown fox jumps over the lazy dog. Sentence 52: the quick brown fox jumps over the lazy dog. Sentence 53: the quick brown fox jumps over the lazy dog. Sentence 54: the quick brown fox jumps over the lazy dog. Sentence 55: the quick brown fox jumps over the lazy dog. Sentence 56: the quick brown fox jumps over the lazy dog. Sentence 57: the quick brown fox jumps over the lazy dog. Sentence 58: the quick brown fox jumps over the lazy dog. Sentence 59: the quick brown fox jumps over the lazy dog. Sentence 60: the quick brown fox jumps over the lazy dog. Sentence 61: the quick brown fox jumps over the lazy dog. Sentence 62: the quick brown fox jumps over the lazy dog. Sentence 63: the quick brown fox jumps over the lazy dog. Sentence 64: the quick brown fox jumps over the lazy dog. Sentence 65: the quick brown fox jumps over the lazy dog. Sentence 66: the quick brown fox jumps over the lazy dog. Sentence 67: the quick brown fox jumps over the lazy dog. Sentence 68: the quick brown fox jumps over the lazy dog. Sentence 69: the quick brown fox jumps over the lazy dog. Sentence 70: the quick brown fox jumps over the lazy dog. Sentence 71: the quick brown fox jumps over the lazy dog. Sentence 72: the quick brown fox jumps over the lazy dog. Sentence 73: the quick brown fox jumps over the lazy dog. Sentence 74: the quick brown fox jumps over the lazy dog. Sentence 75: the quick brown fox jumps over the lazy dog. Sentence 76: the quick brown fox jumps over the lazy dog. Sentence 77: the quick brown fox jumps over the lazy dog. Sentence 78: the quick brown fox jumps over the lazy dog. Sentence 79: the quick brown fox jumps over the lazy dog. Sentence 80: the quick brown fox jumps over the lazy dog. Sentence 81: the quick brown fox jumps over the lazy dog. Sentence 82: the quick brown fox jumps over the lazy dog. Sentence 83: the quick brown fox jumps over the lazy dog. Sentence 84: the quick brown fox jumps over the lazy dog. Sentence 85: the quick brown fox jumps over the lazy dog. Sentence 86: the quick brown fox jumps over the lazy dog. Sentence 87: the quick brown fox jumps over the lazy dog. Sentence 88: the quick brown fox jumps over the lazy dog. Sentence 89: the quick brown fox jumps over the lazy dog. Sentence 90: the quick brown fox jumps over the lazy dog. Sentence 91: the quick brown fox jumps over the lazy dog. Sentence 92: the quick brown fox jumps over the lazy dog. Sentence 93: the quick brown fox jumps over the lazy dog. Sentence 94: the quick brown fox jumps over the lazy dog. Sentence 95: the quick brown fox jumps over the lazy dog. Sentence 96: the quick brown fox jumps over the lazy dog. Sentence 97: the quick brown fox jumps over the lazy dog. Sentence 98: the quick brown fox jumps over the lazy dog. Sentence 99: the quick brown fox jumps over the lazy dog. Sentence 100: the quick brown fox jumps over the lazy dog. Sentence 101: the quick brown fox jumps over the lazy dog. Sentence 102: the quick brown fox jumps over the lazy dog. Sentence 103: the quick brown fox jumps over the lazy dog. Sentence 104: the quick brown fox jumps over the lazy dog. Sentence 105: the quick brown fox jumps over the lazy dog. Sentence 106: the quick brown fox jumps over the lazy dog. Sentence 107: the quick brown fox jumps over the lazy dog. Sentence 108: the quick brown fox jumps over the lazy dog. Sentence 109: the quick brown fox jumps over the lazy dog. Sentence 110: the quick brown fox jumps over the lazy dog. Sentence 111: the quick brown fox jumps over the lazy dog. Sentence 112: the quick brown fox jumps over the lazy dog. Sentence 113: the quick brown fox jumps over the lazy dog. Sentence 114: the quick brown fox jumps over the lazy dog. Sentence 115: the quick brown fox jumps over the lazy dog. Sentence 116: the quick brown fox jumps over the lazy dog. Sentence 117: the quick brown fox jumps over the lazy dog. Sentence 118: the quick brown fox jumps over the lazy dog. Sentence 119: the quick brown fox jumps over the lazy dog. Sentence 120: the quick brown fox jumps over the lazy dog. Sentence 121: the quick brown fox jumps over the lazy dog. Sentence 122: the quick brown fox jumps over the lazy dog. Sentence 123: the quick brown fox jumps over the lazy dog. Sentence 124: the quick brown fox jumps over the lazy dog. Sentence 125: the quick brown fox jumps over the lazy dog. Sentence 126: the quick brown fox jumps over the lazy dog. Sentence 127: the quick brown fox jumps over the lazy dog. Sentence 128: the quick brown fox jumps over the lazy dog. Sentence 129: the quick brown fox jumps over the lazy dog. Sentence 130: the quick brown fox jumps over the lazy dog. Sentence 131: the quick brown fox jumps over the lazy dog. Sentence 132: the quick brown fox jumps over the lazy dog. Sentence 133: the quick brown fox jumps over the lazy dog. Sentence 134: the quick brown fox jumps over the lazy dog. Sentence 135: the quick brown fox jumps over the lazy dog. Sentence 136: the quick brown fox jumps over the lazy dog. Sentence 137: the quick brown fox jumps over the lazy dog. Sentence 138: the quick brown fox jumps over the lazy dog. Sentence 139: the quick brown fox jumps over the lazy dog. Sentence 140: the quick brown fox jumps over the lazy dog. Sentence 141: the quick brown fox jumps over the lazy dog. Sentence 142: the quick brown fox jumps over the lazy dog. Sentence 143: the quick brown fox jumps over the lazy dog. Sentence 144: the quick brown fox jumps over the lazy dog. Sentence 145: the quick brown fox jumps over the lazy dog. Sentence 146: the quick brown fox jumps over the lazy dog. Sentence 147: the quick brown fox jumps over the lazy dog. Sentence 148: the quick brown fox jumps over the lazy dog. Sentence 149: the quick brown fox jumps over the lazy dog. Sentence 150: the quick brown fox jumps over the lazy dog. Sentence 151: the quick brown fox jumps over the lazy dog. Sentence 152: the quick brown fox jumps over the lazy dog. Sentence 153: the quick brown fox jumps over the lazy dog. Sentence 154: the quick brown fox jumps over the lazy dog. Sentence 155: the quick brown fox jumps over the lazy dog. Sentence 156: the quick brown fox jumps over the lazy dog. Sentence 157: the quick brown fox jumps over the lazy dog. Sentence 158: the quick brown fox jumps over the lazy dog. Sentence 159: the quick brown fox jumps over the lazy dog. Sentence 160: the quick brown fox jumps over the lazy dog. Sentence 161: the quick brown fox jumps over the lazy dog. Sentence 162: the quick brown fox jumps over the lazy dog. Sentence 163: the quick brown fox jumps over the lazy dog. Sentence 164: the quick brown fox jumps over the lazy dog. Sentence 165: the quick brown fox jumps over the lazy dog. Sentence 166: the quick brown fox jumps over the lazy dog. Sentence 167: the quick brown fox jumps over the lazy dog. Sentence 168: the quick brown fox jumps over the lazy dog. Sentence 169: the quick brown fox jumps over the lazy dog. Sentence 170: the quick brown fox jumps over the lazy dog. Sentence 171: the quick brown fox jumps over the lazy dog. Sentence 172: the quick brown fox jumps over the lazy dog. Sentence 173: the quick brown fox jumps over the lazy dog. Sentence 174: the quick brown fox jumps over the lazy dog. Sentence 175: the quick brown fox jumps over the lazy dog. Sentence 176: the quick brown fox jumps over the lazy dog. Sentence 177: the quick brown fox jumps over the lazy dog. Sentence 178: the quick brown fox jumps over the lazy dog. Sentence 179: the quick brown fox jumps over the lazy dog. Sentence 180: the quick brown fox jumps over the lazy dog. Sentence 181: the quick brown fox jumps over the lazy dog. Sentence 182: the quick brown fox jumps over the lazy dog. Sentence 183: the quick brown fox jumps over the lazy dog. Sentence 184: the quick brown fox jumps over the lazy dog. Sentence 185: the quick brown fox jumps over the lazy dog. Sentence 186: the quick brown fox jumps over the lazy dog. Sentence 187: the quick brown fox jumps over the lazy dog. Sentence 188: the quick brown fox jumps over the lazy dog. Sentence 189: the quick brown fox jumps over the lazy dog. Sentence 190: the quick brown fox jumps over the lazy dog. Sentence 191: the quick brown fox jumps over the lazy dog. Sentence 192: the quick brown fox jumps over the lazy dog. Sentence 193: the quick brown fox jumps over the lazy dog. Sentence 194: the quick brown fox jumps over the lazy dog. Sentence 195: the quick brown fox jumps over the lazy dog. Sentence 196: the quick brown fox jumps over the lazy dog. Sentence 197: the quick brown fox jumps over the lazy dog. Sentence 198: the quick brown fox jumps over the lazy dog. Sentence 199: the quick brown fox jumps over the lazy dog. Sentence 200: the quick brown fox jumps over the lazy dog. Sentence 201: the quick brown fox jumps over the lazy dog. Sentence 202: the quick brown fox jumps over the lazy dog. Sentence 203: the quick brown fox jumps over the lazy dog. Sentence 204: the quick brown fox jumps over the lazy dog. Sentence 205: the quick brown fox jumps over the lazy dog. Sentence 206: the quick brown fox jumps over the lazy dog. Sentence 207: the quick brown fox jumps over the lazy dog. Sentence 208: the quick brown fox jumps over the lazy dog. Sentence 209: the quick brown fox jumps over the lazy dog. Sentence 210: the quick brown fox jumps over the lazy dog. Sentence 211: the quick brown fox jumps over the lazy dog. Sentence 212: the quick brown fox jumps over the lazy dog. Sentence 213: the quick brown fox jumps over the lazy dog. Sentence 214: the quick brown fox jumps over the lazy dog. Sentence 215: the quick brown fox jumps over the lazy dog. Sentence 216: the quick brown fox jumps over the lazy dog. Sentence 217: the quick brown fox jumps over the lazy dog. Sentence 218: the quick brown fox jumps over the lazy dog. Sentence 219: the quick brown fox jumps over the lazy dog. Sentence 220: the quick brown fox jumps over the lazy dog. Sentence 221: the quick brown fox jumps over the lazy dog. Sentence 222: the quick brown fox jumps over the lazy dog. Sentence 223: the quick brown fox jumps over the lazy dog. Sentence 224: the quick brown fox jumps over the lazy dog. Sentence 225: the quick brown fox jumps over the lazy dog. Sentence 226: the quick brown fox jumps over the lazy dog. Sentence 227: the quick brown fox jumps over the lazy dog. Sentence 228: the quick brown fox jumps over the lazy dog. Sentence 229: the quick brown fox jumps over the lazy dog. Sentence 230: the quick brown fox jumps over the lazy dog. Sentence 231: the quick brown fox jumps over the lazy dog. Sentence 232: the quick brown fox jumps over the lazy dog. Sentence 233: the quick brown fox jumps over the lazy dog. Sentence 234: the quick brown fox jumps over the lazy dog. Sentence 235: the quick brown fox jumps over the lazy dog. Sentence 236: the quick brown fox jumps over the lazy dog. Sentence 237: the quick brown fox jumps over the lazy dog. Sentence 238: the quick brown fox jumps over the lazy dog. Sentence 239: the quick brown fox jumps over the lazy dog. Sentence 240: the quick brown fox jumps over the lazy dog. Sentence 241: the quick brown fox jumps over the lazy dog. Sentence 242: the quick brown fox jumps over the lazy dog. Sentence 243: the quick brown fox jumps over the lazy dog. Sentence 244: the quick brown fox jumps over the lazy dog. Sentence 245: the quick brown fox jumps over the lazy dog. Sentence 246: the quick brown fox jumps over the lazy dog. Sentence 247: the quick brown fox jumps over the lazy dog. Sentence 248: the quick brown fox jumps over the lazy dog. Sentence 249: the quick brown fox jumps over the lazy dog. Sentence 250: the quick brown fox jumps over the lazy dog. Sentence 251: the quick brown fox jumps over the lazy dog. Sentence 252: the quick brown fox jumps over the lazy dog. Sentence 253: the quick brown fox jumps over the lazy dog. Sentence 254: the quick brown fox jumps over the lazy dog. Sentence 255: the quick brown fox jumps over the lazy dog. Sentence 256: the quick brown fox jumps over the lazy dog. Sentence 257: the quick brown fox jumps over the lazy dog. Sentence 258: the quick brown fox jumps over the lazy dog. Sentence 259: the quick brown fox jumps over the lazy dog. Sentence 260: the quick brown fox jumps over the lazy dog. Sentence 261: the quick brown fox jumps over the lazy dog. Sentence 262: the quick brown fox jumps over the lazy dog. Sentence 263: the quick brown fox jumps over the lazy dog. Sentence 264: the quick brown fox jumps over the lazy dog. Sentence 265: the quick brown fox jumps over the lazy dog. Sentence 266: the quick brown fox jumps over the lazy dog. Sentence 267: the quick brown fox jumps over the lazy dog. Sentence 268: the quick brown fox jumps over the lazy dog. Sentence 269: the quick brown fox jumps over the lazy dog. Sentence 270: the quick brown fox jumps over the lazy dog. Sentence 271: the quick brown fox jumps over the lazy dog. Sentence 272: the quick brown fox jumps over the lazy dog. Sentence 273: the quick brown fox jumps over the lazy dog. Sentence 274: the quick brown fox jumps over the lazy dog. Sentence 275: the quick brown fox jumps over the lazy dog. Sentence 276: the quick brown fox jumps over the lazy dog. Sentence 277: the quick brown fox jumps over the lazy dog. Sentence 278: the quick brown fox jumps over the lazy dog. Sentence 279: the quick brown fox jumps over the lazy dog. Sentence 280: the quick brown fox jumps over the lazy dog. Sentence 281: the quick brown fox jumps over the lazy dog. Sentence 282: the quick brown fox jumps over the lazy dog. Sentence 283: the quick brown fox jumps over the lazy dog. Sentence 284: the quick brown fox jumps over the lazy dog. Sentence 285: the quick brown fox jumps over the lazy dog. Sentence 286: the quick brown fox jumps over the lazy dog. Sentence 287: the quick brown fox jumps over the lazy dog. Sentence 288: the quick brown fox jumps over the lazy dog. Sentence 289: the quick brown fox jumps over the lazy dog. Sentence 290: the quick brown fox jumps over the lazy dog. Sentence 291: the quick brown fox jumps over the lazy dog. Sentence 292: the quick brown fox jumps over the lazy dog. Sentence 293: the quick brown fox jumps over the lazy dog. Sentence 294: the quick brown fox jumps over the lazy dog. Sentence 295: the quick brown fox jumps over the lazy dog. Sentence 296: the quick brown fox jumps over the lazy dog. Sentence 297: the quick brown fox jumps over the lazy dog. Sentence 298: the quick brown fox jumps over the lazy dog. Sentence 299: the quick brown fox jumps over the lazy dog.\n\nAnswer using the tools, one step per turn. First call get_weather for Denver and for Seattle, both in the same turn. Then call get_forecast for whichever of the two is warmer. Then reply with one sentence.",
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "I'll help you with that. Let me start by getting the current weather for both Denver and Seattle."
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_bdrk_017UpdJJRQyJYPBJcUoNSzWX",
+            "name": "get_weather",
+            "input": {
+              "city": "Denver"
+            }
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_bdrk_01Fw4NfSVpWdG4rc2FeKzJGc",
+            "name": "get_weather",
+            "input": {
+              "city": "Seattle"
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_bdrk_017UpdJJRQyJYPBJcUoNSzWX",
+            "content": "{\"city\": \"Denver\", \"tempF\": 78}"
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_bdrk_01Fw4NfSVpWdG4rc2FeKzJGc",
+            "content": "{\"city\": \"Seattle\", \"tempF\": 61}",
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Denver is warmer at 78\u00b0F compared to Seattle's 61\u00b0F. Now let me get the forecast for Denver."
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_bdrk_01RR3h5EqMYNDZCdF8iLdWGe",
+            "name": "get_forecast",
+            "input": {
+              "city": "Denver"
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_bdrk_01RR3h5EqMYNDZCdF8iLdWGe",
+            "content": "{\"city\": \"Denver\", \"highsF\": [79, 81, 77]}",
+            "cache_control": {
+              "type": "ephemeral"
+            }
+          }
+        ]
+      }
+    ],
+    "max_tokens": 512,
+    "tools": [
+      {
+        "name": "get_weather",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ]
+        },
+        "description": "Get the current weather for a city."
+      },
+      {
+        "name": "get_forecast",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "city"
+          ]
+        },
+        "description": "Get the three-day forecast for a city."
+      }
+    ],
+    "anthropic_version": "bedrock-2023-05-31"
+  },
+  "response": {
+    "model": "claude-haiku-4-5-20251001",
+    "id": "msg_bdrk_011u88yv938nR75cmV6Sb4eb",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "Denver's three-day forecast shows highs of 79\u00b0F, 81\u00b0F, and 77\u00b0F, with the warmest day expected to be tomorrow at 81\u00b0F."
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 6,
+      "cache_creation_input_tokens": 114,
+      "cache_read_input_tokens": 5673,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 114,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 44
+    }
+  }
+}
