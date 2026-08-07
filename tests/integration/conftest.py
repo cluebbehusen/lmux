@@ -82,14 +82,26 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 
 @pytest.fixture
-def cache_prompt() -> Callable[[], str]:
-    """A >1024-token prompt with a unique prefix, so call 1 is guaranteed a cold
-    cache write and an identical call 2 is a warm cache read."""
+def cache_filler() -> Callable[..., str]:
+    """A >1024-token block of text with a unique prefix, long enough to be cacheable
+    and fresh enough that the first call using it is guaranteed a cold cache write.
+    Carries no instruction, so a test can append its own."""
 
     def _build(sentences: int = 180) -> str:
         nonce = uuid.uuid4().hex
         filler = " ".join(f"Sentence {i}: the quick brown fox jumps over the lazy dog." for i in range(sentences))
-        return f"{nonce}\n\n{filler}\n\nReply with exactly the word: pong"
+        return f"{nonce}\n\n{filler}"
+
+    return _build
+
+
+@pytest.fixture
+def cache_prompt(cache_filler: Callable[..., str]) -> Callable[..., str]:
+    """A >1024-token prompt with a unique prefix, so call 1 is guaranteed a cold
+    cache write and an identical call 2 is a warm cache read."""
+
+    def _build(sentences: int = 180) -> str:
+        return f"{cache_filler(sentences)}\n\nReply with exactly the word: pong"
 
     return _build
 
