@@ -332,9 +332,8 @@ def has_vertex_regional_premium(model: str) -> bool:
 def calculate_anthropic_cost(model: str, usage: Usage, as_of: date | None = None) -> Cost | None:
     """Calculate cost for an Anthropic API call. Returns None if model pricing is unknown.
 
-    ``as_of`` selects dated pricing for models with scheduled rate changes
-    (e.g. Claude Sonnet 5's introductory period); it defaults to the latest
-    schedule. See ``lmux.cost.calculate_cost``.
+    ``as_of`` selects dated pricing for models with scheduled rate changes; it
+    defaults to the latest schedule. See ``lmux.cost.calculate_cost``.
     """
     pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:

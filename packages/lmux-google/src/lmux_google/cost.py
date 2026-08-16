@@ -28,8 +28,6 @@ from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
     # ── Google Gemini 3 ────────────────────────────────────────
-    # Gemini 3.6 Flash and 3.7 Flash both bill an introductory rate through
-    # 2026-12-31, then double on 2027-01-01.
     "gemini-3.7-flash": ModelPricing(
         tiers=[
             PricingTier(

@@ -27,24 +27,20 @@ from lmux.types import Cost, Usage
 DATA_ZONE_MULTIPLIER = 1.1
 """Commercial US/EU Data Zone Standard deployments are 1.1x global pricing.
 
-US and EU Data Zone prices are identical. The ratio holds for input, output and
-cache on nearly every model, but not all: Kimi-K2.6 and Kimi-K2.7-Code output
-is 1.25x global while their input and cache are 1.1x. A handful of xAI and Kimi
-data-zone meters in individual European regions run far higher still.
-
-Non-commercial data zones are not modeled and run higher — the Asia-Pacific
-data zone is ~1.2x and the US Government sovereign cloud is ~1.375x. Use
-``register_pricing()`` for any of these.
+US and EU Data Zone prices are identical, and the ratio holds for input, output
+and cache on nearly every model — Kimi-K2.6 and Kimi-K2.7-Code are the exception,
+billing output at 1.25x global. Non-commercial data zones are not modeled and run
+higher: the Asia-Pacific data zone is ~1.2x and the US Government sovereign cloud
+is ~1.375x. Use ``register_pricing()`` for any of these.
 """
 
 REGIONAL_MULTIPLIER = 1.1
 """Regional deployments are approximately 1.1x global pricing.
 
-Note: actual regional pricing varies by *region*, not by model, and is
-consistent within a region — US regions are 1.1x, most of EU/UK/CH/JP is
-1.21x, North/West Europe and Southeast Asia are 1.32x, and US Gov is 1.375x.
-This constant uses the US multiplier; for exact rates elsewhere, use
-``register_pricing()`` to override individual models.
+The regional rate varies by region rather than by model: US regions are 1.1x,
+most of EU/UK/CH/JP is 1.21x, North/West Europe and Southeast Asia are 1.32x,
+and US Gov is 1.375x. This constant uses the US multiplier; use
+``register_pricing()`` for exact rates elsewhere.
 """
 
 # MARK: Global Standard pricing (base rates)
@@ -845,12 +841,6 @@ _PRICING_BY_PREFIX = build_pricing_index(_PRICING)
 # variants). Returning None is correct — do NOT let them fall through to a broad prefix
 # (e.g. "grok-4") and inherit a fabricated rate. Add real rates once Azure publishes meters.
 _UNPRICED_MODELS = frozenset({"grok-4-20-reasoning", "grok-4-20-non-reasoning"})
-
-# The Fireworks-hosted models (FW-GLM-5/5.1/5.2, FW-MiniMax-M2.5, FW-MiniMax-3) are
-# likewise absent here: Azure meters them on Data Zone only, and every rate in this
-# table is a Global Standard base that DATA_ZONE_MULTIPLIER is applied on top of.
-# Storing a data-zone rate as the base would bill data-zone calls at 1.1x the true
-# price, so they stay unpriced until Azure publishes Global Standard meters.
 
 
 def calculate_azure_foundry_cost(model: str, usage: Usage) -> Cost | None:

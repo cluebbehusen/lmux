@@ -222,6 +222,11 @@ class TestRegionalUpliftApplies:
         # The sibling that does share the prefix must still take the uplift.
         assert regional_uplift_applies(model.removesuffix("-cyber")) is True
 
+    @pytest.mark.parametrize("model", ["gpt-5.6-cyber-2026-08-01", "gpt-5.5-cyber-2026-04-23"])
+    def test_does_not_apply_to_dated_cyber_snapshots(self, model: str) -> None:
+        """Pricing resolves cyber snapshots by prefix, so the uplift check must too."""
+        assert regional_uplift_applies(model) is False
+
 
 class TestApplyCostMultiplier:
     def test_applies_multiplier_to_all_fields(self) -> None:
