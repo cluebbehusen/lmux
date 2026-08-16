@@ -340,7 +340,7 @@ _UNPRICED_IMAGE_PREFIXES = (
 VERTEX_NON_GLOBAL_MULTIPLIER = 1.1
 """Non-global Vertex endpoints bill 1.1x the global rate, from VERTEX_NON_GLOBAL_PREMIUM_START.
 
-Applies to the generally available Gemini 3 and later families only. The Gemini
+Applies only to the models Vertex publishes a Non-global row for; the Gemini
 Developer API has no equivalent premium.
 """
 
@@ -351,17 +351,15 @@ Before this date, global-endpoint pricing applied to every Vertex endpoint, so
 costs replayed against an earlier date take no multiplier.
 """
 
-# GA Gemini 3+ families carry the non-global premium. Add new GA families here as
-# they are priced; preview ids and every pre-Gemini-3 family are billed uniformly
-# across endpoints.
+# Models the Vertex pricing page lists a "Non-global" row for. Membership is read
+# off that page rather than inferred from a model being GA: Gemini 3.6 and 3.7
+# Flash are GA and publish no Non-global rate, so they bill list price everywhere.
 _VERTEX_PREMIUM_PRICING_MODELS = (
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
 )
-# Preview ids that would otherwise be captured by a GA prefix above.
+# Has no Non-global row of its own, but would inherit one by prefix.
 _VERTEX_UNIFORM_PRICING_MODELS = ("gemini-3.1-flash-lite-preview",)
 # Sorted by prefix length descending so the longest match wins — needed to tell
 # e.g. gemini-3.1-flash-lite-preview (uniform) from gemini-3.1-flash-lite (premium).
@@ -376,9 +374,8 @@ _VERTEX_PREMIUM_BY_PREFIX = sorted(
 def has_vertex_non_global_premium(model: str) -> bool:
     """Whether the model carries the 10% premium on non-global Vertex endpoints.
 
-    Unknown models default to False. The premium is scoped to the GA Gemini 3 and
-    later chat families, while the catalog also carries preview, embedding, and
-    older families that are billed uniformly across endpoints.
+    Unknown models default to False, so a model Vertex has not published a
+    Non-global rate for bills at list price rather than an inferred premium.
     """
     model_lower = model.lower()
     for prefix, premium in _VERTEX_PREMIUM_BY_PREFIX:

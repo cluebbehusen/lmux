@@ -144,10 +144,10 @@ quota-project, and content-type headers take precedence over caller values, case
 ## Pricing
 
 Rates are Vertex global-endpoint list prices. Setting `location` to anything other than `global` puts the
-request on a non-global Vertex endpoint, which bills a 10% premium on the generally available Gemini 3 and
-later families; the provider applies that automatically via `VERTEX_NON_GLOBAL_MULTIPLIER`. Preview models,
-embeddings, and pre-Gemini-3 families are billed uniformly across endpoints, and the Gemini Developer API
-(`vertexai=False`) has no endpoint premium.
+request on a non-global Vertex endpoint, which bills a 10% premium on the models Vertex publishes a
+non-global rate for; the provider applies that automatically via `VERTEX_NON_GLOBAL_MULTIPLIER`. Every other
+model bills list price on both endpoints, and the Gemini Developer API (`vertexai=False`) has no endpoint
+premium at all.
 
 Models with time-boxed introductory rates carry dated schedules, so cost reflects the rate in effect on the
 request date. Pass `GoogleParams(pricing_as_of=...)` to price against a different date. The endpoint premium

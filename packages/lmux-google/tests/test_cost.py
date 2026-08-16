@@ -228,17 +228,15 @@ class TestCalculateGoogleCost:
 class TestHasVertexNonGlobalPremium:
     @pytest.mark.parametrize(
         "model",
-        [
-            "gemini-3.7-flash",
-            "gemini-3.6-flash",
-            "gemini-3.5-flash",
-            "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite",
-            "gemini-3.5-flash-002",
-        ],
+        ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash-002"],
     )
-    def test_ga_gemini_3_families_carry_the_premium(self, model: str) -> None:
+    def test_models_with_a_published_non_global_rate(self, model: str) -> None:
         assert has_vertex_non_global_premium(model) is True
+
+    @pytest.mark.parametrize("model", ["gemini-3.6-flash", "gemini-3.7-flash"])
+    def test_ga_models_without_a_published_non_global_rate(self, model: str) -> None:
+        """Being GA is not the test: Vertex publishes no Non-global row for these two."""
+        assert has_vertex_non_global_premium(model) is False
 
     def test_preview_id_is_exempt_despite_matching_a_ga_prefix(self) -> None:
         """Longest-prefix wins: the -preview id must not inherit its GA sibling's premium."""
