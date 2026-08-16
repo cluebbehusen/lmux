@@ -1,9 +1,11 @@
 """Tests for Google cost calculation."""
 
+from datetime import date
+
 import pytest
 
-from lmux.types import Usage
-from lmux_google.cost import calculate_google_cost
+from lmux.types import Cost, Usage
+from lmux_google.cost import apply_cost_multiplier, calculate_google_cost, has_vertex_non_global_premium
 
 
 class TestCalculateGoogleCost:
@@ -190,9 +192,21 @@ class TestCalculateGoogleCost:
         assert cost.output_cost == pytest.approx(2.50)
         assert cost.cache_read_cost == pytest.approx(0.03)
 
-    def test_gemini_3_6_flash(self) -> None:
+    @pytest.mark.parametrize("model", ["gemini-3.6-flash", "gemini-3.7-flash"])
+    def test_gemini_3_flash_introductory_pricing(self, model: str) -> None:
+        """Through 2026-12-31 both Flash models bill the introductory rate."""
         usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_tokens=100_000)
-        cost = calculate_google_cost("gemini-3.6-flash", usage)
+        cost = calculate_google_cost(model, usage, as_of=date(2026, 8, 16))
+        assert cost is not None
+        assert cost.input_cost == pytest.approx((1_000_000 - 100_000) * 0.75 / 1_000_000)
+        assert cost.output_cost == pytest.approx(3.75)
+        assert cost.cache_read_cost == pytest.approx(100_000 * 0.075 / 1_000_000)
+
+    @pytest.mark.parametrize("model", ["gemini-3.6-flash", "gemini-3.7-flash"])
+    def test_gemini_3_flash_standard_pricing_from_2027(self, model: str) -> None:
+        """From 2027-01-01 the introductory window ends and every rate doubles."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_tokens=100_000)
+        cost = calculate_google_cost(model, usage, as_of=date(2027, 1, 1))
         assert cost is not None
         assert cost.input_cost == pytest.approx((1_000_000 - 100_000) * 1.50 / 1_000_000)
         assert cost.output_cost == pytest.approx(7.50)
@@ -209,3 +223,63 @@ class TestCalculateGoogleCost:
         assert cost is not None
         assert cost.cache_read_cost == pytest.approx(100_000 * rate / 1_000_000)
         assert cost.total_cost > 0.0
+
+
+class TestHasVertexNonGlobalPremium:
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "gemini-3.7-flash",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-002",
+        ],
+    )
+    def test_ga_gemini_3_families_carry_the_premium(self, model: str) -> None:
+        assert has_vertex_non_global_premium(model) is True
+
+    def test_preview_id_is_exempt_despite_matching_a_ga_prefix(self) -> None:
+        """Longest-prefix wins: the -preview id must not inherit its GA sibling's premium."""
+        assert has_vertex_non_global_premium("gemini-3.1-flash-lite-preview") is False
+        assert has_vertex_non_global_premium("gemini-3.1-flash-lite") is True
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "gemini-2.5-pro",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro",
+            "gemini-3.1-pro-preview",
+            "gemini-3-flash-preview",
+            "text-embedding-005",
+            "gemini-embedding-001",
+            "totally-unknown-model",
+        ],
+    )
+    def test_other_models_are_exempt(self, model: str) -> None:
+        assert has_vertex_non_global_premium(model) is False
+
+
+class TestApplyCostMultiplier:
+    def test_applies_multiplier_to_all_fields(self) -> None:
+        cost = Cost(
+            input_cost=1.0,
+            output_cost=2.0,
+            total_cost=3.0,
+            cache_read_cost=0.5,
+            cache_creation_cost=0.25,
+        )
+        result = apply_cost_multiplier(cost, 1.1)
+        assert result.input_cost == pytest.approx(1.1)
+        assert result.output_cost == pytest.approx(2.2)
+        assert result.total_cost == pytest.approx(3.3)
+        assert result.cache_read_cost == pytest.approx(0.55)
+        assert result.cache_creation_cost == pytest.approx(0.275)
+
+    def test_preserves_none_cache_costs(self) -> None:
+        cost = Cost(input_cost=1.0, output_cost=2.0, total_cost=3.0)
+        result = apply_cost_multiplier(cost, 2.0)
+        assert result.cache_read_cost is None
+        assert result.cache_creation_cost is None

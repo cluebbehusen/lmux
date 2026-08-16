@@ -1,5 +1,6 @@
 """Google provider-specific parameters."""
 
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -54,3 +55,6 @@ class GoogleParams(BaseProviderParams):
     google_search_retrieval: GoogleSearchRetrievalConfig | None = None
     code_execution: bool | None = None
     task_type: str | None = None
+    # Override the date used to resolve dated pricing (e.g. a model's
+    # introductory-rate window); defaults to the current date when unset.
+    pricing_as_of: date | None = None

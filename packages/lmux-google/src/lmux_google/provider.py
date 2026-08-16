@@ -2,7 +2,8 @@
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from datetime import date
 from typing import TYPE_CHECKING, Literal, override
 
 if TYPE_CHECKING:
@@ -61,7 +62,13 @@ from lmux_google._wire import (
     WireVertexPredictResponse,
 )
 from lmux_google.auth import GoogleADCAuthProvider
-from lmux_google.cost import calculate_google_cost
+from lmux_google.cost import (
+    VERTEX_NON_GLOBAL_MULTIPLIER,
+    VERTEX_NON_GLOBAL_PREMIUM_START,
+    apply_cost_multiplier,
+    calculate_google_cost,
+    has_vertex_non_global_premium,
+)
 from lmux_google.params import GoogleParams, GoogleSearchConfig
 
 type GoogleAuth = AuthProvider["Credentials | str", "Credentials | str"]
@@ -70,6 +77,11 @@ PROVIDER_NAME = "google"
 
 _HTTP_ERROR = 400
 _THINKING_BUDGETS: dict[str, int] = {"low": 1024, "medium": 8192, "high": 32768}
+
+
+def _today() -> date:
+    """Return today's date, indirected so tests can pin the pricing clock."""
+    return date.today()
 
 
 class GoogleProvider(
@@ -113,11 +125,50 @@ class GoogleProvider(
     def register_pricing(self, model: str, pricing: ModelPricing) -> None:
         self._custom_pricing[model] = pricing
 
-    def _calculate_cost(self, model: str, usage: Usage) -> Cost | None:
+    @staticmethod
+    def _resolve_pricing_as_of(provider_params: GoogleParams | None) -> date:
+        """Effective pricing date: an explicit ``pricing_as_of`` override, else today."""
+        if provider_params is not None and provider_params.pricing_as_of is not None:
+            return provider_params.pricing_as_of
+        return _today()
+
+    def _vertex_multiplier(self, model: str, as_of: date | None) -> float:
+        """Non-global Vertex endpoints bill a 10% premium on GA Gemini 3+ models.
+
+        The global endpoint (the default when no location is set) bills list
+        prices, and the Gemini Developer API has no endpoint premium at all.
+        The premium only exists from ``VERTEX_NON_GLOBAL_PREMIUM_START``, so a
+        cost replayed against an earlier date takes no multiplier; ``as_of`` of
+        ``None`` means current pricing.
+        """
+        if not self._vertexai or (self._location or "global") == "global":
+            return 1.0
+        if as_of is not None and as_of < VERTEX_NON_GLOBAL_PREMIUM_START:
+            return 1.0
+        if has_vertex_non_global_premium(model):
+            return VERTEX_NON_GLOBAL_MULTIPLIER
+        return 1.0
+
+    def _calculate_cost(self, model: str, usage: Usage, as_of: date | None = None) -> Cost | None:
         pricing = self._custom_pricing.get(model)
         if pricing is not None:
-            return calculate_cost(usage, pricing)
-        return calculate_google_cost(model, usage)
+            cost = calculate_cost(usage, pricing, as_of)
+        else:
+            cost = calculate_google_cost(model, usage, as_of)
+        if cost is None:
+            return None
+        multiplier = self._vertex_multiplier(model, as_of)
+        if multiplier == 1.0:
+            return cost
+        return apply_cost_multiplier(cost, multiplier)
+
+    def _cost_fn_for(self, as_of: date) -> "Callable[[str, Usage], Cost | None]":
+        """A cost callable pinned to a pricing date, for the response mappers."""
+        return lambda model, usage: self._calculate_cost(model, usage, as_of)
+
+    def _cost_fn(self, provider_params: GoogleParams | None) -> "Callable[[str, Usage], Cost | None]":
+        """A cost callable pinned to this request's pricing date, for the response mappers."""
+        return self._cost_fn_for(self._resolve_pricing_as_of(provider_params))
 
     # MARK: Client Management
 
@@ -224,7 +275,7 @@ class GoogleProvider(
             parse_body(response, WireGenerateContentResponse),
             model,
             PROVIDER_NAME,
-            self._calculate_cost,
+            self._cost_fn(provider_params),
             vertexai=self._vertexai,
         )
 
@@ -260,7 +311,7 @@ class GoogleProvider(
             parse_body(response, WireGenerateContentResponse),
             model,
             PROVIDER_NAME,
-            self._calculate_cost,
+            self._cost_fn(provider_params),
             vertexai=self._vertexai,
         )
 
@@ -291,6 +342,7 @@ class GoogleProvider(
             headers = self._request_headers()
         except Exception as e:
             raise map_transport_error(e) from e
+        as_of = self._resolve_pricing_as_of(provider_params)
         try:
             continuation_state = GoogleContinuationState(vertexai=self._vertexai)
             with client.stream("POST", path, json=body, headers=headers) as response:
@@ -303,7 +355,7 @@ class GoogleProvider(
                         raise error_from_stream(chunk)  # noqa: TRY301
                     wire = WireGenerateContentResponse.model_validate(chunk)
                     part_offset = continuation_state.add(wire)
-                    mapped = self._map_stream_chunk(wire, model, part_offset=part_offset)
+                    mapped = self._map_stream_chunk(wire, model, as_of, part_offset=part_offset)
                     if mapped.finish_reason is not None:
                         mapped = mapped.model_copy(update={"continuation": continuation_state.continuation()})
                     yield mapped
@@ -339,6 +391,7 @@ class GoogleProvider(
             headers = await self._arequest_headers()
         except Exception as e:
             raise map_transport_error(e) from e
+        as_of = self._resolve_pricing_as_of(provider_params)
         try:
             continuation_state = GoogleContinuationState(vertexai=self._vertexai)
             async with client.stream("POST", path, json=body, headers=headers) as response:
@@ -351,7 +404,7 @@ class GoogleProvider(
                         raise error_from_stream(chunk)  # noqa: TRY301
                     wire = WireGenerateContentResponse.model_validate(chunk)
                     part_offset = continuation_state.add(wire)
-                    mapped = self._map_stream_chunk(wire, model, part_offset=part_offset)
+                    mapped = self._map_stream_chunk(wire, model, as_of, part_offset=part_offset)
                     if mapped.finish_reason is not None:
                         mapped = mapped.model_copy(update={"continuation": continuation_state.continuation()})
                     yield mapped
@@ -371,8 +424,9 @@ class GoogleProvider(
         dimensions: int | None = None,
         provider_params: GoogleParams | None = None,
     ) -> EmbeddingResponse:
+        as_of = self._resolve_pricing_as_of(provider_params)
         if self._vertexai and _uses_embed_content(model):
-            return self._embed_content(model, input, dimensions)
+            return self._embed_content(model, input, dimensions, as_of)
         texts = input if isinstance(input, list) else [input]
         embeddings: list[list[float]] = []
         input_tokens = 0
@@ -382,14 +436,14 @@ class GoogleProvider(
                 path, body = self._embed_path_and_body(model, chunk, dimensions, provider_params)
                 response = client.post(path, json=body, headers=self._request_headers())
                 raise_for_status(response)
-                result = self._map_embed_response(response, model)
+                result = self._map_embed_response(response, model, as_of)
                 embeddings.extend(result.embeddings)
                 input_tokens += result.usage.input_tokens
         except LmuxError:
             raise
         except Exception as e:
             raise map_transport_error(e) from e
-        return self._embedding_response(model, embeddings, input_tokens)
+        return self._embedding_response(model, embeddings, input_tokens, as_of)
 
     @override
     async def aembed(
@@ -400,8 +454,9 @@ class GoogleProvider(
         dimensions: int | None = None,
         provider_params: GoogleParams | None = None,
     ) -> EmbeddingResponse:
+        as_of = self._resolve_pricing_as_of(provider_params)
         if self._vertexai and _uses_embed_content(model):
-            return await self._aembed_content(model, input, dimensions)
+            return await self._aembed_content(model, input, dimensions, as_of)
         texts = input if isinstance(input, list) else [input]
         embeddings: list[list[float]] = []
         input_tokens = 0
@@ -411,16 +466,22 @@ class GoogleProvider(
                 path, body = self._embed_path_and_body(model, chunk, dimensions, provider_params)
                 response = await client.post(path, json=body, headers=await self._arequest_headers())
                 raise_for_status(response)
-                result = self._map_embed_response(response, model)
+                result = self._map_embed_response(response, model, as_of)
                 embeddings.extend(result.embeddings)
                 input_tokens += result.usage.input_tokens
         except LmuxError:
             raise
         except Exception as e:
             raise map_transport_error(e) from e
-        return self._embedding_response(model, embeddings, input_tokens)
+        return self._embedding_response(model, embeddings, input_tokens, as_of)
 
-    def _embed_content(self, model: str, input: str | list[str], dimensions: int | None) -> EmbeddingResponse:  # noqa: A002
+    def _embed_content(
+        self,
+        model: str,
+        input: str | list[str],  # noqa: A002
+        dimensions: int | None,
+        as_of: date,
+    ) -> EmbeddingResponse:
         # Vertex serves Gemini Embedding 2 models only through :embedContent, which takes a single
         # content per request (no batch) and rejects task_type — so a list is issued one item at a time.
         texts = input if isinstance(input, list) else [input]
@@ -440,9 +501,15 @@ class GoogleProvider(
             raise
         except Exception as e:
             raise map_transport_error(e) from e
-        return self._embedding_response(model, embeddings, input_tokens)
+        return self._embedding_response(model, embeddings, input_tokens, as_of)
 
-    async def _aembed_content(self, model: str, input: str | list[str], dimensions: int | None) -> EmbeddingResponse:  # noqa: A002
+    async def _aembed_content(
+        self,
+        model: str,
+        input: str | list[str],  # noqa: A002
+        dimensions: int | None,
+        as_of: date,
+    ) -> EmbeddingResponse:
         texts = input if isinstance(input, list) else [input]
         path = self._path(model, "embedContent")
         embeddings: list[list[float]] = []
@@ -460,14 +527,16 @@ class GoogleProvider(
             raise
         except Exception as e:
             raise map_transport_error(e) from e
-        return self._embedding_response(model, embeddings, input_tokens)
+        return self._embedding_response(model, embeddings, input_tokens, as_of)
 
-    def _embedding_response(self, model: str, embeddings: list[list[float]], input_tokens: int) -> EmbeddingResponse:
+    def _embedding_response(
+        self, model: str, embeddings: list[list[float]], input_tokens: int, as_of: date
+    ) -> EmbeddingResponse:
         usage = Usage(input_tokens=input_tokens, output_tokens=0)
         return EmbeddingResponse(
             embeddings=embeddings,
             usage=usage,
-            cost=self._calculate_cost(model, usage),
+            cost=self._calculate_cost(model, usage, as_of),
             model=model,
             provider=PROVIDER_NAME,
         )
@@ -487,10 +556,12 @@ class GoogleProvider(
 
     # MARK: Internal Helpers
 
-    def _map_stream_chunk(self, chunk: WireGenerateContentResponse, model: str, *, part_offset: int = 0) -> ChatChunk:
+    def _map_stream_chunk(
+        self, chunk: WireGenerateContentResponse, model: str, as_of: date, *, part_offset: int = 0
+    ) -> ChatChunk:
         mapped = map_generate_content_chunk(chunk, model, PROVIDER_NAME, part_offset=part_offset)
         if mapped.usage is not None:
-            mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage)})
+            mapped = mapped.model_copy(update={"cost": self._calculate_cost(model, mapped.usage, as_of)})
         return mapped
 
     def _embed_path_and_body(
@@ -507,13 +578,14 @@ class GoogleProvider(
         body = self._build_embed_body(model, input, dimensions, provider_params)
         return self._path(model, "batchEmbedContents"), body
 
-    def _map_embed_response(self, response: "httpx.Response", model: str) -> EmbeddingResponse:
+    def _map_embed_response(self, response: "httpx.Response", model: str, as_of: date) -> EmbeddingResponse:
+        cost_fn = self._cost_fn_for(as_of)
         if self._vertexai:
             return map_vertex_embed_response(
-                parse_body(response, WireVertexPredictResponse), model, PROVIDER_NAME, self._calculate_cost
+                parse_body(response, WireVertexPredictResponse), model, PROVIDER_NAME, cost_fn
             )
         return map_batch_embeddings_response(
-            parse_body(response, WireBatchEmbeddingsResponse), model, PROVIDER_NAME, self._calculate_cost
+            parse_body(response, WireBatchEmbeddingsResponse), model, PROVIDER_NAME, cost_fn
         )
 
     @staticmethod

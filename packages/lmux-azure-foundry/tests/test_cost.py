@@ -57,6 +57,18 @@ class TestCalculateAzureFoundryCost:
         assert mini_cost is not None
         assert cost.total_cost == pytest.approx(mini_cost.total_cost)
 
+    def test_gpt_4o_2024_05_13_has_dedicated_pricing(self) -> None:
+        """Azure prices the 05-13 snapshot at 5/15 with no cached-input rate, unlike the gpt-4o base."""
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)
+        cost = calculate_azure_foundry_cost("gpt-4o-2024-05-13", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx((1000 - 200) * 5.00 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 15.00 / 1_000_000)
+        assert cost.cache_read_cost == pytest.approx(0.0)
+        base = calculate_azure_foundry_cost("gpt-4o", usage)
+        assert base is not None
+        assert cost.total_cost > base.total_cost
+
     def test_gpt5_model(self) -> None:
         usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
         cost = calculate_azure_foundry_cost("gpt-5", usage)

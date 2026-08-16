@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from datetime import date
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
 
@@ -13,7 +14,7 @@ from pytest_mock import MockerFixture
 if TYPE_CHECKING:
     from google.auth.credentials import Credentials
 
-from lmux.cost import ModelPricing, PricingTier
+from lmux.cost import ModelPricing, PricingSchedule, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, NotFoundError, ProviderError
 from lmux.types import (
     FunctionDefinition,
@@ -909,6 +910,233 @@ class TestRegisterPricing:
         _ok(respx_mock, _gen_response(), url=f"{_GEMINI}/{model}:generateContent")
         result = provider.chat(model, [UserMessage(content="Hi")])
         assert result.cost is None
+
+
+# MARK: Dated Pricing
+
+
+_FLASH = "gemini-3.6-flash"
+_FLASH_CHAT_URL = f"{_GEMINI}/{_FLASH}:generateContent"
+_FLASH_STREAM_URL = f"{_GEMINI}/{_FLASH}:streamGenerateContent"
+
+
+class TestPricingAsOf:
+    def test_intro_window_rate(
+        self, provider: GoogleProvider, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("lmux_google.provider._today", lambda: date(2026, 8, 16))
+        _ok(respx_mock, _gen_response(prompt_tokens=1000, output_tokens=500), url=_FLASH_CHAT_URL)
+        result = provider.chat(_FLASH, [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1000 * 0.75 / 1_000_000)
+        assert result.cost.output_cost == pytest.approx(500 * 3.75 / 1_000_000)
+
+    def test_rate_after_switch(
+        self, provider: GoogleProvider, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("lmux_google.provider._today", lambda: date(2027, 1, 15))
+        _ok(respx_mock, _gen_response(prompt_tokens=1000, output_tokens=500), url=_FLASH_CHAT_URL)
+        result = provider.chat(_FLASH, [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1000 * 1.50 / 1_000_000)
+
+    def test_override_wins_over_clock(
+        self, provider: GoogleProvider, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("lmux_google.provider._today", lambda: date(2027, 1, 15))
+        _ok(respx_mock, _gen_response(prompt_tokens=1000, output_tokens=500), url=_FLASH_CHAT_URL)
+        result = provider.chat(
+            _FLASH,
+            [UserMessage(content="Hi")],
+            provider_params=GoogleParams(pricing_as_of=date(2026, 8, 16)),
+        )
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1000 * 0.75 / 1_000_000)
+
+    async def test_achat_applies_dated_pricing(
+        self, provider: GoogleProvider, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("lmux_google.provider._today", lambda: date(2026, 8, 16))
+        _ok(respx_mock, _gen_response(prompt_tokens=1000, output_tokens=500), url=_FLASH_CHAT_URL)
+        result = await provider.achat(_FLASH, [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1000 * 0.75 / 1_000_000)
+
+    def test_chat_stream_applies_dated_pricing(
+        self, provider: GoogleProvider, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("lmux_google.provider._today", lambda: date(2026, 8, 16))
+        respx_mock.post(_FLASH_STREAM_URL).mock(return_value=httpx.Response(200, content=_sse_stream()))
+        chunks = list(provider.chat_stream(_FLASH, [UserMessage(content="Hi")]))
+        final = chunks[-1]
+        assert final.cost is not None
+        assert final.cost.input_cost == pytest.approx(10 * 0.75 / 1_000_000)
+
+    async def test_achat_stream_applies_dated_pricing(
+        self, provider: GoogleProvider, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("lmux_google.provider._today", lambda: date(2026, 8, 16))
+        respx_mock.post(_FLASH_STREAM_URL).mock(return_value=httpx.Response(200, content=_sse_stream()))
+        chunks = [chunk async for chunk in provider.achat_stream(_FLASH, [UserMessage(content="Hi")])]
+        final = chunks[-1]
+        assert final.cost is not None
+        assert final.cost.input_cost == pytest.approx(10 * 0.75 / 1_000_000)
+
+    def test_embed_honors_pricing_as_of_for_custom_dated_pricing(
+        self, provider: GoogleProvider, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """register_pricing can attach a dated schedule to an embedding model; the override must reach it."""
+        monkeypatch.setattr("lmux_google.provider._today", lambda: date(2027, 6, 1))
+        provider.register_pricing(
+            EMBED_MODEL,
+            ModelPricing(
+                tiers=[PricingTier(input_cost_per_token=1e-6, output_cost_per_token=0.0)],
+                schedules=[
+                    PricingSchedule(
+                        valid_from=date(2027, 1, 1),
+                        tiers=[PricingTier(input_cost_per_token=9e-6, output_cost_per_token=0.0)],
+                    )
+                ],
+            ),
+        )
+        respx_mock.post(_EMBED_URL).mock(
+            return_value=httpx.Response(
+                200, json={"embeddings": [{"values": [0.1]}], "usageMetadata": {"promptTokenCount": 100}}
+            )
+        )
+        later = provider.embed(EMBED_MODEL, "hello")
+        assert later.cost is not None
+        assert later.cost.input_cost == pytest.approx(100 * 9e-6)
+
+        earlier = provider.embed(EMBED_MODEL, "hello", provider_params=GoogleParams(pricing_as_of=date(2026, 8, 16)))
+        assert earlier.cost is not None
+        assert earlier.cost.input_cost == pytest.approx(100 * 1e-6)
+
+
+# MARK: Vertex Endpoint Premium
+
+
+class TestVertexNonGlobalPremium:
+    def test_non_global_location_applies_premium(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"{_VERTEX_MODELS}/gemini-3.5-flash:generateContent"
+        respx_mock.post(url).mock(
+            return_value=httpx.Response(200, json=_gen_response(prompt_tokens=1_000_000, output_tokens=1_000_000))
+        )
+        result = provider.chat("gemini-3.5-flash", [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1.65)
+        assert result.cost.output_cost == pytest.approx(9.90)
+
+    def test_global_location_bills_list_price(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj")
+        url = (
+            "https://aiplatform.googleapis.com/v1/projects/my-proj/locations/global"
+            "/publishers/google/models/gemini-3.5-flash:generateContent"
+        )
+        respx_mock.post(url).mock(
+            return_value=httpx.Response(200, json=_gen_response(prompt_tokens=1_000_000, output_tokens=1_000_000))
+        )
+        result = provider.chat("gemini-3.5-flash", [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1.50)
+        assert result.cost.output_cost == pytest.approx(9.00)
+
+    def test_exempt_model_bills_list_price_on_non_global(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"{_VERTEX_MODELS}/{MODEL}:generateContent"
+        respx_mock.post(url).mock(
+            return_value=httpx.Response(200, json=_gen_response(prompt_tokens=1_000_000, output_tokens=0))
+        )
+        result = provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(0.15)
+
+    def test_gemini_developer_api_has_no_premium(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
+        url = f"{_GEMINI}/gemini-3.5-flash:generateContent"
+        respx_mock.post(url).mock(
+            return_value=httpx.Response(200, json=_gen_response(prompt_tokens=1_000_000, output_tokens=1_000_000))
+        )
+        result = provider.chat("gemini-3.5-flash", [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1.50)
+
+    def test_unknown_model_cost_stays_none_on_non_global(self, respx_mock: respx.MockRouter) -> None:
+        """The multiplier must not turn an unknown model's None cost into a number."""
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        model = "totally-unknown-model"
+        respx_mock.post(f"{_VERTEX_MODELS}/{model}:generateContent").mock(
+            return_value=httpx.Response(200, json=_gen_response())
+        )
+        result = provider.chat(model, [UserMessage(content="Hi")])
+        assert result.cost is None
+
+    def test_premium_applies_to_custom_registered_pricing(self, respx_mock: respx.MockRouter) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        provider.register_pricing(
+            "gemini-3.5-flash",
+            ModelPricing(tiers=[PricingTier(input_cost_per_token=10e-6, output_cost_per_token=0.0)]),
+        )
+        url = f"{_VERTEX_MODELS}/gemini-3.5-flash:generateContent"
+        respx_mock.post(url).mock(
+            return_value=httpx.Response(200, json=_gen_response(prompt_tokens=1000, output_tokens=0))
+        )
+        result = provider.chat("gemini-3.5-flash", [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1000 * 10e-6 * 1.1)
+
+    @pytest.mark.parametrize(
+        ("as_of", "input_cost", "output_cost"),
+        [
+            # Before the premium took effect, global pricing applied to every Vertex endpoint.
+            (date(2026, 6, 30), 1.50, 9.00),
+            # The premium is billed from its first day onward.
+            (date(2026, 7, 1), 1.65, 9.90),
+            (date(2026, 8, 16), 1.65, 9.90),
+        ],
+    )
+    def test_premium_honors_its_effective_date(
+        self, respx_mock: respx.MockRouter, as_of: date, input_cost: float, output_cost: float
+    ) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        url = f"{_VERTEX_MODELS}/gemini-3.5-flash:generateContent"
+        respx_mock.post(url).mock(
+            return_value=httpx.Response(200, json=_gen_response(prompt_tokens=1_000_000, output_tokens=1_000_000))
+        )
+        result = provider.chat(
+            "gemini-3.5-flash",
+            [UserMessage(content="Hi")],
+            provider_params=GoogleParams(pricing_as_of=as_of),
+        )
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(input_cost)
+        assert result.cost.output_cost == pytest.approx(output_cost)
+
+    def test_backdated_embedding_takes_no_premium(self, respx_mock: respx.MockRouter) -> None:
+        """The effective-date gate applies on the embedding path too, not just chat."""
+        creds = FakeCredentials()
+        provider = GoogleProvider(auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1")
+        provider.register_pricing(
+            "gemini-3.5-flash",
+            ModelPricing(tiers=[PricingTier(input_cost_per_token=10e-6, output_cost_per_token=0.0)]),
+        )
+        url = f"{_VERTEX_MODELS}/gemini-3.5-flash:predict"
+        respx_mock.post(url).mock(
+            return_value=httpx.Response(
+                200, json={"predictions": [{"embeddings": {"values": [0.1], "statistics": {"token_count": 1000}}}]}
+            )
+        )
+        result = provider.embed(
+            "gemini-3.5-flash", "hello", provider_params=GoogleParams(pricing_as_of=date(2026, 6, 30))
+        )
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1000 * 10e-6)
 
 
 # MARK: Provider Params

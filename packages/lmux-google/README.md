@@ -112,14 +112,15 @@ response = provider.chat(
 )
 ```
 
-| Parameter           | Type                  | Description                      |
-| ------------------- | --------------------- | -------------------------------- |
-| `safety_settings`   | `list[SafetySetting]` | Content safety thresholds        |
-| `presence_penalty`  | `float`               | Presence penalty                 |
-| `frequency_penalty` | `float`               | Frequency penalty                |
-| `seed`              | `int`                 | Deterministic sampling seed      |
-| `labels`            | `dict[str, str]`      | Request labels                   |
-| `thinking_config`   | `dict`                | Thinking/reasoning configuration |
+| Parameter           | Type                  | Description                                                                                                     |
+| ------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `safety_settings`   | `list[SafetySetting]` | Content safety thresholds                                                                                        |
+| `presence_penalty`  | `float`               | Presence penalty                                                                                                 |
+| `frequency_penalty` | `float`               | Frequency penalty                                                                                                |
+| `seed`              | `int`                 | Deterministic sampling seed                                                                                      |
+| `labels`            | `dict[str, str]`      | Request labels                                                                                                   |
+| `thinking_config`   | `dict`                | Thinking/reasoning configuration                                                                                 |
+| `pricing_as_of`     | `datetime.date`       | Override the date used for dated pricing (e.g. a model's introductory-rate window); defaults to the current date |
 
 ## Constructor Options
 
@@ -139,3 +140,16 @@ GoogleProvider(
 
 `default_headers` is useful for gateway authentication, tracing, and routing. Google-managed authentication,
 quota-project, and content-type headers take precedence over caller values, case-insensitively.
+
+## Pricing
+
+Rates are Vertex global-endpoint list prices. Setting `location` to anything other than `global` puts the
+request on a non-global Vertex endpoint, which bills a 10% premium on the generally available Gemini 3 and
+later families; the provider applies that automatically via `VERTEX_NON_GLOBAL_MULTIPLIER`. Preview models,
+embeddings, and pre-Gemini-3 families are billed uniformly across endpoints, and the Gemini Developer API
+(`vertexai=False`) has no endpoint premium.
+
+Models with time-boxed introductory rates carry dated schedules, so cost reflects the rate in effect on the
+request date. Pass `GoogleParams(pricing_as_of=...)` to price against a different date. The endpoint premium
+is dated too — it starts at `VERTEX_NON_GLOBAL_PREMIUM_START` (2026-07-01), so costs replayed against an
+earlier date take no multiplier.

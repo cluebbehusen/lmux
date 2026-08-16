@@ -80,7 +80,7 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     "Claude 3.5 Sonnet": "anthropic.claude-3-5-sonnet-20240620-v1",
     "Claude 3.5 Haiku": "anthropic.claude-3-5-haiku-20241022-v1",
     "Claude 3 Opus": "anthropic.claude-3-opus-20240229-v1",
-    "Claude 3 Sonnet": "anthropic.claude-3-sonnet-v1",
+    "Claude 3 Sonnet": "anthropic.claude-3-sonnet-20240229-v1",
     "Claude 3 Haiku": "anthropic.claude-3-haiku-v1",
     "Claude": "anthropic.claude-v2",
     "Claude Instant": "anthropic.claude-instant-v1",
@@ -325,6 +325,7 @@ KNOWN_UNRESOLVED_IDS: frozenset[str] = frozenset(
         "anthropic.claude-3-5-sonnet-20241022-v2",
         "anthropic.claude-3-7-sonnet-20250219-v1",
         "anthropic.claude-3-opus-20240229-v1",
+        "anthropic.claude-3-sonnet-20240229-v1",
         "anthropic.claude-opus-4-20250514-v1",
         # Not confirmed reachable: the real ID may differ, which would price these as None.
         # These are live models rather than retirements, tracked as a separate known gap.

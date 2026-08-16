@@ -87,6 +87,19 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    # "cyber" tier is materially pricier than the rest of the gpt-5.6 family, so it
+    # needs an explicit key (it would otherwise prefix-match gpt-5.6 and be
+    # under-priced at 5.00/30.00). Single tier — OpenAI publishes no >272K rate.
+    "gpt-5.6-cyber": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(12.50),
+                output_cost_per_token=per_million_tokens(75.00),
+                cache_read_cost_per_token=per_million_tokens(1.25),
+                cache_creation_cost_per_token=per_million_tokens(15.625),
+            ),
+        ],
+    ),
     "gpt-5.5-pro": ModelPricing(
         tiers=[
             PricingTier(
@@ -323,6 +336,18 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # Rates currently mirror gpt-5, which this would also prefix-match; the explicit
+    # key keeps it correct if OpenAI prices the search SKU separately later.
+    # (Per-tool-call search fees are separate and not modeled here.)
+    "gpt-5-search-api": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.125),
+            )
+        ],
+    ),
     # GPT-4.1 family
     "gpt-4.1-mini": ModelPricing(
         tiers=[
@@ -514,6 +539,65 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # Legacy GPT-4 and GPT-3.5 models. None publish a cached-input rate.
+    "gpt-4-turbo-2024-04-09": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(30.00),
+            )
+        ],
+    ),
+    "gpt-4-0613": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(30.00),
+                output_cost_per_token=per_million_tokens(60.00),
+            )
+        ],
+    ),
+    "gpt-3.5-turbo": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.50),
+                output_cost_per_token=per_million_tokens(1.50),
+            )
+        ],
+    ),
+    # The 1106 snapshot and the instruct variant are pricier than the gpt-3.5-turbo
+    # base, so both need explicit keys to avoid inheriting the cheaper prefix.
+    "gpt-3.5-turbo-1106": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.00),
+                output_cost_per_token=per_million_tokens(2.00),
+            )
+        ],
+    ),
+    "gpt-3.5-turbo-instruct": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.50),
+                output_cost_per_token=per_million_tokens(2.00),
+            )
+        ],
+    ),
+    "davinci-002": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(2.00),
+            )
+        ],
+    ),
+    "babbage-002": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.40),
+                output_cost_per_token=per_million_tokens(0.40),
+            )
+        ],
+    ),
     # Embedding models
     "text-embedding-3-small": ModelPricing(
         tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.02), output_cost_per_token=0.0)]
@@ -539,6 +623,9 @@ _UNPRICED_MODELS = frozenset({"gpt-5.4-cyber"})
 # the gpt-5.5 family (gpt-5.5, gpt-5.5-pro), and the gpt-5.6 family (sol/terra/luna).
 REGIONAL_UPLIFT = 1.1
 _REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4", "gpt-5.5", "gpt-5.6")
+# The "cyber" variants share those family prefixes but are absent from OpenAI's
+# data-residency eligible-model list, so the uplift must not follow the prefix.
+_REGIONAL_UPLIFT_EXCLUDED_SUFFIX = "-cyber"
 
 
 def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:
@@ -554,7 +641,7 @@ def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:
 def regional_uplift_applies(model: str) -> bool:
     """Whether the regional processing (data residency) uplift applies to this model."""
     model_lower = model.lower()
-    if model_lower in _UNPRICED_MODELS:
+    if model_lower in _UNPRICED_MODELS or model_lower.endswith(_REGIONAL_UPLIFT_EXCLUDED_SUFFIX):
         return False
     return any(model_lower.startswith(prefix) for prefix in _REGIONAL_UPLIFT_PREFIXES)
 

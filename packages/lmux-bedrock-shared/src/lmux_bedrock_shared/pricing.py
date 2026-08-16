@@ -1055,6 +1055,17 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "anthropic.claude-opus-5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(6.0),
+                    output_cost_per_token=per_million_tokens(30.0),
+                    cache_read_cost_per_token=per_million_tokens(0.6),
+                    cache_creation_cost_per_token=per_million_tokens(7.5),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(12.0)},
+                ),
+            ],
+        ),
         "anthropic.claude-sonnet-4-5-20250929-v1": ModelPricing(
             tiers=[
                 PricingTier(
@@ -1063,6 +1074,31 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
                     cache_read_cost_per_token=per_million_tokens(0.36),
                     cache_creation_cost_per_token=per_million_tokens(4.5),
                     cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(7.2)},
+                ),
+            ],
+        ),
+        "anthropic.claude-sonnet-5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.4),
+                    output_cost_per_token=per_million_tokens(12.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                    cache_creation_cost_per_token=per_million_tokens(3.0),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.8)},
+                ),
+            ],
+            schedules=[
+                PricingSchedule(
+                    valid_from=date(2026, 9, 1),
+                    tiers=[
+                        PricingTier(
+                            input_cost_per_token=per_million_tokens(3.6),
+                            output_cost_per_token=per_million_tokens(18.0),
+                            cache_read_cost_per_token=per_million_tokens(0.36),
+                            cache_creation_cost_per_token=per_million_tokens(4.5),
+                            cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(7.2)},
+                        ),
+                    ],
                 ),
             ],
         ),
@@ -1105,6 +1141,17 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "anthropic.claude-opus-5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(6.0),
+                    output_cost_per_token=per_million_tokens(30.0),
+                    cache_read_cost_per_token=per_million_tokens(0.6),
+                    cache_creation_cost_per_token=per_million_tokens(7.5),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(12.0)},
+                ),
+            ],
+        ),
         "anthropic.claude-sonnet-4-5-20250929-v1": ModelPricing(
             tiers=[
                 PricingTier(
@@ -1113,6 +1160,31 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
                     cache_read_cost_per_token=per_million_tokens(0.36),
                     cache_creation_cost_per_token=per_million_tokens(4.5),
                     cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(7.2)},
+                ),
+            ],
+        ),
+        "anthropic.claude-sonnet-5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.4),
+                    output_cost_per_token=per_million_tokens(12.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                    cache_creation_cost_per_token=per_million_tokens(3.0),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.8)},
+                ),
+            ],
+            schedules=[
+                PricingSchedule(
+                    valid_from=date(2026, 9, 1),
+                    tiers=[
+                        PricingTier(
+                            input_cost_per_token=per_million_tokens(3.6),
+                            output_cost_per_token=per_million_tokens(18.0),
+                            cache_read_cost_per_token=per_million_tokens(0.36),
+                            cache_creation_cost_per_token=per_million_tokens(4.5),
+                            cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(7.2)},
+                        ),
+                    ],
                 ),
             ],
         ),

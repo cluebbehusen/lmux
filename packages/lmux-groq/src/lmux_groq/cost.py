@@ -1,6 +1,10 @@
 """Groq pricing data and cost calculation.
 
-Pricing source: https://groq.com/pricing/
+Cached input bills at 50% of the input rate, and only on the models Groq
+supports prompt caching for; Groq charges nothing for cache writes.
+
+Pricing source: https://console.groq.com/docs/models (per-model cards at
+https://console.groq.com/docs/model/<model-id> carry the cached-input rate)
 """
 
 from lmux.cost import (
