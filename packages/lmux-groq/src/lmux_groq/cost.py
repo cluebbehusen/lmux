@@ -1,6 +1,7 @@
 """Groq pricing data and cost calculation.
 
-Pricing source: https://groq.com/pricing/
+Pricing source: https://console.groq.com/docs/models (per-model cards at
+https://console.groq.com/docs/model/<model-id> carry the cached-input rate)
 """
 
 from lmux.cost import (

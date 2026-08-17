@@ -87,6 +87,19 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    # "cyber" tier is materially pricier than the rest of the gpt-5.6 family, so it
+    # needs an explicit key (it would otherwise prefix-match gpt-5.6 and be
+    # under-priced at 5.00/30.00). Single tier — OpenAI publishes no >272K rate.
+    "gpt-5.6-cyber": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(12.50),
+                output_cost_per_token=per_million_tokens(75.00),
+                cache_read_cost_per_token=per_million_tokens(1.25),
+                cache_creation_cost_per_token=per_million_tokens(15.625),
+            ),
+        ],
+    ),
     "gpt-5.5-pro": ModelPricing(
         tiers=[
             PricingTier(
@@ -539,6 +552,10 @@ _UNPRICED_MODELS = frozenset({"gpt-5.4-cyber"})
 # the gpt-5.5 family (gpt-5.5, gpt-5.5-pro), and the gpt-5.6 family (sol/terra/luna).
 REGIONAL_UPLIFT = 1.1
 _REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4", "gpt-5.5", "gpt-5.6")
+# The "cyber" variants share those family prefixes but are absent from OpenAI's
+# data-residency eligible-model list. Matched as prefixes, like the pricing table,
+# so dated snapshots (gpt-5.6-cyber-2026-08-01) are excluded too.
+_REGIONAL_UPLIFT_EXCLUDED_PREFIXES = ("gpt-5.4-cyber", "gpt-5.5-cyber", "gpt-5.6-cyber")
 
 
 def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:
@@ -554,7 +571,7 @@ def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:
 def regional_uplift_applies(model: str) -> bool:
     """Whether the regional processing (data residency) uplift applies to this model."""
     model_lower = model.lower()
-    if model_lower in _UNPRICED_MODELS:
+    if model_lower in _UNPRICED_MODELS or model_lower.startswith(_REGIONAL_UPLIFT_EXCLUDED_PREFIXES):
         return False
     return any(model_lower.startswith(prefix) for prefix in _REGIONAL_UPLIFT_PREFIXES)
 

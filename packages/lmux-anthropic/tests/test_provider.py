@@ -220,18 +220,20 @@ class TestPricingAsOf:
         assert result.cost.input_cost == pytest.approx(1000 * 2.0 / 1_000_000)
         assert result.cost.output_cost == pytest.approx(500 * 10.0 / 1_000_000)
 
-    def test_rate_after_switch(
+    def test_rate_unchanged_after_cancelled_switch(
         self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """No Anthropic model has a dated schedule today, so a later clock bills the same rate."""
         monkeypatch.setattr("lmux_anthropic.provider._today", lambda: date(2026, 9, 15))
         _ok(respx_mock, _message(model="claude-sonnet-5", input_tokens=1000, output_tokens=500))
         result = sync_provider.chat("claude-sonnet-5", [UserMessage(content="Hi")])
         assert result.cost is not None
-        assert result.cost.input_cost == pytest.approx(1000 * 3.0 / 1_000_000)
+        assert result.cost.input_cost == pytest.approx(1000 * 2.0 / 1_000_000)
 
-    def test_override_wins_over_clock(
+    def test_pricing_as_of_override_is_applied(
         self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """An explicit ``pricing_as_of`` replaces the clock on the way to the cost calculation."""
         monkeypatch.setattr("lmux_anthropic.provider._today", lambda: date(2026, 9, 15))
         _ok(respx_mock, _message(model="claude-sonnet-5", input_tokens=1000, output_tokens=500))
         result = sync_provider.chat(

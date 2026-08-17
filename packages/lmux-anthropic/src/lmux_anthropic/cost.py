@@ -20,7 +20,6 @@ from datetime import date
 
 from lmux.cost import (
     ModelPricing,
-    PricingSchedule,
     PricingTier,
     build_pricing_index,
     calculate_cost,
@@ -68,9 +67,9 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
-    # Claude Sonnet 5 family — introductory pricing through 2026-08-31, then
-    # standard pricing (matching Sonnet 4.6) from 2026-09-01. Full 1M context
-    # at standard pricing, so there is no >200K tier.
+    # Claude Sonnet 5 family — the $2/$10 launch rate is the standard price; the
+    # increase once scheduled for 2026-09-01 was cancelled. Full 1M context at
+    # standard pricing, so there is no >200K tier.
     "claude-sonnet-5": ModelPricing(
         tiers=[
             PricingTier(
@@ -79,20 +78,6 @@ _PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.20),
                 cache_creation_cost_per_token=per_million_tokens(2.50),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.00)},
-            ),
-        ],
-        schedules=[
-            PricingSchedule(
-                valid_from=date(2026, 9, 1),
-                tiers=[
-                    PricingTier(
-                        input_cost_per_token=per_million_tokens(3.00),
-                        output_cost_per_token=per_million_tokens(15.00),
-                        cache_read_cost_per_token=per_million_tokens(0.30),
-                        cache_creation_cost_per_token=per_million_tokens(3.75),
-                        cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(6.00)},
-                    ),
-                ],
             ),
         ],
     ),
@@ -347,9 +332,8 @@ def has_vertex_regional_premium(model: str) -> bool:
 def calculate_anthropic_cost(model: str, usage: Usage, as_of: date | None = None) -> Cost | None:
     """Calculate cost for an Anthropic API call. Returns None if model pricing is unknown.
 
-    ``as_of`` selects dated pricing for models with scheduled rate changes
-    (e.g. Claude Sonnet 5's introductory period); it defaults to the latest
-    schedule. See ``lmux.cost.calculate_cost``.
+    ``as_of`` selects dated pricing for models with scheduled rate changes; it
+    defaults to the latest schedule. See ``lmux.cost.calculate_cost``.
     """
     pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:

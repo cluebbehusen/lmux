@@ -27,18 +27,20 @@ from lmux.types import Cost, Usage
 DATA_ZONE_MULTIPLIER = 1.1
 """Commercial US/EU Data Zone Standard deployments are 1.1x global pricing.
 
-This holds uniformly across input, output, and cache for every model, and the
-US and EU Data Zone prices are identical. Non-commercial data zones are not
-modeled and run higher — the Asia-Pacific data zone is ~1.2x and the US
-Government sovereign cloud is ~1.375x; use ``register_pricing()`` for those.
+US and EU Data Zone prices are identical, and the ratio holds for input, output
+and cache on nearly every model — Kimi-K2.6 and Kimi-K2.7-Code are the exception,
+billing output at 1.25x global. Non-commercial data zones are not modeled and run
+higher: the Asia-Pacific data zone is ~1.2x and the US Government sovereign cloud
+is ~1.375x. Use ``register_pricing()`` for any of these.
 """
 
 REGIONAL_MULTIPLIER = 1.1
 """Regional deployments are approximately 1.1x global pricing.
 
-Note: actual regional pricing varies by model (1.1x-1.375x).  This constant
-uses the most common multiplier; for exact per-model regional rates, use
-``register_pricing()`` to override individual models.
+The regional rate varies by region rather than by model: US regions are 1.1x,
+most of EU/UK/CH/JP is 1.21x, North/West Europe and Southeast Asia are 1.32x,
+and US Gov is 1.375x. This constant uses the US multiplier; use
+``register_pricing()`` for exact rates elsewhere.
 """
 
 # MARK: Global Standard pricing (base rates)
@@ -389,6 +391,16 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(2.50),
                 output_cost_per_token=per_million_tokens(10.00),
                 cache_read_cost_per_token=per_million_tokens(1.25),
+            )
+        ],
+    ),
+    # The 2024-05-13 snapshot is priced higher than the current gpt-4o (5/15 vs 2.50/10) and
+    # has no cached-input rate; an explicit key stops it inheriting the cheaper gpt-4o prefix.
+    "gpt-4o-2024-05-13": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(15.00),
             )
         ],
     ),

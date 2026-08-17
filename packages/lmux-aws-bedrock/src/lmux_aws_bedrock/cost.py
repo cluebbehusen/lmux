@@ -5611,18 +5611,18 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
         "openai.gpt-5.6-luna": ModelPricing(
             tiers=[
                 PricingTier(
-                    input_cost_per_token=per_million_tokens(1.32),
-                    output_cost_per_token=per_million_tokens(7.92),
-                    cache_read_cost_per_token=per_million_tokens(0.132),
+                    input_cost_per_token=per_million_tokens(0.264),
+                    output_cost_per_token=per_million_tokens(1.584),
+                    cache_read_cost_per_token=per_million_tokens(0.0264),
                 ),
             ],
         ),
         "openai.gpt-5.6-terra": ModelPricing(
             tiers=[
                 PricingTier(
-                    input_cost_per_token=per_million_tokens(3.3),
-                    output_cost_per_token=per_million_tokens(19.8),
-                    cache_read_cost_per_token=per_million_tokens(0.33),
+                    input_cost_per_token=per_million_tokens(2.64),
+                    output_cost_per_token=per_million_tokens(15.84),
+                    cache_read_cost_per_token=per_million_tokens(0.264),
                 ),
             ],
         ),

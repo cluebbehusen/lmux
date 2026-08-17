@@ -82,6 +82,18 @@ class TestCalculateOpenAICost:
         assert cyber.output_cost == pytest.approx(500 * 75.00 / 1_000_000)
         assert cyber.input_cost > base.input_cost
 
+    def test_gpt_5_6_cyber_has_dedicated_pricing(self) -> None:
+        """gpt-5.6-cyber must use its own (pricier) rate, not prefix-match gpt-5.6."""
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_creation_tokens=100)
+        cyber = calculate_openai_cost("gpt-5.6-cyber", usage)
+        base = calculate_openai_cost("gpt-5.6", usage)
+        assert cyber is not None
+        assert base is not None
+        assert cyber.input_cost == pytest.approx((1000 - 100) * 12.50 / 1_000_000)
+        assert cyber.output_cost == pytest.approx(500 * 75.00 / 1_000_000)
+        assert cyber.cache_creation_cost == pytest.approx(100 * 15.625 / 1_000_000)
+        assert cyber.input_cost > base.input_cost
+
     @pytest.mark.parametrize(
         ("model", "input_rate", "output_rate", "cache_read_rate", "cache_write_rate"),
         [
@@ -201,6 +213,18 @@ class TestRegionalUpliftApplies:
     )
     def test_does_not_apply_to_other_models(self, model: str) -> None:
         # gpt-5.4-cyber starts with "gpt-5.4" but is unpriced, so the uplift must not apply.
+        assert regional_uplift_applies(model) is False
+
+    @pytest.mark.parametrize("model", ["gpt-5.5-cyber", "gpt-5.6-cyber"])
+    def test_does_not_apply_to_priced_cyber_variants(self, model: str) -> None:
+        """Cyber models carry a family prefix but are absent from OpenAI's data-residency list."""
+        assert regional_uplift_applies(model) is False
+        # The sibling that does share the prefix must still take the uplift.
+        assert regional_uplift_applies(model.removesuffix("-cyber")) is True
+
+    @pytest.mark.parametrize("model", ["gpt-5.6-cyber-2026-08-01", "gpt-5.5-cyber-2026-04-23"])
+    def test_does_not_apply_to_dated_cyber_snapshots(self, model: str) -> None:
+        """Pricing resolves cyber snapshots by prefix, so the uplift check must too."""
         assert regional_uplift_applies(model) is False
 
 

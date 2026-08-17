@@ -132,41 +132,33 @@ class TestCalculateAnthropicCost:
         assert cost.input_cost == pytest.approx(500_000 * 5.0 / 1_000_000)
         assert cost.output_cost == pytest.approx(1000 * 25.0 / 1_000_000)
 
-    def test_sonnet_5_introductory_pricing_before_sep_2026(self) -> None:
-        """Before 2026-09-01, Claude Sonnet 5 bills at the introductory rate."""
+    def test_sonnet_5_pricing(self) -> None:
+        """Claude Sonnet 5 bills at $2.00/$10.00 with $0.20 cache reads and $2.50 cache writes."""
         usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200, cache_creation_tokens=100)
-        cost = calculate_anthropic_cost("claude-sonnet-5", usage, as_of=date(2026, 7, 1))
+        cost = calculate_anthropic_cost("claude-sonnet-5", usage)
         assert cost is not None
         assert cost.input_cost == pytest.approx((1000 - 200 - 100) * 2.0 / 1_000_000)
         assert cost.output_cost == pytest.approx(500 * 10.0 / 1_000_000)
         assert cost.cache_read_cost == pytest.approx(200 * 0.20 / 1_000_000)
         assert cost.cache_creation_cost == pytest.approx(100 * 2.50 / 1_000_000)
 
-    def test_sonnet_5_standard_pricing_from_sep_2026(self) -> None:
-        """On/after 2026-09-01, Claude Sonnet 5 bills at the standard rate."""
+    def test_sonnet_5_pricing_does_not_change_on_sep_2026(self) -> None:
+        """The rate increase once scheduled for 2026-09-01 was cancelled, so ``as_of`` is inert."""
         usage = Usage(input_tokens=1000, output_tokens=500)
-        cost = calculate_anthropic_cost("claude-sonnet-5", usage, as_of=date(2026, 9, 1))
-        assert cost is not None
-        assert cost.input_cost == pytest.approx(1000 * 3.0 / 1_000_000)
-        assert cost.output_cost == pytest.approx(500 * 15.0 / 1_000_000)
+        before = calculate_anthropic_cost("claude-sonnet-5", usage, as_of=date(2026, 7, 1))
+        after = calculate_anthropic_cost("claude-sonnet-5", usage, as_of=date(2026, 9, 1))
+        assert before is not None
+        assert after is not None
+        assert before == after
+        assert after.input_cost == pytest.approx(1000 * 2.0 / 1_000_000)
+        assert after.output_cost == pytest.approx(500 * 10.0 / 1_000_000)
 
-    def test_sonnet_5_defaults_to_standard_pricing(self) -> None:
-        """With no ``as_of``, Claude Sonnet 5 bills at the latest (standard) schedule."""
-        usage = Usage(input_tokens=1000, output_tokens=500)
+    def test_sonnet_5_per_ttl_cache_write_rate(self) -> None:
+        """The 1h cache-write rate is $4.00/M."""
+        usage = Usage(input_tokens=1000, output_tokens=0, cache_creation_tokens_by_ttl={"1h": 1000})
         cost = calculate_anthropic_cost("claude-sonnet-5", usage)
         assert cost is not None
-        assert cost.input_cost == pytest.approx(1000 * 3.0 / 1_000_000)
-        assert cost.output_cost == pytest.approx(500 * 15.0 / 1_000_000)
-
-    def test_sonnet_5_per_ttl_cache_write_rates_differ_by_schedule(self) -> None:
-        """The 1h cache-write rate is $4.00/M introductory and $6.00/M standard."""
-        usage = Usage(input_tokens=1000, output_tokens=0, cache_creation_tokens_by_ttl={"1h": 1000})
-        intro = calculate_anthropic_cost("claude-sonnet-5", usage, as_of=date(2026, 7, 1))
-        standard = calculate_anthropic_cost("claude-sonnet-5", usage, as_of=date(2026, 9, 1))
-        assert intro is not None
-        assert standard is not None
-        assert intro.cache_creation_cost == pytest.approx(1000 * 4.0 / 1_000_000)
-        assert standard.cache_creation_cost == pytest.approx(1000 * 6.0 / 1_000_000)
+        assert cost.cache_creation_cost == pytest.approx(1000 * 4.0 / 1_000_000)
 
 
 class TestApplyCostMultiplier:
