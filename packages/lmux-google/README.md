@@ -120,6 +120,7 @@ response = provider.chat(
 | `seed`              | `int`                 | Deterministic sampling seed                                                                                      |
 | `labels`            | `dict[str, str]`      | Request labels                                                                                                   |
 | `thinking_config`   | `dict`                | Thinking/reasoning configuration                                                                                 |
+| `task_type`         | `str`                 | Embedding task type; not all embedding models make use of this when provided                                     |
 | `pricing_as_of`     | `datetime.date`       | Override the date used for dated pricing (e.g. a model's introductory-rate window); defaults to the current date |
 
 ## Constructor Options

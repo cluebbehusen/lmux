@@ -11,10 +11,12 @@ from typing import Any
 import pytest
 
 from lmux.types import EmbeddingResponse
+from lmux_google import GoogleParams
 
 _MODEL = "gemini-embedding-2-preview"
 _LOCATION = "us-central1"
 _DIMENSIONS = 256
+_TASK_TYPE = "RETRIEVAL_DOCUMENT"
 _CASSETTE = Path(__file__).parent.parent / "cassettes" / "google" / "vertex_embed_content.json"
 
 _RATES = {"input_rate": 0.20 / 1_000_000, "output_rate": 0.0}
@@ -31,7 +33,10 @@ def test_embeddings_embed_content(
     # per request, so the count (2) and summed usage — not vector identity — are what this proves.
     def _embed(auth: Any, transport: Any) -> EmbeddingResponse:  # noqa: ANN401 — harness-supplied per mode
         return vertex_adc_provider(auth, transport, location=_LOCATION).embed(
-            _MODEL, ["alpha", "beta"], dimensions=_DIMENSIONS
+            _MODEL,
+            ["alpha", "beta"],
+            dimensions=_DIMENSIONS,
+            provider_params=GoogleParams(task_type=_TASK_TYPE),
         )
 
     resp = scenario(_CASSETTE, _embed, requires="GOOGLE_CLOUD_PROJECT")

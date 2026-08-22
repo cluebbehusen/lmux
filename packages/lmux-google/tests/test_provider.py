@@ -757,20 +757,31 @@ class TestVertexEmbedContent:
         assert result.embeddings == [[0.1, 0.2]]
         assert result.usage.input_tokens == 4
         assert route.calls.last.request.headers["authorization"] == "Bearer vertex-token"
-        # embedContent is single-content and rejects task_type — the body carries neither instances nor task_type.
+        # embedContent is single-content, so the body carries content rather than instances.
         assert json.loads(route.calls.last.request.content) == {"content": {"parts": [{"text": "hello"}]}}
 
-    def test_list_issues_one_request_per_item(self, respx_mock: respx.MockRouter) -> None:
+    def test_list_issues_one_request_per_item_with_task_type(self, respx_mock: respx.MockRouter) -> None:
         responses = [
             httpx.Response(200, json={"embedding": {"values": [0.1]}, "usageMetadata": {"promptTokenCount": 2}}),
             httpx.Response(200, json={"embedding": {"values": [0.2]}, "usageMetadata": {"promptTokenCount": 3}}),
         ]
         route = respx_mock.post(_embed_content_url()).mock(side_effect=responses)
-        result = _vertex_embed2_provider().embed(_EMBED2_MODEL, ["a", "b"])
+        result = _vertex_embed2_provider().embed(
+            _EMBED2_MODEL, ["a", "b"], provider_params=GoogleParams(task_type="RETRIEVAL_DOCUMENT")
+        )
         assert result.embeddings == [[0.1], [0.2]]
         assert result.usage.input_tokens == 5
         assert len(route.calls) == 2
-        assert json.loads(route.calls[0].request.content) == {"content": {"parts": [{"text": "a"}]}}
+        assert [json.loads(call.request.content) for call in route.calls] == [
+            {
+                "content": {"parts": [{"text": "a"}]},
+                "embedContentConfig": {"taskType": "RETRIEVAL_DOCUMENT"},
+            },
+            {
+                "content": {"parts": [{"text": "b"}]},
+                "embedContentConfig": {"taskType": "RETRIEVAL_DOCUMENT"},
+            },
+        ]
 
     def test_dimensions_forwarded(self, respx_mock: respx.MockRouter) -> None:
         body = {"embedding": {"values": [0.1]}}
@@ -809,16 +820,28 @@ class TestVertexEmbedContent:
         with pytest.raises(NotFoundError):
             await _vertex_embed2_provider().aembed(_EMBED2_MODEL, "hi")
 
-    async def test_aembed_list_issues_one_request_per_item(self, respx_mock: respx.MockRouter) -> None:
+    async def test_aembed_list_issues_one_request_per_item_with_task_type(self, respx_mock: respx.MockRouter) -> None:
         responses = [
             httpx.Response(200, json={"embedding": {"values": [0.1]}, "usageMetadata": {"promptTokenCount": 2}}),
             httpx.Response(200, json={"embedding": {"values": [0.2]}, "usageMetadata": {"promptTokenCount": 3}}),
         ]
         route = respx_mock.post(_embed_content_url()).mock(side_effect=responses)
-        result = await _vertex_embed2_provider().aembed(_EMBED2_MODEL, ["a", "b"])
+        result = await _vertex_embed2_provider().aembed(
+            _EMBED2_MODEL, ["a", "b"], provider_params=GoogleParams(task_type="RETRIEVAL_DOCUMENT")
+        )
         assert result.embeddings == [[0.1], [0.2]]
         assert result.usage.input_tokens == 5
         assert len(route.calls) == 2
+        assert [json.loads(call.request.content) for call in route.calls] == [
+            {
+                "content": {"parts": [{"text": "a"}]},
+                "embedContentConfig": {"taskType": "RETRIEVAL_DOCUMENT"},
+            },
+            {
+                "content": {"parts": [{"text": "b"}]},
+                "embedContentConfig": {"taskType": "RETRIEVAL_DOCUMENT"},
+            },
+        ]
 
 
 # MARK: Client Management

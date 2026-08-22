@@ -426,7 +426,7 @@ class GoogleProvider(
     ) -> EmbeddingResponse:
         as_of = self._resolve_pricing_as_of(provider_params)
         if self._vertexai and _uses_embed_content(model):
-            return self._embed_content(model, input, dimensions, as_of)
+            return self._embed_content(model, input, dimensions, provider_params, as_of)
         texts = input if isinstance(input, list) else [input]
         if self._vertexai and model.startswith("gemini-embedding-001") and not texts:
             return self._embedding_response(model, [], 0, as_of)
@@ -453,7 +453,7 @@ class GoogleProvider(
     ) -> EmbeddingResponse:
         as_of = self._resolve_pricing_as_of(provider_params)
         if self._vertexai and _uses_embed_content(model):
-            return await self._aembed_content(model, input, dimensions, as_of)
+            return await self._aembed_content(model, input, dimensions, provider_params, as_of)
         texts = input if isinstance(input, list) else [input]
         if self._vertexai and model.startswith("gemini-embedding-001") and not texts:
             return self._embedding_response(model, [], 0, as_of)
@@ -474,10 +474,11 @@ class GoogleProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         dimensions: int | None,
+        provider_params: GoogleParams | None,
         as_of: date,
     ) -> EmbeddingResponse:
         # Vertex serves Gemini Embedding 2 models only through :embedContent, which takes a single
-        # content per request (no batch) and rejects task_type — so a list is issued one item at a time.
+        # content per request (no batch), so a list is issued one item at a time.
         texts = input if isinstance(input, list) else [input]
         path = self._path(model, "embedContent")
         embeddings: list[list[float]] = []
@@ -486,7 +487,9 @@ class GoogleProvider(
             client = self._get_sync_client()
             for text in texts:
                 headers = self._request_headers()
-                response = client.post(path, json=_embed_content_body(text, dimensions), headers=headers)
+                response = client.post(
+                    path, json=_embed_content_body(text, dimensions, provider_params), headers=headers
+                )
                 raise_for_status(response)
                 values, tokens = map_embed_content_response(parse_body(response, WireEmbedContentResponse))
                 embeddings.append(values)
@@ -502,6 +505,7 @@ class GoogleProvider(
         model: str,
         input: str | list[str],  # noqa: A002
         dimensions: int | None,
+        provider_params: GoogleParams | None,
         as_of: date,
     ) -> EmbeddingResponse:
         texts = input if isinstance(input, list) else [input]
@@ -512,7 +516,9 @@ class GoogleProvider(
             client = await self._get_async_client()
             for text in texts:
                 headers = await self._arequest_headers()
-                response = await client.post(path, json=_embed_content_body(text, dimensions), headers=headers)
+                response = await client.post(
+                    path, json=_embed_content_body(text, dimensions, provider_params), headers=headers
+                )
                 raise_for_status(response)
                 values, tokens = map_embed_content_response(parse_body(response, WireEmbedContentResponse))
                 embeddings.append(values)
@@ -721,8 +727,10 @@ def _uses_embed_content(model: str) -> bool:
     return model.startswith("gemini-embedding-2")
 
 
-def _embed_content_body(text: str, dimensions: int | None) -> Json:
+def _embed_content_body(text: str, dimensions: int | None, provider_params: GoogleParams | None) -> Json:
     body: Json = {"content": {"parts": [{"text": text}]}}
     if dimensions is not None:
         body["outputDimensionality"] = dimensions
+    if provider_params is not None and provider_params.task_type is not None:
+        body["embedContentConfig"] = {"taskType": provider_params.task_type}
     return body
