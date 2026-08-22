@@ -1,0 +1,63 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-2.5-flash:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is 17 times 23? Reply with just the number."
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "thinkingConfig": {
+        "thinkingBudget": 24576,
+        "includeThoughts": true
+      }
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Okay, so the user needs the product of 17 and 23. My task here is straightforward: I need to calculate that product and then provide *only* the numerical result. No preamble, no explanation of the calculation, just the final answer.\n\nTo get that answer, I'll break down the multiplication:\nFirst, I'll calculate 17 times 20, which is 340.\nThen, I'll calculate 17 times 3, which gives me 51.\nFinally, I'll add those two results together: 340 plus 51 equals 391.\n\nSo, the product of 17 and 23 is 391. That's the single piece of information I'll be returning.",
+              "thought": true
+            },
+            {
+              "text": "391"
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "avgLogprobs": -5.557614644368489
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 16,
+      "candidatesTokenCount": 3,
+      "totalTokenCount": 96,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 16
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 3
+        }
+      ],
+      "thoughtsTokenCount": 77
+    },
+    "modelVersion": "gemini-2.5-flash",
+    "createTime": "2026-08-22T12:53:01.302586Z",
+    "responseId": "rZuJavq7Esnij8MPp_6A6QI"
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-2.5-pro:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is 17 times 23? Reply with just the number."
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "thinkingConfig": {
+        "thinkingBudget": 32768,
+        "includeThoughts": true
+      }
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Ah, so the core of this request is a straightforward calculation: find the product of 17 and 23. The user has also laid down a very specific constraint \u2013 they want *only* the numerical result, no preamble, no explanation, just the number itself.\n\nMy first thought is to execute the multiplication. I can approach this in a few ways, all leading to the same outcome. The standard algorithmic approach is one: multiplying 17 by 3 gives me 51, and then multiplying 17 by 20 (or 2 by 17 and then multiplying by 10) yields 340. Summing those, 51 and 340, brings me to 391.\n\nAlternatively, I might think of it using the distributive property mentally. I could break down 23 into 20 and 3. So, 17 times 20 is 340. Then, 17 times 3 is 51. Adding those together: 340 plus 51 equals 391. Or, I could distribute on the other number: 23 times 10 is 230. And 23 times 7... that's 20 times 7 (140) plus 3 times 7 (21), which equals 161. Then, 230 plus 161 also equals 391.\n\nRegardless of the method, the result is consistently 391.\n\nNow, I need to adhere strictly to the output format. The user explicitly asked for \"just the number.\" This means no conversational filler, no confirmation of the calculation, no mention of the methods used. The final output must be *only* the numerical answer.\n\nTherefore, after confirming the calculation through multiple mental or procedural checks, the definitive answer, presented precisely as requested, is 391.",
+              "thought": true
+            },
+            {
+              "text": "391"
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "avgLogprobs": -6.162923177083333
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 16,
+      "candidatesTokenCount": 3,
+      "totalTokenCount": 354,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 16
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 3
+        }
+      ],
+      "thoughtsTokenCount": 335
+    },
+    "modelVersion": "gemini-2.5-pro",
+    "createTime": "2026-08-22T12:53:07.816376Z",
+    "responseId": "s5uJavjpMbr1j8MP7pjT2AE"
+  }
+}

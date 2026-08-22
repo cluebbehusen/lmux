@@ -1,0 +1,63 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-2.5-flash-lite:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is 17 times 23? Reply with just the number."
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "thinkingConfig": {
+        "thinkingBudget": 24576,
+        "includeThoughts": true
+      }
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "Alright, the user's request is straightforward: calculate the product of 17 and 23, and then respond solely with that numerical result. My immediate task is to execute that multiplication.\n\nI can approach this calculation in several ways, all of which should yield the same answer. The most conventional method, of course, is the standard multiplication algorithm. I'd set it up vertically: 17 multiplied by 23.\n\nFirst, I'd take the 3 from 23 and multiply it by 17. That's 3 times 10 is 30, and 3 times 7 is 21. So, 30 plus 21 gives me 51.\n\nNext, I'd take the 2 from 23, which actually represents 20, and multiply it by 17. 20 times 17. I know 2 times 17 is 34, so 20 times 17 is 340.\n\nNow, I add those two intermediate results: 51 plus 340. This sums to 391.\n\nAlternatively, I could employ the distributive property. I could break down 23 into 20 and 3. So, 17 multiplied by (20 + 3). This means (17 * 20) + (17 * 3). I've already done these: 17 * 20 is 340, and 17 * 3 is 51. Adding them, 340 + 51, again gives 391.\n\nI could also distribute 17. Let's say I break 17 into 10 and 7. So, (10 + 7) multiplied by 23. This translates to (10 * 23) + (7 * 23). Ten times 23 is obviously 230. For 7 times 23, I can break 23 into 20 and 3 again: (7 * 20) + (7 * 3). That's 140 plus 21, which equals 161. Then I add the initial 230 to this 161: 230 + 161. This, too, results in 391.\n\nAll methods confirm the product is 391.\n\nThe user explicitly stated to reply with *just* the number. Therefore, my final output will be that singular numerical value.",
+              "thought": true
+            },
+            {
+              "text": "391"
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "avgLogprobs": -7.953607559204102
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 16,
+      "candidatesTokenCount": 3,
+      "totalTokenCount": 349,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 16
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 3
+        }
+      ],
+      "thoughtsTokenCount": 330
+    },
+    "modelVersion": "gemini-2.5-flash-lite",
+    "createTime": "2026-08-22T12:53:03.219103Z",
+    "responseId": "r5uJat-vDY2mj8MPwuOUqQw"
+  }
+}

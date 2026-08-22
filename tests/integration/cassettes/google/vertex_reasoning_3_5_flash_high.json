@@ -1,0 +1,63 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-3.5-flash:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "What is 17 times 23? Reply with just the number."
+          }
+        ]
+      }
+    ],
+    "generationConfig": {
+      "thinkingConfig": {
+        "thinkingLevel": "HIGH",
+        "includeThoughts": true
+      }
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "**My Thought Process on the Calculation of 17 x 23**\n\nWhen presented with the straightforward arithmetic problem of determining the product of 17 and 23, my initial approach is to break down the operation into manageable steps, leveraging distributive properties for efficiency and accuracy. I recognize this as a fundamental multiplication task, and my expertise in numerical manipulation allows me to quickly engage with it.\n\nMy first step is to mentally decompose the larger factor, 23, into its constituent tens and units. This allows me to apply the distributive property of multiplication over addition: $17 \\times 23 = 17 \\times (20 + 3)$. This rephrasing is crucial, as multiplying by multiples of ten is significantly simpler than direct multiplication with a two-digit number.\n\nFollowing this decomposition, I then distribute the 17 to each component of the sum: $(17 \\times 20) + (17 \\times 3)$. The first part, $17 \\times 20$, is easily calculated by recognizing that multiplying by 20 is equivalent to multiplying by 2 and then by 10. Thus, $17 \\times 2 = 34$, and appending the zero for the factor of 10 yields 340.\n\nThe second part of the expression, $17 \\times 3$, requires a direct multiplication of a two-digit number by a single digit. I mentally perform this as $(10 \\times 3) + (7 \\times 3)$, which equates to $30 + 21$, resulting in 51.\n\nFinally, I sum the results of these two sub-calculations: $340 + 51$. This addition is straightforward, yielding the final product of 391.\n\nCrucially, I recall the specific instruction to \"Reply with just the number.\" This constraint guides my final output, ensuring that only the numerical result is provided, devoid of any explanatory text or context that might accompany a more verbose response. Therefore, my final internal output, ready for rendering, is simply the number itself.\n\n",
+              "thought": true
+            },
+            {
+              "text": "391",
+              "thoughtSignature": "AY89a187wOFOb0hwERtO36u5JcZNAmVHCxmREfEQDFL7LZS8ncA8hV8C7z+pw9OezfYV1TqmgUjZM06urGkMmu3j0xVpYbtAtkIvDbmyubOBQHqQGl3QEho23RdrH1CROLjq4ZBNeWdlEPr/OBYxT1SrAsHHDVl3kCPM+zrRn7Ucg8M8FT1NuoZC5/JlmelXJLuB5VxcLOnGjdkbIhAr7XqjmicIPB8U8TQrbAatMAECYIZkq6b1wKK1rphS/uoyqsD+jvzY2mxiM6qcp1G1tQ+EcVXUbf81JiE96JEVQKVFAyUAB8rQtLkwge08X0xU1/AwMxaAqE8TAim6tNl1zqaTWoxvdJ4RhuiTCi3iYmOsZvz8Lug165VFJhzpWIO7mzaUTl7iewqlROG8DipSFUFD0JRP8T2qE6os+BYKD3ampFim2/HSEiHO8FwY9r1ya3eQbRYYDcDxoHau4ARFod6NmHvcncBVmV5+de1XN7/bIw8Fe4k3kXxJiXx/vcRyzpitkKwNA/uVGAm4JtGQ+D6iDyUK1hsRwkGwb5RjmZA/XqJCOlmctrPV4jWAQpSzrg=="
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 16,
+      "candidatesTokenCount": 3,
+      "totalTokenCount": 162,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 16
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 3
+        }
+      ],
+      "thoughtsTokenCount": 143
+    },
+    "modelVersion": "gemini-3.5-flash",
+    "createTime": "2026-08-22T12:53:13.235360Z",
+    "responseId": "uZuJauCuDqTLj8MPgpe7sQo"
+  }
+}
