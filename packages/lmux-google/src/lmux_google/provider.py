@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from datetime import date
 from typing import TYPE_CHECKING, Literal, override
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
 
 from lmux._http import aiter_sse, iter_sse
 from lmux.cost import ModelPricing, calculate_cost
-from lmux.exceptions import LmuxError, ProviderError
+from lmux.exceptions import InvalidRequestError, LmuxError, ProviderError
 from lmux.protocols import AuthProvider, CompletionProvider, EmbeddingProvider, PricingProvider
 from lmux.types import (
     ChatChunk,
@@ -77,6 +78,29 @@ PROVIDER_NAME = "google"
 
 _HTTP_ERROR = 400
 _THINKING_BUDGETS: dict[str, int] = {"low": 1024, "medium": 8192, "high": 32768}
+_FLASH_THINKING_BUDGETS: dict[str, int] = {**_THINKING_BUDGETS, "high": 24576}
+_GEMINI_GENERATION_RE = re.compile(r"^gemini-(\d+)(?:\.\d+)?(?=-|$)", re.IGNORECASE)
+_THINKING_LEVEL_MIN_GENERATION = 3
+
+
+def _matches_model_family(model: str, family: str) -> bool:
+    return model == family or model.startswith(f"{family}-")
+
+
+def _thinking_config(model: str, effort: Literal["low", "medium", "high"]) -> Json:
+    normalized = model.casefold()
+    generation = _GEMINI_GENERATION_RE.match(normalized)
+    if generation is not None and int(generation.group(1)) >= _THINKING_LEVEL_MIN_GENERATION:
+        return {"thinkingLevel": effort.upper(), "includeThoughts": True}
+    if _matches_model_family(normalized, "gemini-2.5-flash"):
+        return {"thinkingBudget": _FLASH_THINKING_BUDGETS[effort], "includeThoughts": True}
+    if _matches_model_family(normalized, "gemini-2.5-pro"):
+        return {"thinkingBudget": _THINKING_BUDGETS[effort], "includeThoughts": True}
+    msg = (
+        f"Cannot map reasoning_effort for unrecognized Gemini model {model!r}; "
+        "set provider_params.thinking_config explicitly"
+    )
+    raise InvalidRequestError(msg, provider=PROVIDER_NAME)
 
 
 def _today() -> date:
@@ -260,7 +284,7 @@ class GoogleProvider(
         provider_params: GoogleParams | None = None,
     ) -> ChatResponse:
         body = self._build_body(
-            messages, temperature, max_tokens, top_p, stop,
+            model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
             vertexai=self._vertexai,
         )  # fmt: skip
@@ -296,7 +320,7 @@ class GoogleProvider(
         provider_params: GoogleParams | None = None,
     ) -> ChatResponse:
         body = self._build_body(
-            messages, temperature, max_tokens, top_p, stop,
+            model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
             vertexai=self._vertexai,
         )  # fmt: skip
@@ -332,7 +356,7 @@ class GoogleProvider(
         provider_params: GoogleParams | None = None,
     ) -> Iterator[ChatChunk]:
         body = self._build_body(
-            messages, temperature, max_tokens, top_p, stop,
+            model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
             vertexai=self._vertexai,
         )  # fmt: skip
@@ -381,7 +405,7 @@ class GoogleProvider(
         provider_params: GoogleParams | None = None,
     ) -> AsyncIterator[ChatChunk]:
         body = self._build_body(
-            messages, temperature, max_tokens, top_p, stop,
+            model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
             vertexai=self._vertexai,
         )  # fmt: skip
@@ -613,6 +637,7 @@ class GoogleProvider(
 
     @staticmethod
     def _build_body(  # noqa: PLR0913, PLR0912
+        model: str,
         messages: Sequence[Message],
         temperature: float | None,
         max_tokens: int | None,
@@ -627,6 +652,7 @@ class GoogleProvider(
         vertexai: bool,
     ) -> Json:
         system, contents = map_messages(messages, include_tool_call_ids=not vertexai)
+        provider_thinking = provider_params.thinking_config if provider_params is not None else None
         body: Json = {"contents": contents}
         if system is not None:
             body["systemInstruction"] = {"parts": [{"text": system}]}
@@ -647,8 +673,8 @@ class GoogleProvider(
                 # responseJsonSchema accepts full JSON Schema (incl. $defs/$ref); responseSchema
                 # is the narrower OpenAPI-style shape that rejects those constructs.
                 gen["responseJsonSchema"] = schema
-        if reasoning_effort is not None:
-            gen["thinkingConfig"] = {"thinkingBudget": _THINKING_BUDGETS[reasoning_effort], "includeThoughts": True}
+        if reasoning_effort is not None and provider_thinking is None:
+            gen["thinkingConfig"] = _thinking_config(model, reasoning_effort)
         if tools is not None:
             body["tools"] = map_tools(tools)
         if tool_choice is not None:

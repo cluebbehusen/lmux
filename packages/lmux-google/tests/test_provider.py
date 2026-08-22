@@ -3,7 +3,7 @@
 import asyncio
 import json
 from datetime import date
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from unittest.mock import MagicMock
 
 import httpx
@@ -265,13 +265,50 @@ class TestChat:
         assert body["generationConfig"]["responseMimeType"] == "application/json"
         assert body["generationConfig"]["responseJsonSchema"] == {"type": "object"}
 
+    @pytest.mark.parametrize(
+        "case",
+        [
+            ("gemini-2.5-flash", "low", {"thinkingBudget": 1024, "includeThoughts": True}),
+            ("gemini-2.5-flash-preview-09-2025", "medium", {"thinkingBudget": 8192, "includeThoughts": True}),
+            ("gemini-2.5-flash-001", "high", {"thinkingBudget": 24576, "includeThoughts": True}),
+            ("gemini-2.5-flash-lite", "high", {"thinkingBudget": 24576, "includeThoughts": True}),
+            (
+                "gemini-2.5-flash-lite-preview-09-2025",
+                "medium",
+                {"thinkingBudget": 8192, "includeThoughts": True},
+            ),
+            ("gemini-2.5-pro", "high", {"thinkingBudget": 32768, "includeThoughts": True}),
+            ("gemini-2.5-pro-preview-06-05", "low", {"thinkingBudget": 1024, "includeThoughts": True}),
+            ("gemini-3-flash-preview", "low", {"thinkingLevel": "LOW", "includeThoughts": True}),
+            ("gemini-3.1-pro-preview", "medium", {"thinkingLevel": "MEDIUM", "includeThoughts": True}),
+            ("gemini-3.5-flash", "high", {"thinkingLevel": "HIGH", "includeThoughts": True}),
+            ("gemini-3.5-flash-lite", "low", {"thinkingLevel": "LOW", "includeThoughts": True}),
+            ("gemini-3.7-flash", "medium", {"thinkingLevel": "MEDIUM", "includeThoughts": True}),
+        ],
+    )
     def test_reasoning_effort(
+        self,
+        provider: GoogleProvider,
+        gen_response: dict[str, Any],
+        respx_mock: respx.MockRouter,
+        case: tuple[str, Literal["low", "medium", "high"], dict[str, object]],
+    ) -> None:
+        model, effort, expected = case
+        route = _ok(respx_mock, gen_response, url=f"{_GEMINI}/{model}:generateContent")
+        provider.chat(model, [UserMessage(content="Hi")], reasoning_effort=effort)
+        body = json.loads(route.calls.last.request.content)
+        assert body["generationConfig"]["thinkingConfig"] == expected
+
+    def test_reasoning_effort_rejects_opaque_model(
         self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
-        route = _ok(respx_mock, gen_response)
-        provider.chat(MODEL, [UserMessage(content="Hi")], reasoning_effort="medium")
-        body = json.loads(route.calls.last.request.content)
-        assert body["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 8192, "includeThoughts": True}
+        model = "gemini-flash-latest"
+        route = _ok(respx_mock, gen_response, url=f"{_GEMINI}/{model}:generateContent")
+
+        with pytest.raises(InvalidRequestError, match=r"Cannot map reasoning_effort.*gemini-flash-latest"):
+            provider.chat(model, [UserMessage(content="Hi")], reasoning_effort="high")
+
+        assert not route.called
 
     def test_status_error_mapped(self, provider: GoogleProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_CHAT_URL).mock(return_value=httpx.Response(400, json={"error": {"message": "bad"}}))
@@ -1230,6 +1267,27 @@ class TestProviderParams:
             "seed": 42,
             "thinkingConfig": {"thinkingBudget": 1024},
         }
+
+    def test_thinking_config_verbatim_override(
+        self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        model = "gemini-flash-latest"
+        thinking_config = {
+            "thinkingLevel": "MINIMAL",
+            "includeThoughts": False,
+            "futureOption": {"enabled": True},
+        }
+        route = _ok(respx_mock, gen_response, url=f"{_GEMINI}/{model}:generateContent")
+
+        provider.chat(
+            model,
+            [UserMessage(content="Hi")],
+            reasoning_effort="high",
+            provider_params=GoogleParams(thinking_config=thinking_config),
+        )
+
+        body = json.loads(route.calls.last.request.content)
+        assert body["generationConfig"]["thinkingConfig"] == thinking_config
 
     def test_google_search_bool(
         self, provider: GoogleProvider, gen_response: dict[str, Any], respx_mock: respx.MockRouter

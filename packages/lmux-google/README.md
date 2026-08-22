@@ -100,6 +100,16 @@ registry.register("google", provider)
 response = registry.chat("google/gemini-2.5-pro", messages)
 ```
 
+## Reasoning
+
+The unified `reasoning_effort` parameter maps `low`, `medium`, and `high` to the native control supported by each
+Gemini generation. Gemini 2.5 uses numeric `thinkingBudget` values: `1_024`, `8_192`, and `24_576` for Flash and
+Flash-Lite, with `32_768` for Pro at high effort. Gemini 3 and later use `thinkingLevel` values `LOW`, `MEDIUM`, and
+`HIGH`. All mappings request thought summaries with `includeThoughts: true`.
+
+Model aliases that do not identify their generation cannot be mapped safely. For those aliases, pass an explicit
+native `thinking_config` as shown below.
+
 ## Provider Params
 
 ```python
@@ -108,9 +118,12 @@ from lmux_google import GoogleParams
 response = provider.chat(
     "gemini-2.5-pro",
     messages,
-    provider_params=GoogleParams(thinking_config={"thinking_budget": 1024}),
+    provider_params=GoogleParams(thinking_config={"thinkingBudget": 1024, "includeThoughts": True}),
 )
 ```
+
+`thinking_config` is passed through verbatim using the native REST field names and takes precedence over the
+top-level `reasoning_effort` parameter.
 
 | Parameter           | Type                  | Description                                                                                                      |
 | ------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
