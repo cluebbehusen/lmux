@@ -19,6 +19,9 @@ dependencies = [
   "google-auth~=2.0",
 ]
 
+[project.optional-dependencies]
+requests = ["google-auth[requests]~=2.0"]
+
 [project.urls]
 Homepage = "https://github.com/cluebbehusen/lmux"
 Source = "https://github.com/cluebbehusen/lmux/tree/main/packages/lmux-google"

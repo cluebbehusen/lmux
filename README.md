@@ -139,17 +139,17 @@ provider.register_pricing("my-fine-tune", ModelPricing(tiers=[
 
 ## Providers
 
-| Package                                              | Protocols                        | Auth                                                 |
-| ---------------------------------------------------- | -------------------------------- | ---------------------------------------------------- |
-| [lmux-openai](packages/lmux-openai)                  | Completion, Embedding, Responses | `OPENAI_API_KEY`                                     |
-| [lmux-anthropic](packages/lmux-anthropic)            | Completion                       | `ANTHROPIC_API_KEY`                                  |
-| [lmux-anthropic\[vertex\]](packages/lmux-anthropic)  | Completion                       | ADC, service account                                 |
-| [lmux-anthropic](packages/lmux-anthropic) (Foundry)  | Completion                       | `ANTHROPIC_FOUNDRY_API_KEY`, Entra ID token provider |
-| [lmux-anthropic\[bedrock\]](packages/lmux-anthropic) | Completion                       | boto3 credential chain, `AWS_BEARER_TOKEN_BEDROCK`   |
-| [lmux-azure-foundry](packages/lmux-azure-foundry)    | Completion, Embedding, Responses | `AZURE_FOUNDRY_API_KEY`, Azure AD, token provider    |
-| [lmux-aws-bedrock](packages/lmux-aws-bedrock)        | Completion, Embedding            | boto3 credential chain                               |
-| [lmux-google](packages/lmux-google)                  | Completion, Embedding            | ADC, service account, `GOOGLE_API_KEY`               |
-| [lmux-groq](packages/lmux-groq)                      | Completion                       | `GROQ_API_KEY`                                       |
+| Package                                              | Protocols                        | Auth                                                                        |
+| ---------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------- |
+| [lmux-openai](packages/lmux-openai)                  | Completion, Embedding, Responses | `OPENAI_API_KEY`                                                            |
+| [lmux-anthropic](packages/lmux-anthropic)            | Completion                       | `ANTHROPIC_API_KEY`                                                         |
+| [lmux-anthropic\[vertex\]](packages/lmux-anthropic)  | Completion                       | File ADC, metadata ADC with `[requests]`, service account                   |
+| [lmux-anthropic](packages/lmux-anthropic) (Foundry)  | Completion                       | `ANTHROPIC_FOUNDRY_API_KEY`, Entra ID token provider                        |
+| [lmux-anthropic\[bedrock\]](packages/lmux-anthropic) | Completion                       | boto3 credential chain, `AWS_BEARER_TOKEN_BEDROCK`                          |
+| [lmux-azure-foundry](packages/lmux-azure-foundry)    | Completion, Embedding, Responses | `AZURE_FOUNDRY_API_KEY`, Azure AD, token provider                           |
+| [lmux-aws-bedrock](packages/lmux-aws-bedrock)        | Completion, Embedding            | boto3 credential chain                                                      |
+| [lmux-google](packages/lmux-google)                  | Completion, Embedding            | File ADC, metadata ADC with `[requests]`, service account, `GOOGLE_API_KEY` |
+| [lmux-groq](packages/lmux-groq)                      | Completion                       | `GROQ_API_KEY`                                                              |
 
 ## Load balancing
 

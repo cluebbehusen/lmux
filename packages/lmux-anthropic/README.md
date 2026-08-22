@@ -116,6 +116,10 @@ Requires the `vertex` extra, which pulls in `google-auth`:
 uv add "lmux-anthropic[vertex]"
 ```
 
+File-based ADC from `GOOGLE_APPLICATION_CREDENTIALS` or the `gcloud` CLI works with this extra. For ADC from an
+attached service account's instance metadata, install the requests transport with
+`uv add "lmux-anthropic[vertex,requests]"`.
+
 `AnthropicVertexProvider` serves Claude through GCP Vertex AI with the same chat/streaming interface:
 
 ```python

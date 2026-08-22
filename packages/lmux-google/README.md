@@ -15,7 +15,8 @@ Three authentication methods:
 
 ### Application Default Credentials (default)
 
-Uses `google.auth.default()`, which works with `GOOGLE_APPLICATION_CREDENTIALS`, `gcloud` CLI, or instance metadata.
+File-based ADC from `GOOGLE_APPLICATION_CREDENTIALS` or the `gcloud` CLI works with the base package. For ADC from
+an attached service account's instance metadata, install the requests transport with `uv add "lmux-google[requests]"`.
 
 ```python
 from lmux_google import GoogleProvider
