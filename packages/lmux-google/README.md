@@ -112,8 +112,8 @@ response = provider.chat(
 )
 ```
 
-| Parameter           | Type                  | Description                                                                                                     |
-| ------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Parameter           | Type                  | Description                                                                                                      |
+| ------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `safety_settings`   | `list[SafetySetting]` | Content safety thresholds                                                                                        |
 | `presence_penalty`  | `float`               | Presence penalty                                                                                                 |
 | `frequency_penalty` | `float`               | Frequency penalty                                                                                                |
