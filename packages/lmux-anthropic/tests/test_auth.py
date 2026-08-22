@@ -1,6 +1,7 @@
 """Tests for Anthropic auth providers."""
 
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, sentinel
 
 import boto3
 import pytest
@@ -31,6 +32,37 @@ def mock_google_auth_default(mock_credentials: MagicMock, mocker: MockerFixture)
 
 
 @pytest.fixture
+def mock_load_credentials(mock_credentials: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch(
+        "google.auth.load_credentials_from_file",
+        return_value=(mock_credentials, "file-project"),
+    )
+
+
+@pytest.fixture
+def mock_with_scopes(mock_credentials: MagicMock, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("google.auth.credentials.with_scopes_if_required", return_value=mock_credentials)
+
+
+@pytest.fixture
+def mock_cloud_sdk_path(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch(
+        "google.auth._cloud_sdk.get_application_default_credentials_path",
+        return_value="/missing/gcloud/application_default_credentials.json",
+    )
+
+
+@pytest.fixture
+def mock_cloud_sdk_project(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("google.auth._cloud_sdk.get_project_id", return_value="gcloud-project")
+
+
+@pytest.fixture
+def mock_transport_request(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic._lazy.HttpxTransportRequest", return_value=sentinel.request)
+
+
+@pytest.fixture
 def mock_from_service_account_file(mock_credentials: MagicMock, mocker: MockerFixture) -> MagicMock:
     mock_credentials.project_id = "sa-project"
     return mocker.patch(
@@ -47,6 +79,13 @@ def mock_missing_google_auth(mocker: MockerFixture) -> None:
 @pytest.fixture
 def mock_missing_google_oauth2(mocker: MockerFixture) -> None:
     mocker.patch.dict("sys.modules", {"google.oauth2": None})
+
+
+@pytest.fixture(autouse=True)
+def clear_adc_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    monkeypatch.delenv("GCLOUD_PROJECT", raising=False)
 
 
 class TestAnthropicEnvAuthProvider:
@@ -69,20 +108,219 @@ class TestAnthropicEnvAuthProvider:
 
 
 class TestAnthropicVertexADCAuthProvider:
-    def test_get_credentials(self, mock_google_auth_default: MagicMock, mock_credentials: MagicMock) -> None:
+    def test_get_credentials_falls_back_to_default(
+        self,
+        mock_google_auth_default: MagicMock,
+        mock_credentials: MagicMock,
+        mock_load_credentials: MagicMock,
+        mock_cloud_sdk_path: MagicMock,
+    ) -> None:
         provider = AnthropicVertexADCAuthProvider()
         assert provider.get_credentials() == (mock_credentials, "test-project")
         mock_google_auth_default.assert_called_once_with(scopes=[CLOUD_PLATFORM_SCOPE])
+        mock_load_credentials.assert_not_called()
+        mock_cloud_sdk_path.assert_called_once_with()
 
-    def test_custom_scopes(self, mock_google_auth_default: MagicMock, mock_credentials: MagicMock) -> None:
+    def test_custom_scopes_for_default(
+        self,
+        mock_google_auth_default: MagicMock,
+        mock_credentials: MagicMock,
+        mock_cloud_sdk_path: MagicMock,
+    ) -> None:
         provider = AnthropicVertexADCAuthProvider(scopes=["https://www.googleapis.com/auth/custom"])
         assert provider.get_credentials() == (mock_credentials, "test-project")
         mock_google_auth_default.assert_called_once_with(scopes=["https://www.googleapis.com/auth/custom"])
+        mock_cloud_sdk_path.assert_called_once_with()
 
-    async def test_aget_credentials(self, mock_google_auth_default: MagicMock, mock_credentials: MagicMock) -> None:
+    async def test_aget_credentials_falls_back_to_default(
+        self,
+        mock_google_auth_default: MagicMock,
+        mock_credentials: MagicMock,
+        mock_cloud_sdk_path: MagicMock,
+    ) -> None:
         provider = AnthropicVertexADCAuthProvider()
         assert await provider.aget_credentials() == (mock_credentials, "test-project")
         mock_google_auth_default.assert_called_once_with(scopes=[CLOUD_PLATFORM_SCOPE])
+        mock_cloud_sdk_path.assert_called_once_with()
+
+    def test_explicit_adc_file_uses_httpx_request(  # noqa: PLR0913
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_credentials: MagicMock,
+        mock_google_auth_default: MagicMock,
+        mock_load_credentials: MagicMock,
+        mock_with_scopes: MagicMock,
+        mock_cloud_sdk_path: MagicMock,
+        mock_cloud_sdk_project: MagicMock,
+        mock_transport_request: MagicMock,
+    ) -> None:
+        credentials_file = tmp_path / "adc.json"
+        credentials_file.touch()
+        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(credentials_file))
+
+        result = AnthropicVertexADCAuthProvider().get_credentials()
+
+        assert result == (mock_credentials, "file-project")
+        mock_load_credentials.assert_called_once_with(str(credentials_file), request=sentinel.request)
+        mock_with_scopes.assert_called_once_with(mock_credentials, [CLOUD_PLATFORM_SCOPE])
+        mock_transport_request.assert_called_once_with()
+        mock_google_auth_default.assert_not_called()
+        mock_cloud_sdk_path.assert_called_once_with()
+        mock_cloud_sdk_project.assert_not_called()
+
+    def test_gcloud_adc_file_preserves_project_resolution(  # noqa: PLR0913
+        self,
+        tmp_path: Path,
+        mock_credentials: MagicMock,
+        mock_google_auth_default: MagicMock,
+        mock_load_credentials: MagicMock,
+        mock_with_scopes: MagicMock,
+        mock_cloud_sdk_path: MagicMock,
+        mock_cloud_sdk_project: MagicMock,
+        mock_transport_request: MagicMock,
+    ) -> None:
+        credentials_file = tmp_path / "application_default_credentials.json"
+        credentials_file.touch()
+        mock_cloud_sdk_path.return_value = str(credentials_file)
+        mock_load_credentials.return_value = (mock_credentials, None)
+
+        result = AnthropicVertexADCAuthProvider().get_credentials()
+
+        assert result == (mock_credentials, "gcloud-project")
+        mock_load_credentials.assert_called_once_with(str(credentials_file), request=sentinel.request)
+        mock_with_scopes.assert_called_once_with(mock_credentials, [CLOUD_PLATFORM_SCOPE])
+        mock_cloud_sdk_project.assert_called_once_with()
+        mock_google_auth_default.assert_not_called()
+        mock_transport_request.assert_called_once_with()
+
+    def test_external_account_project_uses_httpx_request(  # noqa: PLR0913
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_credentials: MagicMock,
+        mock_google_auth_default: MagicMock,
+        mock_load_credentials: MagicMock,
+        mock_with_scopes: MagicMock,
+        mock_cloud_sdk_path: MagicMock,
+        mock_cloud_sdk_project: MagicMock,
+        mock_transport_request: MagicMock,
+    ) -> None:
+        credentials_file = tmp_path / "external.json"
+        credentials_file.touch()
+        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(credentials_file))
+        scoped_credentials = MagicMock()
+        scoped_credentials.get_project_id.return_value = "workload-project"
+        mock_load_credentials.return_value = (mock_credentials, None)
+        mock_with_scopes.return_value = scoped_credentials
+
+        result = AnthropicVertexADCAuthProvider().get_credentials()
+
+        assert result == (scoped_credentials, "workload-project")
+        scoped_credentials.get_project_id.assert_called_once_with(request=sentinel.request)
+        mock_google_auth_default.assert_not_called()
+        mock_cloud_sdk_path.assert_called_once_with()
+        mock_cloud_sdk_project.assert_not_called()
+        mock_transport_request.assert_called_once_with()
+
+    def test_explicit_project_overrides_file_project(  # noqa: PLR0913
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_credentials: MagicMock,
+        mock_google_auth_default: MagicMock,
+        mock_load_credentials: MagicMock,
+        mock_with_scopes: MagicMock,
+        mock_cloud_sdk_path: MagicMock,
+        mock_cloud_sdk_project: MagicMock,
+        mock_transport_request: MagicMock,
+    ) -> None:
+        credentials_file = tmp_path / "adc.json"
+        credentials_file.touch()
+        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(credentials_file))
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "explicit-project")
+
+        result = AnthropicVertexADCAuthProvider().get_credentials()
+
+        assert result == (mock_credentials, "explicit-project")
+        mock_load_credentials.assert_called_once_with(str(credentials_file), request=sentinel.request)
+        mock_with_scopes.assert_called_once_with(mock_credentials, [CLOUD_PLATFORM_SCOPE])
+        mock_credentials.get_project_id.assert_not_called()
+        mock_google_auth_default.assert_not_called()
+        mock_cloud_sdk_path.assert_called_once_with()
+        mock_cloud_sdk_project.assert_not_called()
+        mock_transport_request.assert_called_once_with()
+
+    def test_file_without_project_lookup_returns_none(  # noqa: PLR0913
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_google_auth_default: MagicMock,
+        mock_load_credentials: MagicMock,
+        mock_with_scopes: MagicMock,
+        mock_cloud_sdk_path: MagicMock,
+        mock_cloud_sdk_project: MagicMock,
+        mock_transport_request: MagicMock,
+    ) -> None:
+        credentials_file = tmp_path / "adc.json"
+        credentials_file.touch()
+        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(credentials_file))
+        credentials = object()
+        mock_load_credentials.return_value = (credentials, None)
+        mock_with_scopes.return_value = credentials
+
+        result = AnthropicVertexADCAuthProvider().get_credentials()
+
+        assert result == (credentials, None)
+        mock_google_auth_default.assert_not_called()
+        mock_cloud_sdk_path.assert_called_once_with()
+        mock_cloud_sdk_project.assert_not_called()
+        mock_transport_request.assert_called_once_with()
+
+    def test_missing_explicit_file_preserves_default_fallback(  # noqa: PLR0913
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_credentials: MagicMock,
+        mock_google_auth_default: MagicMock,
+        mock_load_credentials: MagicMock,
+        mock_cloud_sdk_path: MagicMock,
+    ) -> None:
+        gcloud_file = tmp_path / "application_default_credentials.json"
+        gcloud_file.touch()
+        mock_cloud_sdk_path.return_value = str(gcloud_file)
+        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(tmp_path / "missing.json"))
+
+        result = AnthropicVertexADCAuthProvider().get_credentials()
+
+        assert result == (mock_credentials, "test-project")
+        mock_google_auth_default.assert_called_once_with(scopes=[CLOUD_PLATFORM_SCOPE])
+        mock_load_credentials.assert_not_called()
+
+    def test_custom_scopes_for_file_credentials(  # noqa: PLR0913
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_credentials: MagicMock,
+        mock_google_auth_default: MagicMock,
+        mock_load_credentials: MagicMock,
+        mock_with_scopes: MagicMock,
+        mock_cloud_sdk_path: MagicMock,
+        mock_transport_request: MagicMock,
+    ) -> None:
+        custom_scopes = ["https://www.googleapis.com/auth/custom"]
+        credentials_file = tmp_path / "adc.json"
+        credentials_file.touch()
+        monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(credentials_file))
+
+        result = AnthropicVertexADCAuthProvider(scopes=custom_scopes).get_credentials()
+
+        assert result == (mock_credentials, "file-project")
+        mock_with_scopes.assert_called_once_with(mock_credentials, custom_scopes)
+        mock_google_auth_default.assert_not_called()
+        mock_load_credentials.assert_called_once_with(str(credentials_file), request=sentinel.request)
+        mock_cloud_sdk_path.assert_called_once_with()
+        mock_transport_request.assert_called_once_with()
 
     def test_get_raises_import_error_without_extra(self, mock_missing_google_auth: None) -> None:
         assert mock_missing_google_auth is None  # side-effect fixture: patches sys.modules

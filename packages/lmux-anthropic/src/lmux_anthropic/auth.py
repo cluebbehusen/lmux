@@ -1,6 +1,7 @@
 """Auth providers for the Anthropic API, Claude on Vertex AI, and Claude in Microsoft Foundry."""
 
 import os
+import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
@@ -9,6 +10,45 @@ from lmux.exceptions import AuthenticationError
 if TYPE_CHECKING:
     import boto3
     from google.auth.credentials import Credentials
+
+
+def _load_vertex_adc_credentials(scopes: list[str]) -> "tuple[Credentials, str | None]":
+    try:
+        import google.auth  # noqa: PLC0415
+    except ImportError as e:
+        raise ImportError("[vertex] extra group is required for Vertex AI support") from e  # noqa: TRY003
+
+    from google.auth import _cloud_sdk, environment_vars  # noqa: PLC0415
+    from google.auth.credentials import with_scopes_if_required  # noqa: PLC0415
+
+    cloud_sdk_file = _cloud_sdk.get_application_default_credentials_path()
+    explicit_file = os.environ.get(environment_vars.CREDENTIALS)
+    credentials_file = explicit_file or cloud_sdk_file
+    if not os.path.isfile(credentials_file):
+        credentials, project_id = google.auth.default(scopes=scopes)
+        return cast("Credentials", credentials), project_id
+
+    from lmux_anthropic._lazy import HttpxTransportRequest  # noqa: PLC0415
+
+    request = HttpxTransportRequest()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        credentials, project_id = google.auth.load_credentials_from_file(credentials_file, request=request)
+    credentials = with_scopes_if_required(credentials, scopes)
+
+    if credentials_file == cloud_sdk_file and not project_id:
+        project_id = _cloud_sdk.get_project_id()
+
+    explicit_project_id = os.environ.get(
+        environment_vars.PROJECT,
+        os.environ.get(environment_vars.LEGACY_PROJECT),
+    )
+    effective_project_id = explicit_project_id or project_id
+    get_project_id = getattr(credentials, "get_project_id", None)
+    if not effective_project_id and callable(get_project_id):
+        effective_project_id = get_project_id(request=request)
+
+    return cast("Credentials", credentials), cast("str | None", effective_project_id)
 
 
 class AnthropicEnvAuthProvider:
@@ -28,8 +68,8 @@ class AnthropicEnvAuthProvider:
 class AnthropicVertexADCAuthProvider:
     """Default Vertex auth provider — uses Application Default Credentials.
 
-    Credentials are resolved by ``google.auth.default()`` which searches
-    environment variables, ``gcloud`` CLI defaults, and instance metadata.
+    File-based credentials use lmux's httpx auth transport. If no file exists,
+    ``google.auth.default()`` handles instance metadata and other environments.
     Returns the credentials together with the project ID that ADC resolved
     (which may be None). Requires the ``[vertex]`` extra.
     """
@@ -38,14 +78,7 @@ class AnthropicVertexADCAuthProvider:
         self._scopes: list[str] = scopes or ["https://www.googleapis.com/auth/cloud-platform"]
 
     def get_credentials(self) -> "tuple[Credentials, str | None]":
-        try:
-            import google.auth  # noqa: PLC0415
-        except ImportError as e:
-            raise ImportError("[vertex] extra group is required for Vertex AI support") from e  # noqa: TRY003
-
-        credentials, project_id = google.auth.default(scopes=self._scopes)
-        # google.auth has unresolvable string forward-ref annotations; cast is required
-        return cast("Credentials", credentials), project_id
+        return _load_vertex_adc_credentials(self._scopes)
 
     async def aget_credentials(self) -> "tuple[Credentials, str | None]":
         return self.get_credentials()

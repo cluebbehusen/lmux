@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 vertex = ["google-auth~=2.0"]
+requests = ["google-auth[requests]~=2.0"]
 bedrock = ["boto3>=1.42.31,<2", "lmux-bedrock-shared~=0.3"]
 
 [project.urls]

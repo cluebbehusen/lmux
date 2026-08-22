@@ -3,8 +3,8 @@
 The simplest way to authenticate is to use Application Default Credentials (ADC)
 via ``GoogleADCAuthProvider`` (the default).  ADC searches for credentials in:
 
-1. ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable (path to a service
-   account JSON key file)
+1. ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable (path to a Google
+   credential configuration file)
 2. ``gcloud auth application-default login`` cached credentials
 3. Compute Engine / Cloud Run / GKE metadata server
 
@@ -16,6 +16,7 @@ See: https://cloud.google.com/vertex-ai/generative-ai/docs/start/api-keys
 """
 
 import os
+import warnings
 from typing import TYPE_CHECKING, cast
 
 from lmux.exceptions import AuthenticationError
@@ -26,11 +27,33 @@ if TYPE_CHECKING:
 PROVIDER_NAME = "google"
 
 
+def _load_adc_credentials(scopes: list[str]) -> "Credentials":
+    import google.auth  # noqa: PLC0415
+    from google.auth import _cloud_sdk, environment_vars  # noqa: PLC0415
+    from google.auth.credentials import with_scopes_if_required  # noqa: PLC0415
+
+    cloud_sdk_file = _cloud_sdk.get_application_default_credentials_path()
+    explicit_file = os.environ.get(environment_vars.CREDENTIALS)
+    credentials_file = explicit_file or cloud_sdk_file
+    if not os.path.isfile(credentials_file):
+        credentials, _ = google.auth.default(scopes=scopes)
+        return cast("Credentials", credentials)
+
+    from lmux_google._lazy import HttpxAuthRequest  # noqa: PLC0415
+
+    request = HttpxAuthRequest()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        credentials, _ = google.auth.load_credentials_from_file(credentials_file, request=request)
+    credentials = with_scopes_if_required(credentials, scopes)
+    return cast("Credentials", credentials)
+
+
 class GoogleADCAuthProvider:
     """Default auth provider — uses Application Default Credentials.
 
-    Credentials are resolved by ``google.auth.default()`` which searches
-    environment variables, ``gcloud`` CLI defaults, and instance metadata.
+    File-based credentials use lmux's httpx auth transport. If no file exists,
+    ``google.auth.default()`` handles instance metadata and other environments.
 
     Scopes default to ``cloud-platform`` which is required for Vertex AI
     and for Workload Identity Federation impersonation flows.
@@ -40,15 +63,10 @@ class GoogleADCAuthProvider:
         self._scopes: list[str] = scopes or ["https://www.googleapis.com/auth/cloud-platform"]
 
     def get_credentials(self) -> "Credentials":
-        import google.auth  # noqa: PLC0415
-
-        # google.auth has unresolvable string forward-ref annotations; cast is required
-        return cast("Credentials", google.auth.default(scopes=self._scopes)[0])
+        return _load_adc_credentials(self._scopes)
 
     async def aget_credentials(self) -> "Credentials":
-        import google.auth  # noqa: PLC0415
-
-        return cast("Credentials", google.auth.default(scopes=self._scopes)[0])
+        return self.get_credentials()
 
 
 class GoogleServiceAccountAuthProvider:

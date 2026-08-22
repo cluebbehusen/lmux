@@ -595,6 +595,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/eb/c6c2478d8a8d633460be40e2a8a6f8f429171997a35a96f81d3b680dec83/google_auth-2.49.1-py3-none-any.whl", hash = "sha256:195ebe3dca18eddd1b3db5edc5189b76c13e96f29e73043b923ebcf3f1a860f7", size = 240737, upload-time = "2026-03-12T19:30:53.159Z" },
 ]
 
+[package.optional-dependencies]
+requests = [
+    { name = "requests" },
+]
+
 [[package]]
 name = "h11"
 version = "0.16.0"
@@ -684,6 +689,9 @@ bedrock = [
     { name = "boto3" },
     { name = "lmux-bedrock-shared" },
 ]
+requests = [
+    { name = "google-auth", extra = ["requests"] },
+]
 vertex = [
     { name = "google-auth" },
 ]
@@ -692,11 +700,12 @@ vertex = [
 requires-dist = [
     { name = "boto3", marker = "extra == 'bedrock'", specifier = ">=1.42.31,<2" },
     { name = "google-auth", marker = "extra == 'vertex'", specifier = "~=2.0" },
+    { name = "google-auth", extras = ["requests"], marker = "extra == 'requests'", specifier = "~=2.0" },
     { name = "httpx", specifier = "~=0.28" },
     { name = "lmux", editable = "packages/lmux" },
     { name = "lmux-bedrock-shared", marker = "extra == 'bedrock'", editable = "packages/lmux-bedrock-shared" },
 ]
-provides-extras = ["vertex", "bedrock"]
+provides-extras = ["vertex", "requests", "bedrock"]
 
 [[package]]
 name = "lmux-aws-bedrock"
@@ -782,12 +791,19 @@ dependencies = [
     { name = "lmux" },
 ]
 
+[package.optional-dependencies]
+requests = [
+    { name = "google-auth", extra = ["requests"] },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "google-auth", specifier = "~=2.0" },
+    { name = "google-auth", extras = ["requests"], marker = "extra == 'requests'", specifier = "~=2.0" },
     { name = "httpx", specifier = "~=0.28" },
     { name = "lmux", editable = "packages/lmux" },
 ]
+provides-extras = ["requests"]
 
 [[package]]
 name = "lmux-groq"
