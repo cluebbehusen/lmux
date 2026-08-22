@@ -8,7 +8,10 @@
         }
       ]
     },
-    "outputDimensionality": 256
+    "outputDimensionality": 256,
+    "embedContentConfig": {
+      "taskType": "RETRIEVAL_DOCUMENT"
+    }
   },
   "response": {
     "embedding": {
