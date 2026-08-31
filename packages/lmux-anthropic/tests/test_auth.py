@@ -1,5 +1,6 @@
 """Tests for Anthropic auth providers."""
 
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock, sentinel
 
@@ -16,6 +17,7 @@ from lmux_anthropic.auth import (
     AnthropicFoundryTokenAuthProvider,
     AnthropicVertexADCAuthProvider,
     AnthropicVertexServiceAccountAuthProvider,
+    AnthropicWorkloadIdentityAuthProvider,
 )
 
 CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
@@ -105,6 +107,203 @@ class TestAnthropicEnvAuthProvider:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
         provider = AnthropicEnvAuthProvider()
         assert await provider.aget_credentials() == "sk-ant-test-key"
+
+
+@pytest.fixture
+def mock_exchange(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch(
+        "lmux_anthropic.auth.exchange_workload_identity_token",
+        return_value=("sk-ant-oat01-1", 600.0),
+    )
+
+
+def _wif_provider(
+    *,
+    identity_token_provider: Callable[[], str] | None = None,
+    identity_token_file: str | Path | None = None,
+    workspace_id: str | None = None,
+    token_base_url: str | None = None,
+) -> AnthropicWorkloadIdentityAuthProvider:
+    return AnthropicWorkloadIdentityAuthProvider(
+        federation_rule_id="fdrl_1",
+        organization_id="org-1",
+        service_account_id="svac_1",
+        workspace_id=workspace_id,
+        identity_token_provider=identity_token_provider,
+        identity_token_file=identity_token_file,
+        token_base_url=token_base_url,
+    )
+
+
+class TestAnthropicWorkloadIdentityAuthProvider:
+    def test_get_credentials_exchanges_identity_token(self, mock_exchange: MagicMock) -> None:
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt")
+        token_provider = provider.get_credentials()
+        assert token_provider() == "sk-ant-oat01-1"
+        mock_exchange.assert_called_once_with(
+            assertion="id-jwt",
+            federation_rule_id="fdrl_1",
+            organization_id="org-1",
+            service_account_id="svac_1",
+            workspace_id=None,
+            base_url=None,
+        )
+
+    def test_workspace_id_and_token_base_url_forwarded(self, mock_exchange: MagicMock) -> None:
+        provider = _wif_provider(
+            identity_token_provider=lambda: "id-jwt",
+            workspace_id="wrkspc_1",
+            token_base_url="https://gateway.example",  # noqa: S106
+        )
+        provider.get_credentials()()
+        mock_exchange.assert_called_once_with(
+            assertion="id-jwt",
+            federation_rule_id="fdrl_1",
+            organization_id="org-1",
+            service_account_id="svac_1",
+            workspace_id="wrkspc_1",
+            base_url="https://gateway.example",
+        )
+
+    def test_access_token_cached_until_refresh(self, mock_exchange: MagicMock) -> None:
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt")
+        token_provider = provider.get_credentials()
+        assert token_provider() == "sk-ant-oat01-1"
+        assert token_provider() == "sk-ant-oat01-1"
+        mock_exchange.assert_called_once()
+
+    def test_reexchanges_fresh_identity_token_near_expiry(
+        self, mock_exchange: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        clock = [0.0]
+        monkeypatch.setattr("lmux_anthropic.auth._monotonic", lambda: clock[0])
+        identity_tokens = iter(["id-jwt-1", "id-jwt-2"])
+        mock_exchange.side_effect = [("sk-ant-oat01-1", 600.0), ("sk-ant-oat01-2", 600.0)]
+        provider = _wif_provider(identity_token_provider=lambda: next(identity_tokens))
+        token_provider = provider.get_credentials()
+        assert token_provider() == "sk-ant-oat01-1"
+        clock[0] = 540.0  # 600s lifetime minus the 60s refresh leeway
+        assert token_provider() == "sk-ant-oat01-2"
+        assert mock_exchange.call_count == 2
+        mock_exchange.assert_called_with(
+            assertion="id-jwt-2",
+            federation_rule_id="fdrl_1",
+            organization_id="org-1",
+            service_account_id="svac_1",
+            workspace_id=None,
+            base_url=None,
+        )
+
+    def test_expired_waiter_reuses_token_refreshed_while_locked(
+        self, mock_exchange: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Clock sequence: the pre-lock check sees the token as expired, but the re-check under
+        # the lock sees it fresh — the state a concurrent winner publishes while this caller
+        # waits on the lock — so no second exchange happens.
+        clocks = iter([0.0, 600.0, 0.0])
+        monkeypatch.setattr("lmux_anthropic.auth._monotonic", lambda: next(clocks))
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt")
+        token_provider = provider.get_credentials()
+        assert token_provider() == "sk-ant-oat01-1"
+        assert token_provider() == "sk-ant-oat01-1"
+        mock_exchange.assert_called_once()
+
+    def test_advisory_recheck_skips_when_already_refreshed(
+        self, mock_exchange: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Clock sequence: the advisory check sees the refresh point passed, but the re-check
+        # under the try-lock sees it fresh — the state a concurrent winner published — so the
+        # cached token is served without another exchange.
+        clocks = iter([0.0, 550.0, 550.0, 0.0])
+        monkeypatch.setattr("lmux_anthropic.auth._monotonic", lambda: next(clocks))
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt")
+        token_provider = provider.get_credentials()
+        assert token_provider() == "sk-ant-oat01-1"
+        assert token_provider() == "sk-ant-oat01-1"
+        mock_exchange.assert_called_once()
+
+    def test_advisory_refresh_skipped_when_lock_held(
+        self, mock_exchange: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        clock = [0.0]
+        monkeypatch.setattr("lmux_anthropic.auth._monotonic", lambda: clock[0])
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt")
+        token_provider = provider.get_credentials()
+        assert token_provider() == "sk-ant-oat01-1"
+        clock[0] = 550.0  # in the advisory window while another caller's refresh is in flight
+        provider._refresh_lock.acquire()
+        try:
+            assert token_provider() == "sk-ant-oat01-1"
+        finally:
+            provider._refresh_lock.release()
+        mock_exchange.assert_called_once()
+
+    def test_refresh_failure_in_advisory_window_serves_cached_token(
+        self, mock_exchange: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        clock = [0.0]
+        monkeypatch.setattr("lmux_anthropic.auth._monotonic", lambda: clock[0])
+        mock_exchange.side_effect = [
+            ("sk-ant-oat01-1", 600.0),
+            AuthenticationError("boom", provider="anthropic"),
+        ]
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt")
+        token_provider = provider.get_credentials()
+        assert token_provider() == "sk-ant-oat01-1"
+        clock[0] = 550.0  # past the 540s advisory refresh, before the 600s expiry
+        assert token_provider() == "sk-ant-oat01-1"
+        assert mock_exchange.call_count == 2
+
+    def test_refresh_failure_after_expiry_raises(
+        self, mock_exchange: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        clock = [0.0]
+        monkeypatch.setattr("lmux_anthropic.auth._monotonic", lambda: clock[0])
+        mock_exchange.side_effect = [
+            ("sk-ant-oat01-1", 600.0),
+            AuthenticationError("boom", provider="anthropic"),
+        ]
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt")
+        token_provider = provider.get_credentials()
+        assert token_provider() == "sk-ant-oat01-1"
+        clock[0] = 600.0  # the cached token has actually expired; the failure propagates
+        with pytest.raises(AuthenticationError, match="boom"):
+            token_provider()
+
+    def test_first_use_exchange_failure_raises(self, mock_exchange: MagicMock) -> None:
+        mock_exchange.side_effect = AuthenticationError("boom", provider="anthropic")
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt")
+        with pytest.raises(AuthenticationError, match="boom"):
+            provider.get_credentials()()
+
+    def test_identity_token_file_read_per_exchange(self, mock_exchange: MagicMock, tmp_path: Path) -> None:
+        token_file = tmp_path / "token"
+        token_file.write_text("id-jwt-from-file\n")
+        provider = _wif_provider(identity_token_file=token_file)
+        provider.get_credentials()()
+        mock_exchange.assert_called_once_with(
+            assertion="id-jwt-from-file",
+            federation_rule_id="fdrl_1",
+            organization_id="org-1",
+            service_account_id="svac_1",
+            workspace_id=None,
+            base_url=None,
+        )
+
+    def test_both_token_sources_raise(self) -> None:
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            _wif_provider(identity_token_provider=lambda: "id-jwt", identity_token_file="/token")  # noqa: S106
+
+    def test_missing_token_source_raises(self) -> None:
+        with pytest.raises(ValueError, match="identity_token_provider or identity_token_file"):
+            _wif_provider()
+
+    async def test_aget_credentials_returns_same_callable(self, mock_exchange: MagicMock) -> None:
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt")
+        token_provider = await provider.aget_credentials()
+        assert token_provider == provider.get_credentials()  # the same bound resolver
+        assert token_provider() == "sk-ant-oat01-1"
+        mock_exchange.assert_called_once()
 
 
 class TestAnthropicVertexADCAuthProvider:

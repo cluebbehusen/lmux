@@ -8,6 +8,7 @@ from lmux_anthropic.auth import (
     AnthropicFoundryTokenAuthProvider,
     AnthropicVertexADCAuthProvider,
     AnthropicVertexServiceAccountAuthProvider,
+    AnthropicWorkloadIdentityAuthProvider,
 )
 from lmux_anthropic.cost import calculate_anthropic_cost
 from lmux_anthropic.params import AnthropicParams
@@ -31,6 +32,7 @@ __all__ = [
     "AnthropicVertexADCAuthProvider",
     "AnthropicVertexProvider",
     "AnthropicVertexServiceAccountAuthProvider",
+    "AnthropicWorkloadIdentityAuthProvider",
     "calculate_anthropic_cost",
     "preload",
 ]

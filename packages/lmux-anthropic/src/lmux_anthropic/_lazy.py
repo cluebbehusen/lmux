@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from lmux._http import create_async_client as _create_async
 from lmux._http import create_sync_client as _create_sync
+from lmux.exceptions import AuthenticationError, LmuxError, ProviderError, RateLimitError
 
 if TYPE_CHECKING:
     import httpx
@@ -29,23 +30,33 @@ def _merge_headers(default_headers: Mapping[str, str] | None, managed_headers: M
     return headers
 
 
-def _api_headers(api_key: str, default_headers: Mapping[str, str] | None) -> Mapping[str, str]:
-    return _merge_headers(
-        default_headers,
-        {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION, "content-type": _JSON},
-    )
+def _api_headers(api_key: str | None, default_headers: Mapping[str, str] | None) -> Mapping[str, str]:
+    # x-api-key is always provider-managed: under bearer auth (api_key None) a caller-supplied
+    # key is dropped so a request never carries both credentials (the API can prefer the static
+    # key over the bearer token when both are present).
+    managed = {"anthropic-version": ANTHROPIC_VERSION, "content-type": _JSON}
+    if api_key is not None:
+        managed["x-api-key"] = api_key
+    headers = _merge_headers(default_headers, managed)
+    if api_key is None:
+        headers = {name: value for name, value in headers.items() if name.lower() != "x-api-key"}
+    return headers
 
 
 def create_sync_client(  # noqa: PLR0913
     *,
-    api_key: str,
+    api_key: str | None,
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
     default_headers: Mapping[str, str] | None = None,
     transport: "httpx.BaseTransport | None" = None,
 ) -> "httpx.Client":
-    """Create an httpx client for the Anthropic Messages API."""
+    """Create an httpx client for the Anthropic Messages API.
+
+    ``api_key`` is baked into the client headers; pass ``None`` for bearer-token auth,
+    which is applied per request instead.
+    """
     return _create_sync(
         base_url=base_url or DEFAULT_BASE_URL,
         headers=_api_headers(api_key, default_headers),
@@ -57,14 +68,18 @@ def create_sync_client(  # noqa: PLR0913
 
 def create_async_client(  # noqa: PLR0913
     *,
-    api_key: str,
+    api_key: str | None,
     base_url: str | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
     default_headers: Mapping[str, str] | None = None,
     transport: "httpx.AsyncBaseTransport | None" = None,
 ) -> "httpx.AsyncClient":
-    """Create an async httpx client for the Anthropic Messages API."""
+    """Create an async httpx client for the Anthropic Messages API.
+
+    ``api_key`` is baked into the client headers; pass ``None`` for bearer-token auth,
+    which is applied per request instead.
+    """
     return _create_async(
         base_url=base_url or DEFAULT_BASE_URL,
         headers=_api_headers(api_key, default_headers),
@@ -72,6 +87,117 @@ def create_async_client(  # noqa: PLR0913
         max_retries=max_retries,
         transport=transport,
     )
+
+
+# Beta flags the first-party SDKs send for OAuth bearer auth (undocumented in the public API
+# docs). oauth-2025-04-20 is required on any request authenticated with a bearer token, and
+# oidc-federation-2026-04-01 routes a /v1/oauth/token jwt-bearer grant to the federation
+# handler; it must only be sent on jwt-bearer exchanges.
+OAUTH_BETA_FLAG = "oauth-2025-04-20"
+_FEDERATION_BETA_FLAG = "oidc-federation-2026-04-01"
+_JWT_BEARER_BETA_FLAGS = f"{OAUTH_BETA_FLAG},{_FEDERATION_BETA_FLAG}"
+
+
+def _merged_beta_flags(default_headers: Mapping[str, str] | None) -> str:
+    existing = next((value for name, value in (default_headers or {}).items() if name.lower() == "anthropic-beta"), "")
+    flags = [flag.strip() for flag in existing.split(",") if flag.strip()]
+    if OAUTH_BETA_FLAG not in flags:
+        flags.append(OAUTH_BETA_FLAG)
+    return ",".join(flags)
+
+
+def bearer_auth_headers(
+    token_provider: "Callable[[], str]", default_headers: Mapping[str, str] | None = None
+) -> dict[str, str]:
+    """Per-request bearer auth headers; the token provider is invoked on every call for a fresh token.
+
+    The required OAuth beta flag is merged into any caller-supplied ``anthropic-beta`` value,
+    which this per-request header would otherwise replace.
+    """
+    return {
+        "Authorization": f"Bearer {token_provider()}",
+        "anthropic-beta": _merged_beta_flags(default_headers),
+    }
+
+
+# MARK: Workload Identity Federation
+
+
+_OAUTH_TOKEN_PATH = "/v1/oauth/token"  # noqa: S105
+_JWT_BEARER_GRANT = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+_EXCHANGE_TIMEOUT = 30.0
+_EXCHANGE_ERROR_DETAIL_LIMIT = 200
+_TOO_MANY_REQUESTS = 429
+_SERVER_ERROR = 500
+
+
+def _exchange_error_message(response: "httpx.Response") -> str:
+    """Bounded message for a failed exchange: only the API's ``error.message`` is retained, so
+    an arbitrary response body (e.g. from a gateway) is never propagated into exception text.
+    """
+    base = "Workload identity token exchange failed"
+    try:
+        payload = response.json()
+    except ValueError:
+        return base
+    error = payload.get("error") if isinstance(payload, dict) else None
+    message = error.get("message") if isinstance(error, dict) else None
+    if isinstance(message, str) and message:
+        return f"{base}: {message[:_EXCHANGE_ERROR_DETAIL_LIMIT]}"
+    return base
+
+
+def _exchange_error(response: "httpx.Response") -> LmuxError:
+    """Typed error for a failed exchange, so transient statuses stay retryable downstream."""
+    message = _exchange_error_message(response)
+    status = response.status_code
+    if status == _TOO_MANY_REQUESTS:
+        return RateLimitError(message, provider="anthropic", status_code=status)
+    if status >= _SERVER_ERROR:
+        return ProviderError(message, provider="anthropic", status_code=status)
+    return AuthenticationError(message, provider="anthropic", status_code=status)
+
+
+def exchange_workload_identity_token(  # noqa: PLR0913
+    *,
+    assertion: str,
+    federation_rule_id: str,
+    organization_id: str,
+    service_account_id: str | None = None,
+    workspace_id: str | None = None,
+    base_url: str | None = None,
+) -> tuple[str, float]:
+    """Exchange an IdP-issued OIDC identity token for an Anthropic access token.
+
+    Returns the access token together with its lifetime in seconds (``expires_in``).
+    """
+    import httpx  # noqa: PLC0415
+
+    body: dict[str, str] = {
+        "grant_type": _JWT_BEARER_GRANT,
+        "assertion": assertion,
+        "federation_rule_id": federation_rule_id,
+        "organization_id": organization_id,
+    }
+    if service_account_id is not None:
+        body["service_account_id"] = service_account_id
+    if workspace_id is not None:
+        body["workspace_id"] = workspace_id
+    response = httpx.post(
+        f"{(base_url or DEFAULT_BASE_URL).rstrip('/')}{_OAUTH_TOKEN_PATH}",
+        json=body,
+        headers={"anthropic-beta": _JWT_BEARER_BETA_FLAGS, "content-type": _JSON},
+        timeout=_EXCHANGE_TIMEOUT,
+    )
+    if response.is_error:
+        raise _exchange_error(response)
+    payload = response.json()
+    access_token = payload.get("access_token")
+    expires_in = payload.get("expires_in")
+    if not isinstance(access_token, str) or not isinstance(expires_in, int | float):
+        msg = "Workload identity token exchange response is missing access_token or expires_in"
+        raise AuthenticationError(msg, provider="anthropic")
+    return access_token, float(expires_in)
 
 
 # MARK: Vertex AI

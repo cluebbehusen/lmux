@@ -47,6 +47,25 @@ class FakeAuth:
         return "sk-ant-fake-key"
 
 
+class FakeTokenAuth:
+    """Direct-API auth fake returning a bearer token provider (the WIF shape)."""
+
+    def __init__(self) -> None:
+        self.invocations = 0
+
+        def _token_provider() -> str:
+            self.invocations += 1
+            return "sk-ant-oat01-fake"
+
+        self.token_provider: Callable[[], str] = _token_provider
+
+    def get_credentials(self) -> Callable[[], str]:
+        return self.token_provider
+
+    async def aget_credentials(self) -> Callable[[], str]:
+        return self.token_provider
+
+
 class FakeCredentials:
     """Minimal google.auth-style credentials for Vertex tests."""
 
@@ -279,6 +298,8 @@ class TestChat:
         )
         request = route.calls.last.request
         assert request.headers["x-api-key"] == "sk-ant-fake-key"
+        assert "authorization" not in request.headers
+        assert "anthropic-beta" not in request.headers
         assert request.headers["anthropic-version"] == "2023-06-01"
         body = json.loads(request.content)
         assert body == {
@@ -291,6 +312,35 @@ class TestChat:
             "top_p": 0.9,
             "stop_sequences": ["END"],
         }
+
+    def test_token_auth_uses_bearer_without_api_key(self, respx_mock: respx.MockRouter) -> None:
+        route = _ok(respx_mock)
+        provider = AnthropicProvider(auth=FakeTokenAuth())
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert headers["authorization"] == "Bearer sk-ant-oat01-fake"
+        assert headers["anthropic-beta"] == "oauth-2025-04-20"
+        assert "x-api-key" not in headers
+
+    def test_token_auth_strips_caller_api_key_and_merges_betas(self, respx_mock: respx.MockRouter) -> None:
+        route = _ok(respx_mock)
+        provider = AnthropicProvider(
+            auth=FakeTokenAuth(),
+            default_headers={"X-API-KEY": "wrong", "anthropic-beta": "context-1m-2025-08-07"},
+        )
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert "x-api-key" not in headers
+        assert headers["authorization"] == "Bearer sk-ant-oat01-fake"
+        assert headers["anthropic-beta"] == "context-1m-2025-08-07,oauth-2025-04-20"
+
+    def test_token_provider_invoked_per_request(self, respx_mock: respx.MockRouter) -> None:
+        auth = FakeTokenAuth()
+        _ok(respx_mock)
+        provider = AnthropicProvider(auth=auth)
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        assert auth.invocations == 2  # invoked per request, not frozen at client creation
 
     def test_default_headers_preserve_managed_headers(self, respx_mock: respx.MockRouter) -> None:
         route = _ok(respx_mock)
@@ -550,6 +600,15 @@ class TestChat:
 
 
 class TestAchat:
+    async def test_token_auth_uses_bearer_without_api_key(self, respx_mock: respx.MockRouter) -> None:
+        route = _ok(respx_mock)
+        provider = AnthropicProvider(auth=FakeTokenAuth())
+        await provider.achat(MODEL, [UserMessage(content="Hi")])
+        headers = route.calls.last.request.headers
+        assert headers["authorization"] == "Bearer sk-ant-oat01-fake"
+        assert headers["anthropic-beta"] == "oauth-2025-04-20"
+        assert "x-api-key" not in headers
+
     async def test_basic(self, async_provider: AnthropicProvider, respx_mock: respx.MockRouter) -> None:
         _ok(respx_mock)
         result = await async_provider.achat(MODEL, [UserMessage(content="Hi")])
