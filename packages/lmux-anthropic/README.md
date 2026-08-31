@@ -42,7 +42,7 @@ provider = AnthropicProvider(
 )
 ```
 
-`workspace_id` is required when the federation rule covers more than one workspace. The token exchange always targets the Anthropic API (`token_base_url`, default `https://api.anthropic.com`), deliberately independent of the provider's `base_url`, so a gateway that proxies only Messages traffic keeps working. Any `AuthProvider` that returns an API key string or a `() -> str` access-token callable works.
+`workspace_id` is required when the federation rule covers more than one workspace. The token exchange always targets the Anthropic API (`token_base_url`, default `https://api.anthropic.com`), deliberately independent of the provider's `base_url`, so a gateway that proxies only Messages traffic keeps working. Transient exchange failures (429/5xx, timeouts, connection errors) can be retried with `max_retries` (default 0); each attempt fetches a fresh identity token. Any `AuthProvider` that returns an API key string or a `() -> str` access-token callable works.
 
 ## Usage
 

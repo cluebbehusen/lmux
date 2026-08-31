@@ -173,6 +173,8 @@ def exchange_workload_identity_token(  # noqa: PLR0913
     """
     import httpx  # noqa: PLC0415
 
+    from lmux_anthropic._exceptions import map_transport_error  # noqa: PLC0415
+
     body: dict[str, str] = {
         "grant_type": _JWT_BEARER_GRANT,
         "assertion": assertion,
@@ -183,15 +185,24 @@ def exchange_workload_identity_token(  # noqa: PLR0913
         body["service_account_id"] = service_account_id
     if workspace_id is not None:
         body["workspace_id"] = workspace_id
-    response = httpx.post(
-        f"{(base_url or DEFAULT_BASE_URL).rstrip('/')}{_OAUTH_TOKEN_PATH}",
-        json=body,
-        headers={"anthropic-beta": _JWT_BEARER_BETA_FLAGS, "content-type": _JSON},
-        timeout=_EXCHANGE_TIMEOUT,
-    )
+    try:
+        response = httpx.post(
+            f"{(base_url or DEFAULT_BASE_URL).rstrip('/')}{_OAUTH_TOKEN_PATH}",
+            json=body,
+            headers={"anthropic-beta": _JWT_BEARER_BETA_FLAGS, "content-type": _JSON},
+            timeout=_EXCHANGE_TIMEOUT,
+        )
+    except httpx.HTTPError as e:
+        raise map_transport_error(e) from e
     if response.is_error:
         raise _exchange_error(response)
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if not isinstance(payload, dict):
+        msg = "Workload identity token exchange returned a malformed response body"
+        raise AuthenticationError(msg, provider="anthropic")
     access_token = payload.get("access_token")
     expires_in = payload.get("expires_in")
     if not isinstance(access_token, str) or not isinstance(expires_in, int | float):

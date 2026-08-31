@@ -1,6 +1,5 @@
 """Auth providers for the Anthropic API, Claude on Vertex AI, and Claude in Microsoft Foundry."""
 
-import contextlib
 import os
 import threading
 import time
@@ -9,7 +8,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from lmux.exceptions import AuthenticationError
+from lmux.exceptions import (
+    AuthenticationError,
+    ProviderError,
+    RateLimitError,
+    TimeoutError,  # noqa: A004
+)
 from lmux_anthropic._lazy import exchange_workload_identity_token
 
 if TYPE_CHECKING:
@@ -17,6 +21,9 @@ if TYPE_CHECKING:
     from google.auth.credentials import Credentials
 
 _TOKEN_REFRESH_LEEWAY = 60.0
+_REFRESH_FAILURE_BACKOFF = 10.0
+_EXCHANGE_RETRY_BASE_DELAY = 0.5
+_RETRYABLE_EXCHANGE_ERRORS = (ProviderError, RateLimitError, TimeoutError)
 
 
 def _monotonic() -> float:
@@ -105,6 +112,7 @@ class AnthropicWorkloadIdentityAuthProvider:
         identity_token_provider: Callable[[], str] | None = None,
         identity_token_file: str | os.PathLike[str] | None = None,
         token_base_url: str | None = None,
+        max_retries: int = 0,
     ) -> None:
         if identity_token_provider is not None and identity_token_file is not None:
             msg = "identity_token_provider and identity_token_file are mutually exclusive"
@@ -122,6 +130,7 @@ class AnthropicWorkloadIdentityAuthProvider:
         self._service_account_id: str | None = service_account_id
         self._workspace_id: str | None = workspace_id
         self._token_base_url: str | None = token_base_url
+        self._max_retries: int = max_retries
         self._access_token: str | None = None
         self._refresh_at: float = 0.0
         self._expires_at: float = 0.0
@@ -145,13 +154,27 @@ class AnthropicWorkloadIdentityAuthProvider:
         elif _monotonic() >= self._refresh_at and self._refresh_lock.acquire(blocking=False):
             try:
                 if _monotonic() >= self._refresh_at:
-                    with contextlib.suppress(Exception):
+                    try:
                         token = self._refresh()
+                    except Exception:  # noqa: BLE001
+                        # Serve the still-valid cached token, and back off so a failing
+                        # endpoint isn't retried on every request (each attempt consumes
+                        # a single-use identity token).
+                        self._refresh_at = _monotonic() + _REFRESH_FAILURE_BACKOFF
             finally:
                 self._refresh_lock.release()
         return token
 
     def _refresh(self) -> str:
+        """Run the exchange, retrying transient failures with a fresh identity token per attempt."""
+        for attempt in range(self._max_retries):
+            try:
+                return self._exchange_once()
+            except _RETRYABLE_EXCHANGE_ERRORS:
+                time.sleep(_EXCHANGE_RETRY_BASE_DELAY * 2**attempt)
+        return self._exchange_once()
+
+    def _exchange_once(self) -> str:
         access_token, expires_in = exchange_workload_identity_token(
             assertion=self._identity_token_source(),
             federation_rule_id=self._federation_rule_id,

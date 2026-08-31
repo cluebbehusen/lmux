@@ -8,7 +8,7 @@ import boto3
 import pytest
 from pytest_mock import MockerFixture
 
-from lmux.exceptions import AuthenticationError
+from lmux.exceptions import AuthenticationError, ProviderError, RateLimitError
 from lmux_anthropic.auth import (
     AnthropicBedrockEnvAuthProvider,
     AnthropicBedrockSessionAuthProvider,
@@ -117,12 +117,18 @@ def mock_exchange(mocker: MockerFixture) -> MagicMock:
     )
 
 
+@pytest.fixture
+def mock_sleep(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic.auth.time.sleep")
+
+
 def _wif_provider(
     *,
     identity_token_provider: Callable[[], str] | None = None,
     identity_token_file: str | Path | None = None,
     workspace_id: str | None = None,
     token_base_url: str | None = None,
+    max_retries: int = 0,
 ) -> AnthropicWorkloadIdentityAuthProvider:
     return AnthropicWorkloadIdentityAuthProvider(
         federation_rule_id="fdrl_1",
@@ -132,6 +138,7 @@ def _wif_provider(
         identity_token_provider=identity_token_provider,
         identity_token_file=identity_token_file,
         token_base_url=token_base_url,
+        max_retries=max_retries,
     )
 
 
@@ -275,6 +282,51 @@ class TestAnthropicWorkloadIdentityAuthProvider:
         provider = _wif_provider(identity_token_provider=lambda: "id-jwt")
         with pytest.raises(AuthenticationError, match="boom"):
             provider.get_credentials()()
+
+    def test_advisory_failure_backs_off(self, mock_exchange: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        clock = [0.0]
+        monkeypatch.setattr("lmux_anthropic.auth._monotonic", lambda: clock[0])
+        mock_exchange.side_effect = [
+            ("sk-ant-oat01-1", 600.0),
+            AuthenticationError("boom", provider="anthropic"),
+        ]
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt")
+        token_provider = provider.get_credentials()
+        assert token_provider() == "sk-ant-oat01-1"
+        clock[0] = 550.0  # advisory window: the failed refresh serves the cached token
+        assert token_provider() == "sk-ant-oat01-1"
+        assert token_provider() == "sk-ant-oat01-1"  # inside the backoff: no new attempt
+        assert mock_exchange.call_count == 2
+
+    def test_transient_exchange_failure_retried_with_fresh_identity_token(
+        self, mock_exchange: MagicMock, mock_sleep: MagicMock
+    ) -> None:
+        identity_tokens = iter(["id-jwt-1", "id-jwt-2"])
+        mock_exchange.side_effect = [
+            RateLimitError("throttled", provider="anthropic"),
+            ("sk-ant-oat01-1", 600.0),
+        ]
+        provider = _wif_provider(identity_token_provider=lambda: next(identity_tokens), max_retries=2)
+        assert provider.get_credentials()() == "sk-ant-oat01-1"
+        assert mock_exchange.call_count == 2
+        assert mock_exchange.call_args_list[-1].kwargs["assertion"] == "id-jwt-2"
+        mock_sleep.assert_called_once_with(0.5)
+
+    def test_exhausted_retries_raise(self, mock_exchange: MagicMock, mock_sleep: MagicMock) -> None:
+        mock_exchange.side_effect = ProviderError("overloaded", provider="anthropic")
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt", max_retries=1)
+        with pytest.raises(ProviderError, match="overloaded"):
+            provider.get_credentials()()
+        assert mock_exchange.call_count == 2
+        mock_sleep.assert_called_once_with(0.5)
+
+    def test_non_transient_exchange_failure_not_retried(self, mock_exchange: MagicMock, mock_sleep: MagicMock) -> None:
+        mock_exchange.side_effect = AuthenticationError("denied", provider="anthropic")
+        provider = _wif_provider(identity_token_provider=lambda: "id-jwt", max_retries=2)
+        with pytest.raises(AuthenticationError, match="denied"):
+            provider.get_credentials()()
+        mock_exchange.assert_called_once()
+        mock_sleep.assert_not_called()
 
     def test_identity_token_file_read_per_exchange(self, mock_exchange: MagicMock, tmp_path: Path) -> None:
         token_file = tmp_path / "token"

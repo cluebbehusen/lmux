@@ -7,7 +7,12 @@ import httpx
 import pytest
 import respx
 
-from lmux.exceptions import AuthenticationError, ProviderError, RateLimitError
+from lmux.exceptions import (
+    AuthenticationError,
+    ProviderError,
+    RateLimitError,
+    TimeoutError,  # noqa: A004
+)
 from lmux_anthropic._lazy import (
     HttpxTransportRequest,
     _resolve_foundry_base_url,
@@ -286,6 +291,27 @@ class TestExchangeWorkloadIdentityToken:
         with pytest.raises(AuthenticationError) as exc_info:
             _exchange()
         assert len(str(exc_info.value)) < 300
+
+    def test_malformed_success_body_raises(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_EXCHANGE_URL).mock(return_value=httpx.Response(200, text="not json"))
+        with pytest.raises(AuthenticationError, match="malformed response body"):
+            _exchange()
+
+    def test_non_object_success_body_raises(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_EXCHANGE_URL).mock(return_value=httpx.Response(200, json=["unexpected"]))
+        with pytest.raises(AuthenticationError, match="malformed response body"):
+            _exchange()
+
+    def test_connection_error_mapped(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_EXCHANGE_URL).mock(side_effect=httpx.ConnectError("no route to host"))
+        with pytest.raises(ProviderError, match="no route to host") as exc_info:
+            _exchange()
+        assert exc_info.value.provider == "anthropic"
+
+    def test_timeout_mapped(self, respx_mock: respx.MockRouter) -> None:
+        respx_mock.post(_EXCHANGE_URL).mock(side_effect=httpx.ConnectTimeout("timed out"))
+        with pytest.raises(TimeoutError, match="timed out"):
+            _exchange()
 
     def test_missing_access_token_raises(self, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_EXCHANGE_URL).mock(return_value=httpx.Response(200, json={"expires_in": 600}))
