@@ -16,6 +16,34 @@ from lmux_anthropic import AnthropicProvider
 provider = AnthropicProvider()
 ```
 
+### Workload Identity Federation
+
+To authenticate without a static API key, `AnthropicWorkloadIdentityAuthProvider` exchanges an IdP-issued OIDC identity token for a short-lived Anthropic access token, sent as `Authorization: Bearer` on every request and re-exchanged before it expires. Supply the identity token as a callable (invoked fresh on every exchange) or a token file path (e.g. a Kubernetes-projected service-account token):
+
+```python
+import boto3
+from lmux_anthropic import AnthropicProvider, AnthropicWorkloadIdentityAuthProvider
+
+sts = boto3.client("sts", region_name="us-east-1")
+
+def identity_token() -> str:
+    response = sts.get_web_identity_token(
+        Audience=["https://api.anthropic.com"], SigningAlgorithm="RS256", DurationSeconds=900
+    )
+    return response["WebIdentityToken"]
+
+provider = AnthropicProvider(
+    auth=AnthropicWorkloadIdentityAuthProvider(
+        federation_rule_id="fdrl_...",
+        organization_id="...",
+        service_account_id="svac_...",
+        identity_token_provider=identity_token,
+    ),
+)
+```
+
+`workspace_id` is required when the federation rule covers more than one workspace. The token exchange always targets the Anthropic API (`token_base_url`, default `https://api.anthropic.com`), deliberately independent of the provider's `base_url`, so a gateway that proxies only Messages traffic keeps working. Transient exchange failures (429/5xx, timeouts, connection errors) can be retried with `max_retries` (default 0); each attempt fetches a fresh identity token. Any `AuthProvider` that returns an API key string or a `() -> str` access-token callable works.
+
 ## Usage
 
 ### Chat
@@ -251,7 +279,7 @@ Same as Vertex/Foundry: `service_tier` and `inference_geo` are dropped from outg
 
 ```python
 AnthropicProvider(
-    auth=...,               # AuthProvider[str], default: AnthropicEnvAuthProvider()
+    auth=...,               # AuthProvider[str | () -> str], default: AnthropicEnvAuthProvider()
     base_url=...,           # Optional base URL override
     timeout=...,            # Request timeout in seconds
     max_retries=...,        # Max retry attempts

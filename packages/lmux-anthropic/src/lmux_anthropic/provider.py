@@ -31,6 +31,7 @@ from lmux_anthropic._exceptions import (
 )
 from lmux_anthropic._lazy import (
     VERTEX_ANTHROPIC_VERSION,
+    bearer_auth_headers,
     bedrock_base_url,
     create_async_bedrock_client,
     create_async_client,
@@ -129,6 +130,11 @@ def _thinking_for_effort(
     return {"type": "enabled", "budget_tokens": budget, "display": "summarized"}, None
 
 
+# Direct-API auth providers return a static API key, or a bearer-token provider
+# (e.g. Workload Identity Federation) that is invoked per request for a fresh
+# short-lived access token.
+type AnthropicAuthResult = "str | Callable[[], str]"
+
 # Vertex auth providers may return bare credentials, or credentials together
 # with the project ID they resolved (e.g. from ADC or a service account file).
 type VertexAuthResult = "Credentials | tuple[Credentials, str | None]"
@@ -155,7 +161,7 @@ class AnthropicProvider(
     def __init__(  # noqa: PLR0913
         self,
         *,
-        auth: AuthProvider[str] | None = None,
+        auth: AuthProvider["AnthropicAuthResult"] | None = None,
         base_url: str | None = None,
         timeout: float | None = None,
         max_retries: int | None = None,
@@ -164,7 +170,7 @@ class AnthropicProvider(
         transport: "httpx.BaseTransport | None" = None,
         async_transport: "httpx.AsyncBaseTransport | None" = None,
     ) -> None:
-        self._auth: AuthProvider[str] = auth or AnthropicEnvAuthProvider()
+        self._auth: AuthProvider[AnthropicAuthResult] = auth or AnthropicEnvAuthProvider()
         self._base_url: str | None = base_url
         self._timeout: float | None = timeout
         self._max_retries: int | None = max_retries
@@ -176,6 +182,9 @@ class AnthropicProvider(
         self._async_client: httpx.AsyncClient | None = None
         self._async_loop: asyncio.AbstractEventLoop | None = None
         self._custom_pricing: dict[str, ModelPricing] = {}
+        self._api_key: str | None = None
+        self._token_provider: Callable[[], str] | None = None
+        self._anthropic_auth_resolved: bool = False
 
     # MARK: Pricing
 
@@ -207,9 +216,29 @@ class AnthropicProvider(
 
     # MARK: Client Management
 
+    @staticmethod
+    def _split_anthropic_auth(auth_result: "AnthropicAuthResult") -> "tuple[str | None, Callable[[], str] | None]":
+        if isinstance(auth_result, str):
+            return auth_result, None
+        return None, auth_result
+
+    def _sync_anthropic_auth(self) -> "tuple[str | None, Callable[[], str] | None]":
+        """Resolve the credential once (a static API key, or a token-provider callable to invoke per request)."""
+        if not self._anthropic_auth_resolved:
+            self._api_key, self._token_provider = self._split_anthropic_auth(self._auth.get_credentials())
+            self._anthropic_auth_resolved = True
+        return self._api_key, self._token_provider
+
+    async def _aanthropic_auth(self) -> "tuple[str | None, Callable[[], str] | None]":
+        # Resolved per async-client creation (once per loop); the sync path caches for per-request reuse.
+        self._api_key, self._token_provider = self._split_anthropic_auth(await self._auth.aget_credentials())
+        self._anthropic_auth_resolved = True
+        return self._api_key, self._token_provider
+
     def _create_sync_client(self) -> "httpx.Client":
+        api_key, _token_provider = self._sync_anthropic_auth()
         return create_sync_client(
-            api_key=self._auth.get_credentials(),
+            api_key=api_key,
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
@@ -218,8 +247,9 @@ class AnthropicProvider(
         )
 
     async def _create_async_client(self) -> "httpx.AsyncClient":
+        api_key, _token_provider = await self._aanthropic_auth()
         return create_async_client(
-            api_key=await self._auth.aget_credentials(),
+            api_key=api_key,
             base_url=self._base_url,
             timeout=self._timeout,
             max_retries=self._max_retries,
@@ -259,17 +289,25 @@ class AnthropicProvider(
     def _request_headers(self) -> Mapping[str, str]:
         """Auth headers applied per request (sync path).
 
-        Empty for the direct API — its static ``x-api-key`` lives on the cached client.
-        Vertex and Foundry override this to resolve/refresh a short-lived token on every
-        request, so a long-lived provider never sends an expired credential.
+        Empty for API-key auth on the direct API — the static ``x-api-key`` lives on the
+        cached client. A token-provider credential (e.g. Workload Identity Federation) is
+        invoked here on every request for a fresh bearer token, and Vertex and Foundry
+        override this to resolve/refresh their own short-lived tokens, so a long-lived
+        provider never sends an expired credential.
         """
-        return {}
+        _api_key, token_provider = self._sync_anthropic_auth()
+        if token_provider is None:
+            return {}
+        return bearer_auth_headers(token_provider, self._default_headers)
 
     async def _arequest_headers(self) -> Mapping[str, str]:
-        """Auth headers for the async path. Vertex/Foundry override this to offload the
-        (blocking) token refresh to a worker thread so it never stalls the event loop.
+        """Auth headers for the async path. Token refresh may do blocking HTTP, so it is
+        offloaded to a worker thread (as Vertex/Foundry do) to never stall the event loop.
         """
-        return {}
+        _api_key, token_provider = self._sync_anthropic_auth()
+        if token_provider is None:
+            return {}
+        return await asyncio.to_thread(bearer_auth_headers, token_provider, self._default_headers)
 
     # MARK: Transport dispatch hooks (overridden by Bedrock for SigV4 + event-stream framing)
 

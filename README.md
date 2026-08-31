@@ -142,7 +142,7 @@ provider.register_pricing("my-fine-tune", ModelPricing(tiers=[
 | Package                                              | Protocols                        | Auth                                                                        |
 | ---------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------- |
 | [lmux-openai](packages/lmux-openai)                  | Completion, Embedding, Responses | `OPENAI_API_KEY`                                                            |
-| [lmux-anthropic](packages/lmux-anthropic)            | Completion                       | `ANTHROPIC_API_KEY`                                                         |
+| [lmux-anthropic](packages/lmux-anthropic)            | Completion                       | `ANTHROPIC_API_KEY`, Workload Identity Federation                           |
 | [lmux-anthropic\[vertex\]](packages/lmux-anthropic)  | Completion                       | File ADC, metadata ADC with `[requests]`, service account                   |
 | [lmux-anthropic](packages/lmux-anthropic) (Foundry)  | Completion                       | `ANTHROPIC_FOUNDRY_API_KEY`, Entra ID token provider                        |
 | [lmux-anthropic\[bedrock\]](packages/lmux-anthropic) | Completion                       | boto3 credential chain, `AWS_BEARER_TOKEN_BEDROCK`                          |

@@ -677,7 +677,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.15.2"
+version = "0.16.0"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "httpx" },
