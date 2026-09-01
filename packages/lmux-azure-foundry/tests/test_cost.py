@@ -209,6 +209,15 @@ class TestCalculateAzureFoundryCost:
         assert calculate_azure_foundry_cost("grok-4-20-reasoning", usage) is None
         assert calculate_azure_foundry_cost("grok-4-20-non-reasoning", usage) is None
 
+    def test_deepseek_v4_flash_0731_does_not_inherit_the_base_flash_rate(self) -> None:
+        """The 0731 snapshot is priced above the base model, so it needs its own key."""
+        usage = Usage(input_tokens=2_000_000, output_tokens=1_000_000, cache_read_tokens=1_000_000)
+        snapshot = calculate_azure_foundry_cost("DeepSeek-V4-Flash-0731", usage)
+        assert snapshot is not None
+        assert snapshot.input_cost == pytest.approx(0.44)
+        assert snapshot.output_cost == pytest.approx(1.32)
+        assert snapshot.cache_read_cost == pytest.approx(0.014)
+
     def test_deepseek_v4_cache_reads(self) -> None:
         usage = Usage(input_tokens=1_000_000, output_tokens=0, cache_read_tokens=1_000_000)
         flash = calculate_azure_foundry_cost("deepseek-v4-flash", usage)
@@ -222,8 +231,8 @@ class TestCalculateAzureFoundryCost:
         ("model", "base_rates", "hi_rates"),
         [
             ("gpt-5.6-sol", (5.00, 30.00, 0.50, 6.25), (10.00, 45.00, 1.00, 12.50)),
-            ("gpt-5.6-terra", (2.50, 15.00, 0.25, 3.125), (5.00, 22.50, 0.50, 6.25)),
-            ("gpt-5.6-luna", (1.00, 6.00, 0.10, 1.25), (2.00, 9.00, 0.20, 2.50)),
+            ("gpt-5.6-terra", (2.00, 12.00, 0.20, 2.50), (4.00, 18.00, 0.40, 5.00)),
+            ("gpt-5.6-luna", (0.20, 1.20, 0.02, 0.25), (0.40, 1.80, 0.04, 0.50)),
         ],
     )
     def test_gpt_5_6_family_rates_including_cache_write(

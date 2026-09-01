@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
+from lmux.cost import ModelPricing, PricingSchedule, PricingTier, calculate_cost, per_million_tokens
 from lmux.types import Usage
 from lmux_aws_bedrock.cost import (
     _REGIONAL_PRICING,
@@ -59,19 +59,41 @@ class TestCalculateBedrockCost:
         assert cost.input_cost == pytest.approx(1000 * 0.80 / 1_000_000)
         assert cost.output_cost == pytest.approx(500 * 4.00 / 1_000_000)
 
-    def test_sonnet_5_dated_schedule(self) -> None:
-        """Sonnet 5 bills the introductory rate before 2026-09-01 and standard (1.5x) on/after."""
+    def test_dated_schedule(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``as_of`` picks the schedule in effect on that date; no ``as_of`` picks the latest."""
+        model = "vendor.scheduled"
+        pricing = ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.0),
+                    output_cost_per_token=per_million_tokens(10.0),
+                )
+            ],
+            schedules=[
+                PricingSchedule(
+                    valid_from=date(2026, 9, 1),
+                    tiers=[
+                        PricingTier(
+                            input_cost_per_token=per_million_tokens(3.0),
+                            output_cost_per_token=per_million_tokens(15.0),
+                        )
+                    ],
+                )
+            ],
+        )
+        monkeypatch.setattr("lmux_aws_bedrock.cost._PRICING", {model: pricing})
+        monkeypatch.setattr("lmux_aws_bedrock.cost._PRICING_BY_PREFIX", [(model, pricing)])
+
         usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
-        intro = calculate_bedrock_cost("anthropic.claude-sonnet-5", usage, as_of=date(2026, 7, 1))
-        standard = calculate_bedrock_cost("anthropic.claude-sonnet-5", usage, as_of=date(2026, 9, 1))
-        latest = calculate_bedrock_cost("anthropic.claude-sonnet-5", usage)
+        intro = calculate_bedrock_cost(model, usage, as_of=date(2026, 7, 1))
+        standard = calculate_bedrock_cost(model, usage, as_of=date(2026, 9, 1))
+        latest = calculate_bedrock_cost(model, usage)
         assert intro is not None
         assert standard is not None
         assert latest is not None
-        assert (intro.input_cost, intro.output_cost) == pytest.approx((2.2, 11.0))
-        assert (standard.input_cost, standard.output_cost) == pytest.approx((3.3, 16.5))
-        # No as_of defaults to the latest (standard) schedule.
-        assert latest.input_cost == pytest.approx(3.3)
+        assert (intro.input_cost, intro.output_cost) == pytest.approx((2.0, 10.0))
+        assert (standard.input_cost, standard.output_cost) == pytest.approx((3.0, 15.0))
+        assert latest.input_cost == pytest.approx(3.0)
 
     def test_regional_profile_falls_back_to_base(self) -> None:
         """A cross-region inference profile with no dedicated entry uses the base model's pricing.

@@ -97,7 +97,7 @@ class TestCalculateOpenAICost:
     @pytest.mark.parametrize(
         ("model", "input_rate", "output_rate", "cache_read_rate", "cache_write_rate"),
         [
-            ("gpt-5.6-sol", 5.00, 30.00, 0.50, 6.25),
+            ("gpt-5.6-sol", 4.00, 20.00, 0.40, 5.00),
             ("gpt-5.6-terra", 2.00, 12.00, 0.20, 2.50),
             ("gpt-5.6-luna", 0.20, 1.20, 0.02, 0.25),
         ],
@@ -123,7 +123,7 @@ class TestCalculateOpenAICost:
     @pytest.mark.parametrize(
         ("model", "input_rate", "output_rate", "cache_read_rate", "cache_write_rate"),
         [
-            ("gpt-5.6-sol", 10.00, 45.00, 1.00, 12.50),
+            ("gpt-5.6-sol", 8.00, 30.00, 0.80, 10.00),
             ("gpt-5.6-terra", 4.00, 18.00, 0.40, 5.00),
             ("gpt-5.6-luna", 0.40, 1.80, 0.04, 0.50),
         ],
@@ -162,7 +162,7 @@ class TestCalculateOpenAICost:
         sol = calculate_openai_cost("gpt-5.6-sol", usage)
         assert bare is not None
         assert sol is not None
-        assert bare.input_cost == pytest.approx(1000 * 5.00 / 1_000_000)
+        assert bare.input_cost == pytest.approx(1000 * 4.00 / 1_000_000)
         assert bare.total_cost == pytest.approx(sol.total_cost)
 
     def test_gpt_4o_2024_05_13_snapshot(self) -> None:

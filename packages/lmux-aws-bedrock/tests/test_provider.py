@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     import boto3
     from aiobotocore.session import AioSession
 
-from lmux.cost import ModelPricing, PricingTier, per_million_tokens
+from lmux.cost import ModelPricing, PricingSchedule, PricingTier, per_million_tokens
 from lmux.exceptions import (
     AuthenticationError,
     InvalidRequestError,
@@ -242,6 +242,30 @@ def _ok_embed(response: dict[str, Any], respx_mock: respx.MockRouter) -> respx.R
 # MARK: Pricing As-Of
 
 
+@pytest.fixture
+def scheduled_pricing() -> ModelPricing:
+    """A model whose rate doubles on 2026-09-01, so the effective date is observable in the cost."""
+    return ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(8.0),
+            )
+        ],
+        schedules=[
+            PricingSchedule(
+                valid_from=date(2026, 9, 1),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(4.0),
+                        output_cost_per_token=per_million_tokens(16.0),
+                    )
+                ],
+            )
+        ],
+    )
+
+
 class TestPricingAsOf:
     def test_live_cost_uses_current_date(
         self,
@@ -249,12 +273,14 @@ class TestPricingAsOf:
         converse_response: dict[str, Any],
         respx_mock: respx.MockRouter,
         monkeypatch: pytest.MonkeyPatch,
+        scheduled_pricing: ModelPricing,
     ) -> None:
         monkeypatch.setattr("lmux_aws_bedrock.provider._today", lambda: date(2026, 7, 1))
-        _ok_converse(converse_response, respx_mock, model="anthropic.claude-sonnet-5")
-        result = sync_provider.chat("anthropic.claude-sonnet-5", [UserMessage(content="Hi")])
+        sync_provider.register_pricing(MODEL, scheduled_pricing)
+        _ok_converse(converse_response, respx_mock)
+        result = sync_provider.chat(MODEL, [UserMessage(content="Hi")])
         assert result.cost is not None
-        assert result.cost.input_cost == pytest.approx(10 * 2.2 / 1_000_000)
+        assert result.cost.input_cost == pytest.approx(10 * 2.0 / 1_000_000)
 
     def test_pricing_as_of_override_wins_over_clock(
         self,
@@ -262,16 +288,18 @@ class TestPricingAsOf:
         converse_response: dict[str, Any],
         respx_mock: respx.MockRouter,
         monkeypatch: pytest.MonkeyPatch,
+        scheduled_pricing: ModelPricing,
     ) -> None:
         monkeypatch.setattr("lmux_aws_bedrock.provider._today", lambda: date(2026, 9, 15))
-        _ok_converse(converse_response, respx_mock, model="anthropic.claude-sonnet-5")
+        sync_provider.register_pricing(MODEL, scheduled_pricing)
+        _ok_converse(converse_response, respx_mock)
         result = sync_provider.chat(
-            "anthropic.claude-sonnet-5",
+            MODEL,
             [UserMessage(content="Hi")],
             provider_params=BedrockParams(pricing_as_of=date(2026, 7, 1)),
         )
         assert result.cost is not None
-        assert result.cost.input_cost == pytest.approx(10 * 2.2 / 1_000_000)
+        assert result.cost.input_cost == pytest.approx(10 * 2.0 / 1_000_000)
 
     def test_live_cost_uses_current_date_after_switch(
         self,
@@ -279,12 +307,14 @@ class TestPricingAsOf:
         converse_response: dict[str, Any],
         respx_mock: respx.MockRouter,
         monkeypatch: pytest.MonkeyPatch,
+        scheduled_pricing: ModelPricing,
     ) -> None:
         monkeypatch.setattr("lmux_aws_bedrock.provider._today", lambda: date(2026, 9, 15))
-        _ok_converse(converse_response, respx_mock, model="anthropic.claude-sonnet-5")
-        result = sync_provider.chat("anthropic.claude-sonnet-5", [UserMessage(content="Hi")])
+        sync_provider.register_pricing(MODEL, scheduled_pricing)
+        _ok_converse(converse_response, respx_mock)
+        result = sync_provider.chat(MODEL, [UserMessage(content="Hi")])
         assert result.cost is not None
-        assert result.cost.input_cost == pytest.approx(10 * 3.3 / 1_000_000)
+        assert result.cost.input_cost == pytest.approx(10 * 4.0 / 1_000_000)
 
 
 # MARK: Chat

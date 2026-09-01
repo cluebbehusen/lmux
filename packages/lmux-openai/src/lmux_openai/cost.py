@@ -17,19 +17,21 @@ _PRICING: dict[str, ModelPricing] = {
     # GPT-5 family
     # gpt-5.6 family (sol/terra/luna). Cache writes are billed on gpt-5.6+ only,
     # at a flat 1.25x the input rate (no per-TTL split), via cache_creation_cost_per_token.
+    # Sol's rates are promotional, published as running at least through 2026-11-21;
+    # OpenAI has not published a post-promotion rate, so no PricingSchedule is set.
     "gpt-5.6-sol": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(5.00),
-                output_cost_per_token=per_million_tokens(30.00),
-                cache_read_cost_per_token=per_million_tokens(0.50),
-                cache_creation_cost_per_token=per_million_tokens(6.25),
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(20.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                cache_creation_cost_per_token=per_million_tokens(5.00),
             ),
             PricingTier(
-                input_cost_per_token=per_million_tokens(10.00),
-                output_cost_per_token=per_million_tokens(45.00),
-                cache_read_cost_per_token=per_million_tokens(1.00),
-                cache_creation_cost_per_token=per_million_tokens(12.50),
+                input_cost_per_token=per_million_tokens(8.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.80),
+                cache_creation_cost_per_token=per_million_tokens(10.00),
                 min_input_tokens=272_000,
             ),
         ],
@@ -73,16 +75,16 @@ _PRICING: dict[str, ModelPricing] = {
     "gpt-5.6": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(5.00),
-                output_cost_per_token=per_million_tokens(30.00),
-                cache_read_cost_per_token=per_million_tokens(0.50),
-                cache_creation_cost_per_token=per_million_tokens(6.25),
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(20.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                cache_creation_cost_per_token=per_million_tokens(5.00),
             ),
             PricingTier(
-                input_cost_per_token=per_million_tokens(10.00),
-                output_cost_per_token=per_million_tokens(45.00),
-                cache_read_cost_per_token=per_million_tokens(1.00),
-                cache_creation_cost_per_token=per_million_tokens(12.50),
+                input_cost_per_token=per_million_tokens(8.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.80),
+                cache_creation_cost_per_token=per_million_tokens(10.00),
                 min_input_tokens=272_000,
             ),
         ],

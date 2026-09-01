@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from lmux.cost import ModelPricing, PricingTier, calculate_cost, per_million_tokens
+from lmux.cost import ModelPricing, PricingSchedule, PricingTier, calculate_cost, per_million_tokens
 from lmux.types import Usage
 from lmux_bedrock_shared.pricing import ANTHROPIC_REGIONAL_PRICING, calculate_bedrock_anthropic_cost, cost_or_none
 
@@ -124,15 +124,37 @@ class TestCalculateBedrockAnthropicCost:
         assert default is not None
         assert cost.total_cost == pytest.approx(default.total_cost)
 
-    def test_dated_schedule(self) -> None:
+    def test_fable_5_1_cache_reads_are_cheaper_than_the_5_0_prefix(self) -> None:
+        """Fable 5.1 prices cache reads at 0.025x input; the Fable 5 prefix would bill 0.1x."""
+        usage = Usage(input_tokens=0, output_tokens=0, cache_read_tokens=1_000_000)
+        cost = calculate_bedrock_anthropic_cost("anthropic.claude-fable-5-1", usage)
+        assert cost is not None
+        assert cost.cache_read_cost == pytest.approx(0.275)
+
+    def test_dated_schedule(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``as_of`` picks the schedule in effect on that date; no ``as_of`` picks the latest."""
+        model = "anthropic.claude-scheduled"
+        pricing = ModelPricing(
+            tiers=[PricingTier(input_cost_per_token=1e-6, output_cost_per_token=2e-6)],
+            schedules=[
+                PricingSchedule(
+                    valid_from=date(2026, 9, 1),
+                    tiers=[PricingTier(input_cost_per_token=1.5e-6, output_cost_per_token=3e-6)],
+                )
+            ],
+        )
+        monkeypatch.setattr("lmux_bedrock_shared.pricing.ANTHROPIC_PRICING", {model: pricing})
+        monkeypatch.setattr("lmux_bedrock_shared.pricing._ANTHROPIC_BY_PREFIX", [(model, pricing)])
+
         usage = Usage(input_tokens=1_000_000, output_tokens=0)
-        intro = calculate_bedrock_anthropic_cost("anthropic.claude-sonnet-5", usage, as_of=date(2026, 7, 1))
-        standard = calculate_bedrock_anthropic_cost("anthropic.claude-sonnet-5", usage, as_of=date(2026, 9, 1))
-        latest = calculate_bedrock_anthropic_cost("anthropic.claude-sonnet-5", usage)
+        intro = calculate_bedrock_anthropic_cost(model, usage, as_of=date(2026, 7, 1))
+        standard = calculate_bedrock_anthropic_cost(model, usage, as_of=date(2026, 9, 1))
+        latest = calculate_bedrock_anthropic_cost(model, usage)
         assert intro is not None
         assert standard is not None
         assert latest is not None
-        assert intro.input_cost < standard.input_cost
+        assert intro.input_cost == pytest.approx(1.0)
+        assert standard.input_cost == pytest.approx(1.5)
         assert latest == standard
 
 
