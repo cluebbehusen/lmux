@@ -1029,12 +1029,39 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # -- Other ---------------------------------------------------
+    "global.xai.grok-4.6": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(6.6),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+            ),
+        ],
+    ),
+    "us.xai.grok-4.6": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(6.6),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+            ),
+        ],
+    ),
     "xai.grok-4.3": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(1.25),
                 output_cost_per_token=per_million_tokens(2.5),
                 cache_read_cost_per_token=per_million_tokens(0.2),
+            ),
+        ],
+    ),
+    "xai.grok-4.6": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(6.6),
+                cache_read_cost_per_token=per_million_tokens(0.55),
             ),
         ],
     ),
@@ -5490,6 +5517,15 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "xai.grok-4.6": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.64),
+                    output_cost_per_token=per_million_tokens(7.92),
+                    cache_read_cost_per_token=per_million_tokens(0.66),
+                ),
+            ],
+        ),
     },
     "us-gov-west-1": {
         "amazon.nova-lite-v1": ModelPricing(
@@ -5651,6 +5687,15 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "xai.grok-4.6": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.64),
+                    output_cost_per_token=per_million_tokens(7.92),
+                    cache_read_cost_per_token=per_million_tokens(0.66),
+                ),
+            ],
+        ),
     },
     "us-west-1": {
         "amazon.nova-2-lite-v1": ModelPricing(
@@ -5731,9 +5776,8 @@ def calculate_bedrock_cost(
 
     ``region`` is the Region the request is sent to, which is the Region Bedrock bills against --
     a cross-Region inference profile is priced by the Region it is called from, not by wherever the
-    request is routed. ``as_of`` selects dated pricing for models with scheduled rate changes
-    (e.g. Claude Sonnet 5's introductory period); it defaults to the latest
-    schedule. See ``lmux.cost.calculate_cost``.
+    request is routed. ``as_of`` selects dated pricing for models with scheduled rate changes;
+    it defaults to the latest schedule. See ``lmux.cost.calculate_cost``.
 
     Matching is shared with the native Anthropic Bedrock provider (see
     ``lmux_bedrock_shared.pricing``) so Claude resolves identically through either.

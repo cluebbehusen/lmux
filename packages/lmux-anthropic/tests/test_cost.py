@@ -106,6 +106,14 @@ class TestCalculateAnthropicCost:
         # Both are $15 input, so same price, but they should resolve to different prefixes
         assert cost_41.input_cost == cost_4.input_cost
 
+    @pytest.mark.parametrize("model", ["claude-fable-5-1", "claude-mythos-5-1"])
+    def test_5_1_cache_reads_are_cheaper_than_the_5_0_prefix(self, model: str) -> None:
+        """The 5.1 models price cache reads at 0.025x input; the 5.0 prefix would bill 0.1x."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=0, cache_read_tokens=1_000_000)
+        cost = calculate_anthropic_cost(model, usage)
+        assert cost is not None
+        assert cost.cache_read_cost == pytest.approx(0.25)
+
     def test_case_insensitive_lookup(self) -> None:
         """A capitalized model id resolves identically to its lowercase form."""
         usage = Usage(input_tokens=1000, output_tokens=500)

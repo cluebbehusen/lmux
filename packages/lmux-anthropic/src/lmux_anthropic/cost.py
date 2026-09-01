@@ -32,6 +32,32 @@ from lmux.types import Cost, Usage
 # input); 1-hour writes (2x input) are billed via the per-TTL breakdown that the
 # API reports in usage.cache_creation.
 _PRICING: dict[str, ModelPricing] = {
+    # Claude Fable 5.1 / Mythos 5.1 family. These need explicit keys ahead of the 5.0
+    # entries: input, output and cache writes match, but cache reads are 0.025x input
+    # rather than the 0.1x the rest of the fleet uses, so prefix-matching claude-fable-5
+    # would bill cache reads at 1.00 instead of 0.25.
+    "claude-fable-5-1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(50.00),
+                cache_read_cost_per_token=per_million_tokens(0.25),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(20.00)},
+            ),
+        ],
+    ),
+    "claude-mythos-5-1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(50.00),
+                cache_read_cost_per_token=per_million_tokens(0.25),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(20.00)},
+            ),
+        ],
+    ),
     # Claude Fable 5 / Mythos 5 family
     "claude-fable-5": ModelPricing(
         tiers=[

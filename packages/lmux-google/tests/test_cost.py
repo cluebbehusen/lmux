@@ -225,18 +225,31 @@ class TestCalculateGoogleCost:
         assert cost.total_cost > 0.0
 
 
+class TestGeminiGaAndPreviewIds:
+    def test_ga_pro_id_prices_independently_of_the_preview_key(self) -> None:
+        """The GA id is shorter than the -preview key, so it cannot prefix-match it."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        ga = calculate_google_cost("gemini-3.1-pro", usage)
+        preview = calculate_google_cost("gemini-3.1-pro-preview", usage)
+        assert ga is not None
+        assert preview is not None
+        assert ga.total_cost == pytest.approx(preview.total_cost)
+
+
 class TestHasVertexNonGlobalPremium:
     @pytest.mark.parametrize(
         "model",
-        ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash-002"],
+        [
+            "gemini-3.7-flash",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-002",
+        ],
     )
     def test_models_with_a_published_non_global_rate(self, model: str) -> None:
         assert has_vertex_non_global_premium(model) is True
-
-    @pytest.mark.parametrize("model", ["gemini-3.6-flash", "gemini-3.7-flash"])
-    def test_ga_models_without_a_published_non_global_rate(self, model: str) -> None:
-        """Being GA is not the test: Vertex publishes no Non-global row for these two."""
-        assert has_vertex_non_global_premium(model) is False
 
     def test_preview_id_is_exempt_despite_matching_a_ga_prefix(self) -> None:
         """Longest-prefix wins: the -preview id must not inherit its GA sibling's premium."""

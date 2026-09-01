@@ -61,7 +61,9 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     # model from list_foundation_models when it retires, so the catalog resolver can no longer
     # turn a dateless key into the ID a caller presents, and the dateless key would be written
     # out as an entry nothing can ever look up. See KNOWN_UNRESOLVED_IDS.
+    "Claude Fable 5.1": "anthropic.claude-fable-5-1",
     "Claude Fable 5": "anthropic.claude-fable-5-v1",
+    "Claude Mythos 5.1": "anthropic.claude-mythos-5-1",
     "Claude Mythos 5": "anthropic.claude-mythos-5-v1",
     "Claude Opus 5": "anthropic.claude-opus-5-v1",
     "Claude Sonnet 5": "anthropic.claude-sonnet-5-v1",
@@ -154,13 +156,9 @@ USAGETYPE_KEY_MAP: dict[str, str] = {
 
 # Models with a known future list-price change. Maps a model-id substring to the
 # date the new rate takes effect and its multiplier vs the current (base) rate.
-# Claude Sonnet 5 ships introductory pricing now; the standard rate (1.5x the
-# introductory rate, uniform across every field and regional variant) starts
-# 2026-09-01. The base tier stays the AWS-reported (introductory) rate; the
-# scheduled override is derived from it.
-DATED_PRICE_SCHEDULES: dict[str, tuple[date, Decimal]] = {
-    "anthropic.claude-sonnet-5": (date(2026, 9, 1), Decimal("1.5")),
-}
+# The base tier stays the AWS-reported rate; the scheduled override is derived
+# from it. Populate this only from an announcement AWS has actually published.
+DATED_PRICE_SCHEDULES: dict[str, tuple[date, Decimal]] = {}
 
 # Provider groups for comment headers in generated code
 PROVIDER_GROUPS: list[tuple[str, str]] = [
@@ -309,6 +307,8 @@ KNOWN_UNRESOLVED_IDS: frozenset[str] = frozenset(
         "anthropic.claude-instant-v1",
         "anthropic.claude-v2",
         "cohere.command-light-text-v14",
+        "cohere.command-r-plus-v1",
+        "cohere.command-r-v1",
         "cohere.command-text-v14",
         "meta.llama2-13b-chat-v1",
         "meta.llama2-70b-chat-v1",
@@ -331,6 +331,7 @@ KNOWN_UNRESOLVED_IDS: frozenset[str] = frozenset(
         # These are live models rather than retirements, tracked as a separate known gap.
         "amazon.nova-2-omni-v1",
         "amazon.nova-2-pro-v1",
+        "anthropic.claude-mythos-5-1",
         "anthropic.claude-mythos-5-v1",
         "deepseek.v3.1",
         "google.gemma-4-26b-a4b",
@@ -1174,9 +1175,8 @@ def calculate_bedrock_cost(
 
     ``region`` is the Region the request is sent to, which is the Region Bedrock bills against --
     a cross-Region inference profile is priced by the Region it is called from, not by wherever the
-    request is routed. ``as_of`` selects dated pricing for models with scheduled rate changes
-    (e.g. Claude Sonnet 5's introductory period); it defaults to the latest
-    schedule. See ``lmux.cost.calculate_cost``.
+    request is routed. ``as_of`` selects dated pricing for models with scheduled rate changes;
+    it defaults to the latest schedule. See ``lmux.cost.calculate_cost``.
 
     Matching is shared with the native Anthropic Bedrock provider (see
     ``lmux_bedrock_shared.pricing``) so Claude resolves identically through either.
@@ -1286,8 +1286,8 @@ def calculate_bedrock_anthropic_cost(
     (e.g. ``us.anthropic.claude-opus-4-8``). ``region`` is the Region the request is sent to, which
     is the Region Bedrock bills against -- a cross-Region inference profile is priced by the Region
     it is called from, not by wherever the request is routed. ``as_of`` selects dated pricing for
-    models with scheduled rate changes (e.g. Claude Sonnet 5's introductory
-    period); it defaults to the latest schedule. See ``lmux.cost.calculate_cost``.
+    models with scheduled rate changes; it defaults to the latest schedule.
+    See ``lmux.cost.calculate_cost``.
     """
     if region is not None and region != DEFAULT_PRICING_REGION:
         pricing = lookup_regional_pricing(ANTHROPIC_REGIONAL_PRICING, region, model)

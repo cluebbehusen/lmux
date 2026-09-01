@@ -90,6 +90,23 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    # The GA id is shorter than the preview key, so it cannot prefix-match it and needs
+    # its own entry. Vertex prices both identically.
+    "gemini-3.1-pro": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(12.0),
+                cache_read_cost_per_token=per_million_tokens(0.2),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.0),
+                output_cost_per_token=per_million_tokens(18.0),
+                cache_read_cost_per_token=per_million_tokens(0.4),
+                min_input_tokens=200_000,
+            ),
+        ],
+    ),
     # ── Google Gemini 3 (Preview) ──────────────────────────────
     "gemini-3.1-pro-preview": ModelPricing(
         tiers=[
@@ -352,9 +369,12 @@ costs replayed against an earlier date take no multiplier.
 """
 
 # Models the Vertex pricing page lists a "Non-global" row for. Membership is read
-# off that page rather than inferred from a model being GA: Gemini 3.6 and 3.7
-# Flash are GA and publish no Non-global rate, so they bill list price everywhere.
+# off that page rather than inferred from a model being GA: the Gemini 2.x range and
+# the preview Gemini 3 models publish no Non-global rate, so they bill list price
+# everywhere.
 _VERTEX_PREMIUM_PRICING_MODELS = (
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",

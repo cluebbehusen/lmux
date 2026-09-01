@@ -122,16 +122,16 @@ _PRICING: dict[str, ModelPricing] = {
     "gpt-5.6-terra": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(2.50),
-                output_cost_per_token=per_million_tokens(15.00),
-                cache_read_cost_per_token=per_million_tokens(0.25),
-                cache_creation_cost_per_token=per_million_tokens(3.125),
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(12.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
             ),
             PricingTier(
-                input_cost_per_token=per_million_tokens(5.00),
-                output_cost_per_token=per_million_tokens(22.50),
-                cache_read_cost_per_token=per_million_tokens(0.50),
-                cache_creation_cost_per_token=per_million_tokens(6.25),
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(18.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                cache_creation_cost_per_token=per_million_tokens(5.00),
                 min_input_tokens=272_000,
             ),
         ],
@@ -139,16 +139,16 @@ _PRICING: dict[str, ModelPricing] = {
     "gpt-5.6-luna": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(1.00),
-                output_cost_per_token=per_million_tokens(6.00),
-                cache_read_cost_per_token=per_million_tokens(0.10),
-                cache_creation_cost_per_token=per_million_tokens(1.25),
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(1.20),
+                cache_read_cost_per_token=per_million_tokens(0.02),
+                cache_creation_cost_per_token=per_million_tokens(0.25),
             ),
             PricingTier(
-                input_cost_per_token=per_million_tokens(2.00),
-                output_cost_per_token=per_million_tokens(9.00),
-                cache_read_cost_per_token=per_million_tokens(0.20),
-                cache_creation_cost_per_token=per_million_tokens(2.50),
+                input_cost_per_token=per_million_tokens(0.40),
+                output_cost_per_token=per_million_tokens(1.80),
+                cache_read_cost_per_token=per_million_tokens(0.04),
+                cache_creation_cost_per_token=per_million_tokens(0.50),
                 min_input_tokens=272_000,
             ),
         ],
@@ -556,6 +556,17 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    # The 0731 snapshot is priced well above the base model, so it needs an explicit key
+    # (it would otherwise prefix-match deepseek-v4-flash and be under-priced at 0.19/0.51).
+    "deepseek-v4-flash-0731": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.44),
+                output_cost_per_token=per_million_tokens(1.32),
+                cache_read_cost_per_token=per_million_tokens(0.014),
+            )
+        ],
+    ),
     "deepseek-v4-flash": ModelPricing(
         tiers=[
             PricingTier(
@@ -776,6 +787,33 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(0.95),
                 output_cost_per_token=per_million_tokens(4.00),
                 cache_read_cost_per_token=per_million_tokens(0.19),
+            )
+        ],
+    ),
+    # --- MAI (Microsoft) ---
+    "MAI-Thinking-1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(8.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+            )
+        ],
+    ),
+    "MAI-Cyber-1-Flash": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.60),
+                output_cost_per_token=per_million_tokens(3.50),
+                cache_read_cost_per_token=per_million_tokens(0.06),
+            )
+        ],
+    ),
+    "MAI-DS-R1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.35),
+                output_cost_per_token=per_million_tokens(5.40),
             )
         ],
     ),
