@@ -192,9 +192,9 @@ class TestCalculateGoogleCost:
         assert cost.output_cost == pytest.approx(2.50)
         assert cost.cache_read_cost == pytest.approx(0.03)
 
-    @pytest.mark.parametrize("model", ["gemini-3.6-flash", "gemini-3.7-flash"])
+    @pytest.mark.parametrize("model", ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"])
     def test_gemini_3_flash_introductory_pricing(self, model: str) -> None:
-        """Through 2026-12-31 both Flash models bill the introductory rate."""
+        """Through 2026-12-31 these Flash models bill the introductory rate."""
         usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_tokens=100_000)
         cost = calculate_google_cost(model, usage, as_of=date(2026, 8, 16))
         assert cost is not None
@@ -202,7 +202,7 @@ class TestCalculateGoogleCost:
         assert cost.output_cost == pytest.approx(3.75)
         assert cost.cache_read_cost == pytest.approx(100_000 * 0.075 / 1_000_000)
 
-    @pytest.mark.parametrize("model", ["gemini-3.6-flash", "gemini-3.7-flash"])
+    @pytest.mark.parametrize("model", ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"])
     def test_gemini_3_flash_standard_pricing_from_2027(self, model: str) -> None:
         """From 2027-01-01 the introductory window ends and every rate doubles."""
         usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_tokens=100_000)
@@ -211,6 +211,15 @@ class TestCalculateGoogleCost:
         assert cost.input_cost == pytest.approx((1_000_000 - 100_000) * 1.50 / 1_000_000)
         assert cost.output_cost == pytest.approx(7.50)
         assert cost.cache_read_cost == pytest.approx(100_000 * 0.15 / 1_000_000)
+
+    def test_gemini_3_8_flash_cyber_prices_as_its_generally_available_sibling(self) -> None:
+        """The Fairwind-restricted Cyber variant has no key of its own and is priced identically."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_tokens=100_000)
+        cyber = calculate_google_cost("gemini-3.8-flash-cyber", usage, as_of=date(2026, 9, 3))
+        flash = calculate_google_cost("gemini-3.8-flash", usage, as_of=date(2026, 9, 3))
+        assert cyber is not None
+        assert flash is not None
+        assert cyber.total_cost == pytest.approx(flash.total_cost)
 
     @pytest.mark.parametrize(
         ("model", "rate"),
@@ -240,6 +249,8 @@ class TestHasVertexNonGlobalPremium:
     @pytest.mark.parametrize(
         "model",
         [
+            "gemini-3.8-flash",
+            "gemini-3.8-flash-cyber",
             "gemini-3.7-flash",
             "gemini-3.6-flash",
             "gemini-3.5-flash",
