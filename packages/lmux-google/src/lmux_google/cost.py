@@ -28,6 +28,27 @@ from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
     # ── Google Gemini 3 ────────────────────────────────────────
+    "gemini-3.8-flash": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.75),
+                output_cost_per_token=per_million_tokens(3.75),
+                cache_read_cost_per_token=per_million_tokens(0.075),
+            ),
+        ],
+        schedules=[
+            PricingSchedule(
+                valid_from=date(2027, 1, 1),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(1.50),
+                        output_cost_per_token=per_million_tokens(7.50),
+                        cache_read_cost_per_token=per_million_tokens(0.15),
+                    ),
+                ],
+            ),
+        ],
+    ),
     "gemini-3.7-flash": ModelPricing(
         tiers=[
             PricingTier(
@@ -373,6 +394,7 @@ costs replayed against an earlier date take no multiplier.
 # the preview Gemini 3 models publish no Non-global rate, so they bill list price
 # everywhere.
 _VERTEX_PREMIUM_PRICING_MODELS = (
+    "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-3.6-flash",
     "gemini-3.5-flash",
