@@ -36,6 +36,14 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "amazon.nova-2-multimodal-embeddings-v1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.135),
+                output_cost_per_token=0.0,
+            ),
+        ],
+    ),
     "amazon.nova-2-omni-v1": ModelPricing(
         tiers=[
             PricingTier(

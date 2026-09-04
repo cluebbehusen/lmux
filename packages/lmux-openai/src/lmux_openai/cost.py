@@ -14,6 +14,24 @@ from lmux.cost import (
 from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
+    # GPT-6 family
+    "gpt-6-astra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(50.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(20.00),
+                output_cost_per_token=per_million_tokens(75.00),
+                cache_read_cost_per_token=per_million_tokens(2.00),
+                cache_creation_cost_per_token=per_million_tokens(25.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
     # GPT-5 family
     # gpt-5.6 family (sol/terra/luna). Cache writes are billed on gpt-5.6+ only,
     # at a flat 1.25x the input rate (no per-TTL split), via cache_creation_cost_per_token.
@@ -551,9 +569,10 @@ _UNPRICED_MODELS = frozenset({"gpt-5.4-cyber"})
 
 # 10% uplift for regional processing (data residency) endpoints. Per OpenAI, this
 # applies to the gpt-5.4 family (gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-pro),
-# the gpt-5.5 family (gpt-5.5, gpt-5.5-pro), and the gpt-5.6 family (sol/terra/luna).
+# the gpt-5.5 family (gpt-5.5, gpt-5.5-pro), the gpt-5.6 family (sol/terra/luna),
+# and gpt-6-astra.
 REGIONAL_UPLIFT = 1.1
-_REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4", "gpt-5.5", "gpt-5.6")
+_REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4", "gpt-5.5", "gpt-5.6", "gpt-6")
 # The "cyber" variants share those family prefixes but are absent from OpenAI's
 # data-residency eligible-model list. Matched as prefixes, like the pricing table,
 # so dated snapshots (gpt-5.6-cyber-2026-08-01) are excluded too.

@@ -11,9 +11,11 @@ https://cloud.google.com/vertex-ai/generative-ai/pricing
 
 Claude in Microsoft Foundry bills Anthropic's standard API pricing, so this
 table also covers AnthropicFoundryProvider. Global Standard deployments use
-these list prices with no multiplier; Foundry's US Data Zone Standard
-deployment type (equivalent to inference_geo "us") applies the same 1.1x
-premium as US_INFERENCE_MULTIPLIER.
+these list prices with no multiplier. Foundry's US Data Zone Standard
+deployment type carries a 1.1x premium that is not modeled here: the
+deployment type is a property of the Azure deployment rather than a request
+parameter, so the provider has no signal to key it off. Cost reported for a
+US Data Zone deployment understates the billed amount by 10%.
 """
 
 from datetime import date

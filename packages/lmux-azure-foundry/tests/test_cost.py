@@ -209,6 +209,12 @@ class TestCalculateAzureFoundryCost:
         assert calculate_azure_foundry_cost("grok-4-20-reasoning", usage) is None
         assert calculate_azure_foundry_cost("grok-4-20-non-reasoning", usage) is None
 
+    def test_grok_4_6_preview_unpriced_returns_none(self) -> None:
+        """grok-4.6 has no published meter and must return None, not fall through to grok-4."""
+        usage = Usage(input_tokens=1000, output_tokens=500)
+        assert calculate_azure_foundry_cost("grok-4.6", usage) is None
+        assert calculate_azure_foundry_cost("grok-4", usage) is not None
+
     def test_deepseek_v4_flash_0731_does_not_inherit_the_base_flash_rate(self) -> None:
         """The 0731 snapshot is priced above the base model, so it needs its own key."""
         usage = Usage(input_tokens=2_000_000, output_tokens=1_000_000, cache_read_tokens=1_000_000)
