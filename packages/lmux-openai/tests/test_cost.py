@@ -104,13 +104,24 @@ class TestCalculateOpenAICost:
         assert cost.cache_creation_cost == pytest.approx(200 * 12.50 / 1_000_000)
 
     def test_gpt_6_astra_long_context_tier(self) -> None:
-        usage = Usage(input_tokens=300_000, output_tokens=500, cache_read_tokens=100, cache_creation_tokens=200)
+        usage = Usage(
+            input_tokens=300_000,
+            output_tokens=1000,
+            cache_read_tokens=100_000,
+            cache_creation_tokens=50_000,
+        )
         cost = calculate_openai_cost("gpt-6-astra", usage)
-        assert cost is not None
-        assert cost.input_cost == pytest.approx((300_000 - 100 - 200) * 20.00 / 1_000_000)
-        assert cost.output_cost == pytest.approx(500 * 75.00 / 1_000_000)
-        assert cost.cache_read_cost == pytest.approx(100 * 2.00 / 1_000_000)
-        assert cost.cache_creation_cost == pytest.approx(200 * 25.00 / 1_000_000)
+        input_cost = 150_000 * (20.00 / 1_000_000)
+        output_cost = 1000 * (75.00 / 1_000_000)
+        cache_read_cost = 100_000 * (2.00 / 1_000_000)
+        cache_creation_cost = 50_000 * (25.00 / 1_000_000)
+        assert cost == Cost(
+            input_cost=input_cost,
+            output_cost=output_cost,
+            cache_read_cost=cache_read_cost,
+            cache_creation_cost=cache_creation_cost,
+            total_cost=input_cost + output_cost + cache_read_cost + cache_creation_cost,
+        )
 
     @pytest.mark.parametrize(
         ("model", "input_rate", "output_rate", "cache_read_rate", "cache_write_rate"),
