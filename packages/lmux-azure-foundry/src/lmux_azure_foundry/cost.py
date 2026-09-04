@@ -875,15 +875,17 @@ _PRICING: dict[str, ModelPricing] = {
 # (capital Cohere/Phi/Mistral/Kimi ids, lowercase deepseek/grok/gpt), so lookup folds case.
 _PRICING_BY_PREFIX = build_pricing_index(_PRICING)
 
-# Known Azure models with no published Global Standard rate (e.g. the grok-4-20 Preview
-# variants). Returning None is correct — do NOT let them fall through to a broad prefix
-# (e.g. "grok-4") and inherit a fabricated rate. Add real rates once Azure publishes meters.
-_UNPRICED_MODELS = frozenset({"grok-4-20-reasoning", "grok-4-20-non-reasoning"})
+# Known Azure models with no published Global Standard rate (e.g. the grok-4-20 and
+# grok-4.6 Preview variants). Returning None is correct — do NOT let them fall through to
+# a broad prefix (e.g. "grok-4") and inherit a fabricated rate. Matched as prefixes, like
+# the pricing table, so dated snapshots (grok-4.6-2026-09-03) and reasoning-mode variants
+# (grok-4.6-reasoning) are covered too. Add real rates once Azure publishes meters.
+_UNPRICED_MODEL_PREFIXES = ("grok-4-20-reasoning", "grok-4-20-non-reasoning", "grok-4.6")
 
 
 def calculate_azure_foundry_cost(model: str, usage: Usage) -> Cost | None:
     """Calculate cost for an Azure AI Foundry API call. Returns None if model pricing is unknown."""
-    if model.lower() in _UNPRICED_MODELS:
+    if model.lower().startswith(_UNPRICED_MODEL_PREFIXES):
         return None
     pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:

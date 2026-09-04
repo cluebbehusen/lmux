@@ -194,7 +194,7 @@ print(response.provider)  # "anthropic-foundry"
 print(response.cost)
 ```
 
-`resource` and the mutually exclusive `base_url` fall back to the `ANTHROPIC_FOUNDRY_RESOURCE` and `ANTHROPIC_FOUNDRY_BASE_URL` environment variables. Model IDs are Foundry deployment names, which default to the plain model IDs (`claude-sonnet-4-6`, ...). Foundry bills Anthropic's standard API pricing through the Microsoft Marketplace, so costs come from the same pricing table with no multiplier.
+`resource` and the mutually exclusive `base_url` fall back to the `ANTHROPIC_FOUNDRY_RESOURCE` and `ANTHROPIC_FOUNDRY_BASE_URL` environment variables. Model IDs are Foundry deployment names, which default to the plain model IDs (`claude-sonnet-4-6`, ...). Foundry bills Anthropic's standard API pricing through the Microsoft Marketplace, so costs come from the same pricing table with no multiplier. Anthropic bills the US Data Zone Standard deployment type at a 1.1x premium, which lmux does not apply: deployment type is a property of the Azure deployment rather than a request parameter, so the provider has no signal to key it off. Reported cost for a US Data Zone deployment understates the billed amount by 10%.
 
 `reasoning_effort` can select the correct thinking mode only when the deployment name contains a recognizable Claude model ID. For an opaque custom deployment name, configure the thinking mode explicitly for the deployed model:
 

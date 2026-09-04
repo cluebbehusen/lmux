@@ -118,6 +118,7 @@ NON_MANTLE_MODEL_MAP: dict[str, str] = {
     "Nova 2.0 Lite": "amazon.nova-2-lite-v1",
     "Nova 2.0 Pro": "amazon.nova-2-pro-v1",
     "Nova 2.0 Omni": "amazon.nova-2-omni-v1",
+    "Nova MME": "amazon.nova-2-multimodal-embeddings-v1",
     # DeepSeek (R1 is non-mantle only; v3.x is mantle)
     "R1": "deepseek.r1-v1",
     "DeepSeek v3.2": "deepseek.v3.2",
@@ -179,8 +180,18 @@ PROVIDER_GROUPS: list[tuple[str, str]] = [
     ("zai.", "Zhipu AI (via Bedrock)"),
 ]
 
+# Non-mantle display names for models the Foundation Models API prices under a different
+# servicename: AWS bills Claude 2.0 and 2.1 as the single "Claude" -> anthropic.claude-v2.
+# Deliberately not NON_MANTLE_MODEL_MAP entries, which would emit a second conflicting key.
+NON_MANTLE_PRICED_AS_FM = frozenset({"Claude 2.0", "Claude 2.1"})
+
 # Embedding models (output_cost_per_token = 0.0)
-EMBEDDING_PREFIXES = ("amazon.titan-embed", "amazon.nova-embed", "cohere.embed")
+EMBEDDING_PREFIXES = (
+    "amazon.titan-embed",
+    "amazon.nova-embed",
+    "amazon.nova-2-multimodal-embed",
+    "cohere.embed",
+)
 
 # Cross-region inference profile prefixes (excluding "global." which gets its own pricing)
 INFERENCE_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.")
@@ -637,24 +648,28 @@ def _set_dimension(mp: ModelPrices, dim_name: str, price: Decimal) -> None:
         mp.cache_write_1h_cost = price
 
 
-def parse_amazon_models(
-    data: dict[str, Any], *, fallback_to_global: bool = True
-) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
-    """Parse non-mantle entries from AmazonBedrock API for Amazon + legacy models.
+def _collect_non_mantle_prices(
+    products: dict[str, Any], terms: dict[str, Any]
+) -> tuple[dict[str, dict[str, dict[bool, Decimal]]], set[str]]:
+    """Collect non-mantle prices as model_id -> dimension -> {is_global: price}.
 
-    Returns (default_pricing, global_pricing) where global_pricing contains only
-    models that have cross-region global inference profile pricing.
-
-    ``fallback_to_global`` fills a missing standard rate from the global rate. Correct for the
-    us-east-1 baseline (a global-only model still needs a list price), but wrong for regional diffs:
-    a Region that publishes only the global meter has no genuine standard rate, and emitting the
-    global discount as its standard rate under-reports geo-profile calls (see ``_fetch_regional_diffs``).
+    Also returns the display names dropped for want of a ``NON_MANTLE_MODEL_MAP`` entry.
     """
-    products = data.get("products", {})
-    terms = data.get("terms", {}).get("OnDemand", {})
+    # Most models priced elsewhere also publish non-mantle meters here: mantle models carry
+    # the same `model` attribute, and Foundation Models are keyed by the same display name.
+    # Neither is a NON_MANTLE_MODEL_MAP gap, so neither is reported as unmapped.
+    priced_elsewhere = (
+        {
+            (prod.get("attributes", {}).get("model") or "").strip()
+            for prod in products.values()
+            if "-mantle-" in prod.get("attributes", {}).get("usagetype", "")
+        }
+        | set(FM_SERVICENAME_MAP)
+        | NON_MANTLE_PRICED_AS_FM
+    )
 
-    # Collect prices keyed by model_id -> dimension -> {is_global: price}
     collected: dict[str, dict[str, dict[bool, Decimal]]] = {}
+    unmapped: set[str] = set()
 
     for sku, prod in products.items():
         attrs = prod.get("attributes", {})
@@ -667,8 +682,11 @@ def parse_amazon_models(
         if dimension is None:
             continue
 
-        model_id = _resolve_non_mantle_model_id(attrs.get("model", "").strip(), ut)
+        model_name = attrs.get("model", "").strip()
+        model_id = _resolve_non_mantle_model_id(model_name, ut)
         if model_id is None:
+            if model_name and model_name not in priced_elsewhere:
+                unmapped.add(model_name)
             continue
 
         priced = _get_price_with_unit(sku, terms)
@@ -681,6 +699,34 @@ def parse_amazon_models(
             _warn(f"Unrecognized price unit {unit!r} for {ut}; skipping dimension")
             continue
         collected.setdefault(model_id, {}).setdefault(dimension, {})[_is_global_usagetype(ut)] = price_per_m
+
+    return collected, unmapped
+
+
+def parse_amazon_models(
+    data: dict[str, Any], *, fallback_to_global: bool = True, report_unmapped: bool = False
+) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
+    """Parse non-mantle entries from AmazonBedrock API for Amazon + legacy models.
+
+    Returns (default_pricing, global_pricing) where global_pricing contains only
+    models that have cross-region global inference profile pricing.
+
+    ``fallback_to_global`` fills a missing standard rate from the global rate. Correct for the
+    us-east-1 baseline (a global-only model still needs a list price), but wrong for regional diffs:
+    a Region that publishes only the global meter has no genuine standard rate, and emitting the
+    global discount as its standard rate under-reports geo-profile calls (see ``_fetch_regional_diffs``).
+
+    ``report_unmapped`` warns about models this parser dropped for want of a
+    ``NON_MANTLE_MODEL_MAP`` entry, mirroring the unmapped-servicename warning in
+    :func:`parse_foundation_models`. Enabled for the us-east-1 baseline only: a Region that
+    publishes a meter the baseline already priced elsewhere is not a missing model.
+    """
+    collected, unmapped = _collect_non_mantle_prices(
+        data.get("products", {}), data.get("terms", {}).get("OnDemand", {})
+    )
+
+    if report_unmapped and unmapped:
+        _warn(f"Unmapped non-mantle model names: {sorted(unmapped)}")
 
     # Build result: separate default (non-global) and global pricing
     result: dict[str, ModelPrices] = {}
@@ -1636,7 +1682,7 @@ def main() -> None:
     _info(f"  Found {len(mantle)} mantle models")
 
     _info("Parsing Amazon models (Nova/Titan/legacy)...")
-    amazon, amazon_global = parse_amazon_models(bedrock_data)
+    amazon, amazon_global = parse_amazon_models(bedrock_data, report_unmapped=True)
     _info(f"  Found {len(amazon)} Amazon/legacy models ({len(amazon_global)} with global pricing)")
 
     _info("Parsing Foundation Models (Claude/Cohere/etc)...")

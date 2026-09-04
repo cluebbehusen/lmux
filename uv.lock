@@ -677,7 +677,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.16.1"
+version = "0.16.2"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "httpx" },
@@ -709,7 +709,7 @@ provides-extras = ["vertex", "requests", "bedrock"]
 
 [[package]]
 name = "lmux-aws-bedrock"
-version = "0.13.2"
+version = "0.13.3"
 source = { editable = "packages/lmux-aws-bedrock" }
 dependencies = [
     { name = "boto3" },
@@ -735,7 +735,7 @@ provides-extras = ["async"]
 
 [[package]]
 name = "lmux-azure-foundry"
-version = "0.10.2"
+version = "0.10.3"
 source = { editable = "packages/lmux-azure-foundry" }
 dependencies = [
     { name = "httpx" },
@@ -833,7 +833,7 @@ requires-dist = [{ name = "lmux", editable = "packages/lmux" }]
 
 [[package]]
 name = "lmux-openai"
-version = "0.10.2"
+version = "0.10.3"
 source = { editable = "packages/lmux-openai" }
 dependencies = [
     { name = "httpx" },
