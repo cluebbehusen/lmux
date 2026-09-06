@@ -23,6 +23,9 @@ packages/
 
 Each package uses `src/` layout: `packages/<name>/src/<import_name>/` and `packages/<name>/tests/`.
 
+Integration tests live separately at the repository root in `tests/integration/<provider>/`
+(Google: `tests/integration/google/`). Check that directory before adding or assessing integration tests.
+
 Core (`lmux`) depends only on `pydantic`. Provider packages depend on `lmux` + their SDK (e.g., `lmux-openai` depends on `lmux` + `openai`). Core stays free of any provider-specific code: AWS-specific internals shared by the two Bedrock consumers (`lmux-aws-bedrock`'s Converse provider and `lmux-anthropic[bedrock]`'s native provider) live in `lmux-bedrock-shared`, not core.
 
 ## Installing dependencies
@@ -130,6 +133,30 @@ uv run pytest
 
 If any dependencies are not present in the local .venv, use `uv sync --all-packages --all-extras`
 
+### Integration Tests
+
+`uv run pytest` discovers only the package unit tests. The separate integration suite is in
+`tests/integration/`, with its shared harness in `tests/integration/conftest.py`, provider fixtures
+in `tests/integration/<provider>/conftest.py`, and recorded exchanges in `tests/integration/cassettes/`.
+Reuse the existing `scenario` fixture and provider builders when adding integration tests.
+
+```bash
+# Offline cassette replay (default)
+uv run pytest --no-cov tests/integration
+
+# Real API calls
+LMUX_LIVE=1 uv run pytest --no-cov tests/integration
+
+# Real API calls that record cassettes
+LMUX_RECORD=1 uv run pytest --no-cov tests/integration
+```
+
+Use a provider directory or test file to narrow the run. Keep `--no-cov` before the path so the
+default bare `--cov` option does not consume it. Respect instructions to leave a test unrun.
+New tests without recorded cassettes should use `@pytest.mark.live` and `@pytest.mark.record`;
+enable offline replay with `@pytest.mark.verified` after recording and validating the exchanges.
+Google has separate Vertex and Developer API fixtures and scenarios; do not assume each test covers both.
+
 ### Coverage
 
 - `source` is configured to package names (e.g., `["lmux", "lmux_openai"]`) — update when adding new providers
@@ -140,7 +167,8 @@ If any dependencies are not present in the local .venv, use `uv sync --all-packa
 
 ### General
 
-- All tests are mocked unit tests — **no network calls**
+- Package tests in `packages/*/tests/` are mocked unit tests — **no network calls**. Root-level
+  `tests/integration/` tests use cassette replay by default and real APIs in live/record modes.
 - `pytest-mock` for patching via `mocker: MockerFixture` fixture; `MagicMock`/`AsyncMock` from `unittest.mock` for type annotations and direct construction
 - `pytest-asyncio` with `asyncio_mode = "auto"` — async test methods just work
 - `--import-mode=importlib` to avoid namespace collisions between packages

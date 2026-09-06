@@ -1,0 +1,130 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-2.5-flash:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Call get_code for alpha and beta in parallel in the same turn, exactly once each. After receiving both results, repeat both codes verbatim in your answer."
+          }
+        ]
+      },
+      {
+        "role": "model",
+        "parts": [
+          {
+            "functionCall": {
+              "name": "get_code",
+              "args": {
+                "label": "alpha"
+              }
+            }
+          },
+          {
+            "functionCall": {
+              "name": "get_code",
+              "args": {
+                "label": "beta"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "parts": [
+          {
+            "functionResponse": {
+              "name": "get_code",
+              "response": {
+                "code": "ALPHA-731"
+              }
+            }
+          },
+          {
+            "functionResponse": {
+              "name": "get_code",
+              "response": {
+                "code": "BETA-942"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "get_code",
+            "description": "Look up the secret code for one label. Each label requires its own call.",
+            "parametersJsonSchema": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "enum": [
+                    "alpha",
+                    "beta"
+                  ]
+                }
+              },
+              "required": [
+                "label"
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "toolConfig": {
+      "functionCallingConfig": {
+        "mode": "NONE"
+      }
+    },
+    "generationConfig": {
+      "maxOutputTokens": 256,
+      "thinkingConfig": {
+        "thinkingBudget": 0
+      }
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "ALPHA-731\nBETA-942"
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "avgLogprobs": -0.0009342337337632974
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 80,
+      "candidatesTokenCount": 12,
+      "totalTokenCount": 92,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 80
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 12
+        }
+      ]
+    },
+    "modelVersion": "gemini-2.5-flash",
+    "createTime": "2026-09-06T11:42:35.840364Z",
+    "responseId": "q1GdaqylM7XRjNsPheOdiAY"
+  }
+}

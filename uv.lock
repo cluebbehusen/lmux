@@ -783,7 +783,7 @@ requires-dist = [{ name = "lmux-google", editable = "packages/lmux-google" }]
 
 [[package]]
 name = "lmux-google"
-version = "0.12.3"
+version = "0.12.4"
 source = { editable = "packages/lmux-google" }
 dependencies = [
     { name = "google-auth" },

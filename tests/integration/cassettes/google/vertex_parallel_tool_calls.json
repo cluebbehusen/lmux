@@ -1,0 +1,101 @@
+{
+  "endpoint": "https://aiplatform.googleapis.com/v1/projects/lmux-integration/locations/global/publishers/google/models/gemini-2.5-flash:generateContent",
+  "request": {
+    "contents": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Call get_code for alpha and beta in parallel in the same turn, exactly once each. After receiving both results, repeat both codes verbatim in your answer."
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "functionDeclarations": [
+          {
+            "name": "get_code",
+            "description": "Look up the secret code for one label. Each label requires its own call.",
+            "parametersJsonSchema": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "enum": [
+                    "alpha",
+                    "beta"
+                  ]
+                }
+              },
+              "required": [
+                "label"
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "toolConfig": {
+      "functionCallingConfig": {
+        "mode": "ANY"
+      }
+    },
+    "generationConfig": {
+      "maxOutputTokens": 256,
+      "thinkingConfig": {
+        "thinkingBudget": 0
+      }
+    }
+  },
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "functionCall": {
+                "name": "get_code",
+                "args": {
+                  "label": "alpha"
+                }
+              }
+            },
+            {
+              "functionCall": {
+                "name": "get_code",
+                "args": {
+                  "label": "beta"
+                }
+              }
+            }
+          ]
+        },
+        "finishReason": "STOP",
+        "avgLogprobs": -0.0005181337706744671
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 51,
+      "candidatesTokenCount": 10,
+      "totalTokenCount": 61,
+      "trafficType": "ON_DEMAND",
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 51
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 10
+        }
+      ]
+    },
+    "modelVersion": "gemini-2.5-flash",
+    "createTime": "2026-09-06T11:42:35.170527Z",
+    "responseId": "q1Gdap-0CsvCvfIPrOzeqQM"
+  }
+}
