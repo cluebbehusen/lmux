@@ -120,7 +120,13 @@ def map_messages(messages: Sequence[Message], *, include_tool_call_ids: bool = F
                 )
             )
         else:
-            contents.append(_map_tool_message(msg, tool_call_names, include_id=include_tool_call_ids))
+            part = _map_tool_response_part(msg, tool_call_names, include_id=include_tool_call_ids)
+            # Vertex rejects a model turn whose parallel functionCall parts are answered by
+            # separate user contents, so every response to one turn lands in a single content.
+            if contents and _is_function_response_content(contents[-1]):
+                contents[-1]["parts"].append(part)
+            else:
+                contents.append({"role": "user", "parts": [part]})
 
     system = "\n".join(system_parts) if system_parts else None
     return system, contents
@@ -192,7 +198,7 @@ def _tool_call_names_from_parts(parts: list[Json]) -> dict[str, str]:
     return names
 
 
-def _map_tool_message(msg: ToolMessage, tool_call_names: dict[str, str], *, include_id: bool) -> Json:
+def _map_tool_response_part(msg: ToolMessage, tool_call_names: dict[str, str], *, include_id: bool) -> Json:
     name = tool_call_names.get(msg.tool_call_id, msg.tool_call_id)
     try:
         response_data = json.loads(msg.content)
@@ -201,7 +207,12 @@ def _map_tool_message(msg: ToolMessage, tool_call_names: dict[str, str], *, incl
     response: Json = {"name": name, "response": response_data}
     if include_id:
         response["id"] = msg.tool_call_id
-    return {"role": "user", "parts": [{"functionResponse": response}]}
+    return {"functionResponse": response}
+
+
+def _is_function_response_content(content: Json) -> bool:
+    parts = content["parts"]
+    return content["role"] == "user" and bool(parts) and all("functionResponse" in part for part in parts)
 
 
 def map_tools(tools: list[Tool]) -> list[Json]:

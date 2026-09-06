@@ -259,6 +259,56 @@ class TestMapMessages:
         )
         assert contents[1]["parts"][0]["functionResponse"]["response"] == {"result": "not json"}
 
+    def test_parallel_tool_messages_merge_into_one_content(self) -> None:
+        # Vertex rejects the replay when one model turn's two functionCall parts are answered
+        # by two user contents, so both responses have to land in a single content.
+        first = ToolCall(id="tc1", function=FunctionCallResult(name="get_weather", arguments="{}"))
+        second = ToolCall(id="tc2", function=FunctionCallResult(name="get_time", arguments="{}"))
+        _system, contents = map_messages(
+            [
+                AssistantMessage(content=None, tool_calls=[first, second]),
+                ToolMessage(content='{"temperature": 72}', tool_call_id="tc1"),
+                ToolMessage(content='{"hour": 9}', tool_call_id="tc2"),
+            ]
+        )
+        assert contents[1] == {
+            "role": "user",
+            "parts": [
+                {"functionResponse": {"name": "get_weather", "response": {"temperature": 72}}},
+                {"functionResponse": {"name": "get_time", "response": {"hour": 9}}},
+            ],
+        }
+
+    def test_tool_messages_from_separate_turns_stay_separate(self) -> None:
+        first = ToolCall(id="tc1", function=FunctionCallResult(name="get_weather", arguments="{}"))
+        second = ToolCall(id="tc2", function=FunctionCallResult(name="get_time", arguments="{}"))
+        _system, contents = map_messages(
+            [
+                AssistantMessage(content=None, tool_calls=[first]),
+                ToolMessage(content='{"temperature": 72}', tool_call_id="tc1"),
+                AssistantMessage(content=None, tool_calls=[second]),
+                ToolMessage(content='{"hour": 9}', tool_call_id="tc2"),
+            ]
+        )
+        assert contents == [
+            {"role": "model", "parts": [{"functionCall": {"name": "get_weather", "args": {}}}]},
+            {"role": "user", "parts": [{"functionResponse": {"name": "get_weather", "response": {"temperature": 72}}}]},
+            {"role": "model", "parts": [{"functionCall": {"name": "get_time", "args": {}}}]},
+            {"role": "user", "parts": [{"functionResponse": {"name": "get_time", "response": {"hour": 9}}}]},
+        ]
+
+    def test_tool_message_after_user_message_starts_a_new_content(self) -> None:
+        _system, contents = map_messages(
+            [
+                UserMessage(content="hi"),
+                ToolMessage(content='{"ok": true}', tool_call_id="tc1"),
+            ]
+        )
+        assert contents == [
+            {"role": "user", "parts": [{"text": "hi"}]},
+            {"role": "user", "parts": [{"functionResponse": {"name": "tc1", "response": {"ok": True}}}]},
+        ]
+
     def test_tool_message_unknown_id_uses_id_as_name(self) -> None:
         _system, contents = map_messages([ToolMessage(content='{"result": "ok"}', tool_call_id="unknown_id")])
         assert contents[0]["parts"][0]["functionResponse"]["name"] == "unknown_id"
