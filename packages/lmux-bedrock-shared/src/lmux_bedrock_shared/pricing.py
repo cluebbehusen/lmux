@@ -141,6 +141,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "anthropic.claude-mythos-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(27.5),
+                output_cost_per_token=per_million_tokens(137.5),
+                cache_read_cost_per_token=per_million_tokens(2.75),
+                cache_creation_cost_per_token=per_million_tokens(34.375),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(55.0)},
+            ),
+        ],
+    ),
     "anthropic.claude-opus-4-1-20250805-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -213,6 +224,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.55),
                 cache_creation_cost_per_token=per_million_tokens(6.875),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(11.0)},
+            ),
+        ],
+    ),
+    "anthropic.claude-opus-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(22.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(8.8)},
             ),
         ],
     ),
@@ -366,6 +388,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "au.anthropic.claude-opus-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(22.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(8.8)},
+            ),
+        ],
+    ),
     "au.anthropic.claude-sonnet-4-5-20250929-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -481,6 +514,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "eu.anthropic.claude-opus-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(22.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(8.8)},
+            ),
+        ],
+    ),
     "eu.anthropic.claude-sonnet-4-20250514-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -557,6 +601,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "global.anthropic.claude-mythos-5-1": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.0),
+                output_cost_per_token=per_million_tokens(50.0),
+                cache_read_cost_per_token=per_million_tokens(0.25),
+                cache_creation_cost_per_token=per_million_tokens(12.5),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(20.0)},
+            ),
+        ],
+    ),
     "global.anthropic.claude-opus-4-5-20251101-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -609,6 +664,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.5),
                 cache_creation_cost_per_token=per_million_tokens(6.25),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(10.0)},
+            ),
+        ],
+    ),
+    "global.anthropic.claude-opus-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.0),
+                output_cost_per_token=per_million_tokens(20.0),
+                cache_read_cost_per_token=per_million_tokens(0.2),
+                cache_creation_cost_per_token=per_million_tokens(5.0),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(8.0)},
             ),
         ],
     ),
@@ -685,6 +751,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.55),
                 cache_creation_cost_per_token=per_million_tokens(6.875),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(11.0)},
+            ),
+        ],
+    ),
+    "jp.anthropic.claude-opus-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(22.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(8.8)},
             ),
         ],
     ),
@@ -821,6 +898,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.55),
                 cache_creation_cost_per_token=per_million_tokens(6.875),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(11.0)},
+            ),
+        ],
+    ),
+    "us.anthropic.claude-opus-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(22.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(8.8)},
             ),
         ],
     ),
@@ -1051,6 +1139,17 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "anthropic.claude-opus-5-5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(4.8),
+                    output_cost_per_token=per_million_tokens(24.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                    cache_creation_cost_per_token=per_million_tokens(6.0),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(9.6)},
+                ),
+            ],
+        ),
         "anthropic.claude-sonnet-4-5-20250929-v1": ModelPricing(
             tiers=[
                 PricingTier(
@@ -1134,6 +1233,17 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "anthropic.claude-opus-5-5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(4.8),
+                    output_cost_per_token=per_million_tokens(24.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                    cache_creation_cost_per_token=per_million_tokens(6.0),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(9.6)},
+                ),
+            ],
+        ),
         "anthropic.claude-sonnet-4-5-20250929-v1": ModelPricing(
             tiers=[
                 PricingTier(
@@ -1169,7 +1279,7 @@ DEFAULT_PRICING_REGION = "us-east-1"
 # resolves to the base model. "global." is priced separately (~10% below standard) and is never
 # resolved to the base model inside a regional table: absent there means it matches the default
 # table, not that it takes the Region's standard rate.
-GEO_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.")
+GEO_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.", "in.")
 GLOBAL_PROFILE_PREFIX = "global."
 INFERENCE_PROFILE_PREFIXES = (GLOBAL_PROFILE_PREFIX, *GEO_PROFILE_PREFIXES)
 
@@ -1244,7 +1354,7 @@ def cost_or_none(pricing: ModelPricing, usage: Usage, as_of: date | None = None)
 
     A Region may publish input/output but no cache meter; ``calculate_cost`` treats a missing rate
     as zero, which would bill those cache tokens for free, so the unknown cost is reported as None
-    instead. Regional overrides are single-tier, so the base tier's rates decide.
+    instead. The base tier's rates decide: a long-context tier publishes the same dimensions.
     """
     tier = pricing.tiers[0]
     creation = max(usage.cache_creation_tokens or 0, sum((usage.cache_creation_tokens_by_ttl or {}).values()))

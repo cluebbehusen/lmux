@@ -164,7 +164,7 @@ class TestCalculateAzureFoundryCost:
         assert cache.cache_read_cost == pytest.approx(cache_rate)
 
     def test_o1_pro_not_o1_prefix(self) -> None:
-        """o1-pro must use its own 10x rate, not inherit the cheaper o1 prefix."""
+        """o1-pro must use its own 10x rate with no cache meter, not inherit the cheaper o1 prefix."""
         usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
         pro = calculate_azure_foundry_cost("o1-pro", usage)
         base = calculate_azure_foundry_cost("o1", usage)
@@ -177,7 +177,7 @@ class TestCalculateAzureFoundryCost:
             "o1-pro", Usage(input_tokens=1_000_000, output_tokens=0, cache_read_tokens=1_000_000)
         )
         assert cache is not None
-        assert cache.cache_read_cost == pytest.approx(75.00)
+        assert cache.cache_read_cost == pytest.approx(0.0)
 
     def test_gpt_5_2_pro_not_gpt_5_2_prefix(self) -> None:
         """gpt-5.2-pro uses its own ~12x rate with no cache meter, not the gpt-5.2 prefix."""
@@ -209,17 +209,19 @@ class TestCalculateAzureFoundryCost:
         assert calculate_azure_foundry_cost("grok-4-20-reasoning", usage) is None
         assert calculate_azure_foundry_cost("grok-4-20-non-reasoning", usage) is None
 
-    def test_grok_4_6_preview_unpriced_returns_none(self) -> None:
-        """grok-4.6 has no published meter and must return None, not fall through to grok-4."""
-        usage = Usage(input_tokens=1000, output_tokens=500)
-        assert calculate_azure_foundry_cost("grok-4.6", usage) is None
-        assert calculate_azure_foundry_cost("grok-4", usage) is not None
+    @pytest.mark.parametrize("model", ["grok-4.6", "grok-4.6-reasoning", "grok-4.6-2026-09-03"])
+    def test_grok_4_6(self, model: str) -> None:
+        """grok-4.6 has its own meter and must not fall through to grok-4 (3/15)."""
+        usage = Usage(input_tokens=100_000, output_tokens=100_000, cache_read_tokens=10_000)
+        cost = calculate_azure_foundry_cost(model, usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx((100_000 - 10_000) * 2.00 / 1_000_000)
+        assert cost.output_cost == pytest.approx(100_000 * 6.00 / 1_000_000)
+        assert cost.cache_read_cost == pytest.approx(10_000 * 0.50 / 1_000_000)
 
     @pytest.mark.parametrize(
         "model",
         [
-            "grok-4.6-reasoning",
-            "grok-4.6-2026-09-03",
             "grok-4-20-reasoning-2026-01-01",
             "grok-4-20-non-reasoning-2026-01-01",
         ],
@@ -250,7 +252,7 @@ class TestCalculateAzureFoundryCost:
     @pytest.mark.parametrize(
         ("model", "base_rates", "hi_rates"),
         [
-            ("gpt-5.6-sol", (5.00, 30.00, 0.50, 6.25), (10.00, 45.00, 1.00, 12.50)),
+            ("gpt-5.6-sol", (4.00, 20.00, 0.40, 5.00), (8.00, 30.00, 0.80, 10.00)),
             ("gpt-5.6-terra", (2.00, 12.00, 0.20, 2.50), (4.00, 18.00, 0.40, 5.00)),
             ("gpt-5.6-luna", (0.20, 1.20, 0.02, 0.25), (0.40, 1.80, 0.04, 0.50)),
         ],
@@ -291,8 +293,12 @@ class TestCalculateAzureFoundryCost:
         sol = calculate_azure_foundry_cost("gpt-5.6-sol", usage)
         assert bare is not None
         assert sol is not None
-        assert bare.input_cost == pytest.approx(100_000 * 5.00 / 1_000_000)
+        assert bare.input_cost == pytest.approx(100_000 * 4.00 / 1_000_000)
         assert bare.total_cost == pytest.approx(sol.total_cost)
+
+    def test_gpt_6_has_no_family_fallback(self) -> None:
+        """Unpriced gpt-6 models return None rather than inheriting gpt-6-astra's rates."""
+        assert calculate_azure_foundry_cost("gpt-6-future", Usage(input_tokens=1000, output_tokens=500)) is None
 
     def test_grok_4_2_corrected_pricing(self) -> None:
         usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)

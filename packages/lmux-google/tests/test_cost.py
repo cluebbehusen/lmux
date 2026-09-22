@@ -212,14 +212,15 @@ class TestCalculateGoogleCost:
         assert cost.output_cost == pytest.approx(7.50)
         assert cost.cache_read_cost == pytest.approx(100_000 * 0.15 / 1_000_000)
 
-    def test_gemini_3_8_flash_cyber_prices_as_its_generally_available_sibling(self) -> None:
-        """The Fairwind-restricted Cyber variant has no key of its own and is priced identically."""
+    @pytest.mark.parametrize("as_of", [date(2026, 9, 22), date(2027, 1, 1)])
+    def test_gemini_3_8_flash_cyber_skips_the_flash_introductory_window(self, as_of: date) -> None:
+        """Cyber bills its standard rate from launch rather than 3.8 Flash's half-price intro."""
         usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_tokens=100_000)
-        cyber = calculate_google_cost("gemini-3.8-flash-cyber", usage, as_of=date(2026, 9, 3))
-        flash = calculate_google_cost("gemini-3.8-flash", usage, as_of=date(2026, 9, 3))
-        assert cyber is not None
-        assert flash is not None
-        assert cyber.total_cost == pytest.approx(flash.total_cost)
+        cost = calculate_google_cost("gemini-3.8-flash-cyber", usage, as_of=as_of)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx((1_000_000 - 100_000) * 1.50 / 1_000_000)
+        assert cost.output_cost == pytest.approx(7.50)
+        assert cost.cache_read_cost == pytest.approx(100_000 * 0.15 / 1_000_000)
 
     @pytest.mark.parametrize(
         ("model", "rate"),

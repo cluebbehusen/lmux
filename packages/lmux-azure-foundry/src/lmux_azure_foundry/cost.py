@@ -74,30 +74,84 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # --- OpenAI: GPT-5.6 family (sol/terra/luna) ---
-    # Rates come from the Azure "5.6 {sol,terra,luna} {ShortCo,LongCo} ... Std Gl 1M Tokens"
-    # meters. gpt-5.6 is the only AOAI family Azure meters cache writes for ("Cd Wr"), at 1.25x
-    # the input rate; every other family exposes cached input only. Azure labels the second tier
-    # LongCo without publishing the boundary, so the 272K threshold comes from OpenAI's rule.
-    # The bare "gpt-5.6" alias routes to Sol.
+    # --- OpenAI: GPT-6 and GPT-5.6 families ---
+    # Rates come from the Azure "{6-astra,5.6 sol,...} {ShortCo,LongCo} ... Std Gl 1M Tokens"
+    # meters. gpt-6 and gpt-5.6 are the only AOAI families Azure meters cache writes for
+    # ("Cd Wr"), at 1.25x the input rate; every other family exposes cached input only. Azure
+    # labels the second tier LongCo without publishing the boundary, so the 272K threshold comes
+    # from OpenAI's rule. The bare "gpt-5.6" alias routes to Sol. There is deliberately no bare
+    # "gpt-6" key: other gpt-6 models would inherit Astra's rates instead of returning None.
     #
     # Azure bills cache writes but does not report them: the usage object carries only
-    # cached_tokens, a read counter. So the cache-write rate below applies only when a caller
+    # cached_tokens, a read counter. So the cache-write rates below apply only when a caller
     # passes cache_creation_tokens to calculate_azure_foundry_cost directly. In a cost derived
     # from an Azure response those tokens stay inside input_tokens and bill at 1.0x, not 1.25x.
+    "gpt-6-astra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(50.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(20.00),
+                output_cost_per_token=per_million_tokens(75.00),
+                cache_read_cost_per_token=per_million_tokens(2.00),
+                cache_creation_cost_per_token=per_million_tokens(25.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    # gpt-6-sol and gpt-6-luna are provisional: Azure lists both models but had published no meters
+    # for them as of 2026-09-22, so these mirror OpenAI's direct list prices.
+    "gpt-6-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                cache_creation_cost_per_token=per_million_tokens(5.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.10),
+                output_cost_per_token=per_million_tokens(0.50),
+                cache_read_cost_per_token=per_million_tokens(0.01),
+                cache_creation_cost_per_token=per_million_tokens(0.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(0.75),
+                cache_read_cost_per_token=per_million_tokens(0.02),
+                cache_creation_cost_per_token=per_million_tokens(0.25),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
     "gpt-5.6": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(5.00),
-                output_cost_per_token=per_million_tokens(30.00),
-                cache_read_cost_per_token=per_million_tokens(0.50),
-                cache_creation_cost_per_token=per_million_tokens(6.25),
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(20.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                cache_creation_cost_per_token=per_million_tokens(5.00),
             ),
             PricingTier(
-                input_cost_per_token=per_million_tokens(10.00),
-                output_cost_per_token=per_million_tokens(45.00),
-                cache_read_cost_per_token=per_million_tokens(1.00),
-                cache_creation_cost_per_token=per_million_tokens(12.50),
+                input_cost_per_token=per_million_tokens(8.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.80),
+                cache_creation_cost_per_token=per_million_tokens(10.00),
                 min_input_tokens=272_000,
             ),
         ],
@@ -105,16 +159,16 @@ _PRICING: dict[str, ModelPricing] = {
     "gpt-5.6-sol": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(5.00),
-                output_cost_per_token=per_million_tokens(30.00),
-                cache_read_cost_per_token=per_million_tokens(0.50),
-                cache_creation_cost_per_token=per_million_tokens(6.25),
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(20.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                cache_creation_cost_per_token=per_million_tokens(5.00),
             ),
             PricingTier(
-                input_cost_per_token=per_million_tokens(10.00),
-                output_cost_per_token=per_million_tokens(45.00),
-                cache_read_cost_per_token=per_million_tokens(1.00),
-                cache_creation_cost_per_token=per_million_tokens(12.50),
+                input_cost_per_token=per_million_tokens(8.00),
+                output_cost_per_token=per_million_tokens(30.00),
+                cache_read_cost_per_token=per_million_tokens(0.80),
+                cache_creation_cost_per_token=per_million_tokens(10.00),
                 min_input_tokens=272_000,
             ),
         ],
@@ -414,13 +468,13 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # o1-pro is 10x o1 on Azure; explicit key stops it inheriting the cheaper "o1" prefix.
+    # o1-pro is 10x o1 on Azure and has no cached-input meter; explicit key stops it inheriting
+    # the cheaper "o1" prefix (and its cache rate).
     "o1-pro": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(150.00),
                 output_cost_per_token=per_million_tokens(600.00),
-                cache_read_cost_per_token=per_million_tokens(75.00),
             )
         ],
     ),
@@ -601,8 +655,23 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # Azure publishes the long-context band as "4.3 ... Glbl L" meters without stating the
+    # Azure publishes the long-context band as "4.x ... Glbl L" meters without stating the
     # boundary; xAI documents it as 200K prompt tokens, where the rate exactly doubles.
+    "grok-4.6": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(6.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(12.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                min_input_tokens=200_000,
+            ),
+        ],
+    ),
     "grok-4.3": ModelPricing(
         tiers=[
             PricingTier(
@@ -809,6 +878,15 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "MAI-Code-1.1-Flash": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(1.20),
+                cache_read_cost_per_token=per_million_tokens(0.02),
+            )
+        ],
+    ),
     "MAI-DS-R1": ModelPricing(
         tiers=[
             PricingTier(
@@ -875,12 +953,12 @@ _PRICING: dict[str, ModelPricing] = {
 # (capital Cohere/Phi/Mistral/Kimi ids, lowercase deepseek/grok/gpt), so lookup folds case.
 _PRICING_BY_PREFIX = build_pricing_index(_PRICING)
 
-# Known Azure models with no published Global Standard rate (e.g. the grok-4-20 and
-# grok-4.6 Preview variants). Returning None is correct — do NOT let them fall through to
-# a broad prefix (e.g. "grok-4") and inherit a fabricated rate. Matched as prefixes, like
-# the pricing table, so dated snapshots (grok-4.6-2026-09-03) and reasoning-mode variants
-# (grok-4.6-reasoning) are covered too. Add real rates once Azure publishes meters.
-_UNPRICED_MODEL_PREFIXES = ("grok-4-20-reasoning", "grok-4-20-non-reasoning", "grok-4.6")
+# Known Azure models with no published Global Standard rate (e.g. the grok-4-20 Preview
+# variants). Returning None is correct — do NOT let them fall through to a broad prefix
+# (e.g. "grok-4") and inherit a fabricated rate. Matched as prefixes, like the pricing
+# table, so dated snapshots (grok-4-20-reasoning-2026-09-03) are covered too. Add real
+# rates once Azure publishes meters.
+_UNPRICED_MODEL_PREFIXES = ("grok-4-20-reasoning", "grok-4-20-non-reasoning")
 
 
 def calculate_azure_foundry_cost(model: str, usage: Usage) -> Cost | None:

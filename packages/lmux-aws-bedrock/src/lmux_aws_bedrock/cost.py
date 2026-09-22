@@ -823,6 +823,16 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # -- Moonshot (via Bedrock) ----------------------------------
+    "global.moonshotai.kimi-k3": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.3),
+                cache_creation_cost_per_token=per_million_tokens(3.75),
+            ),
+        ],
+    ),
     "moonshotai.kimi-k2-thinking": ModelPricing(
         tiers=[
             PricingTier(
@@ -836,6 +846,26 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.6),
                 output_cost_per_token=per_million_tokens(3.0),
+            ),
+        ],
+    ),
+    "moonshotai.kimi-k3": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+        ],
+    ),
+    "us.moonshotai.kimi-k3": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
             ),
         ],
     ),
@@ -1040,9 +1070,9 @@ _PRICING: dict[str, ModelPricing] = {
     "global.xai.grok-4.6": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(2.2),
-                output_cost_per_token=per_million_tokens(6.6),
-                cache_read_cost_per_token=per_million_tokens(0.55),
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(6.0),
+                cache_read_cost_per_token=per_million_tokens(0.5),
             ),
         ],
     ),
@@ -1078,6 +1108,26 @@ _PRICING: dict[str, ModelPricing] = {
 
 # Regional pricing overrides (only models that differ from us-east-1)
 _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
+    "ap-east-1": {
+        "global.moonshotai.kimi-k3": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.0),
+                    output_cost_per_token=per_million_tokens(15.0),
+                    cache_read_cost_per_token=per_million_tokens(0.3),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k3": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.3),
+                    output_cost_per_token=per_million_tokens(16.5),
+                    cache_read_cost_per_token=per_million_tokens(0.33),
+                ),
+            ],
+        ),
+    },
     "ap-east-2": {
         "global.amazon.nova-2-lite-v1": ModelPricing(
             tiers=[
@@ -5460,6 +5510,35 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "global.moonshotai.kimi-k3": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.6),
+                    output_cost_per_token=per_million_tokens(18.0),
+                    cache_read_cost_per_token=per_million_tokens(0.36),
+                    cache_creation_cost_per_token=per_million_tokens(4.5),
+                ),
+            ],
+        ),
+        "global.xai.grok-4.6": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.4),
+                    output_cost_per_token=per_million_tokens(7.2),
+                    cache_read_cost_per_token=per_million_tokens(0.6),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k3": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.96),
+                    output_cost_per_token=per_million_tokens(19.8),
+                    cache_read_cost_per_token=per_million_tokens(0.396),
+                    cache_creation_cost_per_token=per_million_tokens(4.95),
+                ),
+            ],
+        ),
         "nvidia.nemotron-nano-12b-v2": ModelPricing(
             tiers=[
                 PricingTier(
@@ -5579,6 +5658,25 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "global.moonshotai.kimi-k3": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.6),
+                    output_cost_per_token=per_million_tokens(18.0),
+                    cache_read_cost_per_token=per_million_tokens(0.36),
+                    cache_creation_cost_per_token=per_million_tokens(4.5),
+                ),
+            ],
+        ),
+        "global.xai.grok-4.6": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.4),
+                    output_cost_per_token=per_million_tokens(7.2),
+                    cache_read_cost_per_token=per_million_tokens(0.6),
+                ),
+            ],
+        ),
         "google.gemma-4-26b-a4b": ModelPricing(
             tiers=[
                 PricingTier(
@@ -5600,6 +5698,16 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                 PricingTier(
                     input_cost_per_token=per_million_tokens(0.048),
                     output_cost_per_token=per_million_tokens(0.096),
+                ),
+            ],
+        ),
+        "moonshotai.kimi-k3": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(3.96),
+                    output_cost_per_token=per_million_tokens(19.8),
+                    cache_read_cost_per_token=per_million_tokens(0.396),
+                    cache_creation_cost_per_token=per_million_tokens(4.95),
                 ),
             ],
         ),
@@ -5658,6 +5766,14 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                     input_cost_per_token=per_million_tokens(0.264),
                     output_cost_per_token=per_million_tokens(1.584),
                     cache_read_cost_per_token=per_million_tokens(0.0264),
+                    cache_creation_cost_per_token=per_million_tokens(0.33),
+                ),
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(0.528),
+                    output_cost_per_token=per_million_tokens(2.376),
+                    cache_read_cost_per_token=per_million_tokens(0.0528),
+                    cache_creation_cost_per_token=per_million_tokens(0.66),
+                    min_input_tokens=272000,
                 ),
             ],
         ),
@@ -5667,6 +5783,14 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                     input_cost_per_token=per_million_tokens(2.64),
                     output_cost_per_token=per_million_tokens(15.84),
                     cache_read_cost_per_token=per_million_tokens(0.264),
+                    cache_creation_cost_per_token=per_million_tokens(3.3),
+                ),
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(5.28),
+                    output_cost_per_token=per_million_tokens(23.76),
+                    cache_read_cost_per_token=per_million_tokens(0.528),
+                    cache_creation_cost_per_token=per_million_tokens(6.6),
+                    min_input_tokens=272000,
                 ),
             ],
         ),
@@ -5761,6 +5885,16 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                     input_cost_per_token=per_million_tokens(0.39),
                     output_cost_per_token=per_million_tokens(3.21),
                     cache_read_cost_per_token=per_million_tokens(0.0975),
+                ),
+            ],
+        ),
+    },
+    "us-west-2": {
+        "mistral.mistral-large-2407-v1": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.0),
+                    output_cost_per_token=per_million_tokens(6.0),
                 ),
             ],
         ),
