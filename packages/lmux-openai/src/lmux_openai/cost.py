@@ -32,6 +32,40 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "gpt-6-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                cache_creation_cost_per_token=per_million_tokens(5.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.10),
+                output_cost_per_token=per_million_tokens(0.50),
+                cache_read_cost_per_token=per_million_tokens(0.01),
+                cache_creation_cost_per_token=per_million_tokens(0.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(0.75),
+                cache_read_cost_per_token=per_million_tokens(0.02),
+                cache_creation_cost_per_token=per_million_tokens(0.25),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
     # GPT-5 family
     # gpt-5.6 family (sol/terra/luna). Cache writes are billed on gpt-5.6+ only,
     # at a flat 1.25x the input rate (no per-TTL split), via cache_creation_cost_per_token.
@@ -449,6 +483,15 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "gpt-rosalind-research": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(25.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
     # Reasoning models
     "o3-pro": ModelPricing(
         tiers=[
@@ -570,7 +613,7 @@ _UNPRICED_MODELS = frozenset({"gpt-5.4-cyber"})
 # 10% uplift for regional processing (data residency) endpoints. Per OpenAI, this
 # applies to the gpt-5.4 family (gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-pro),
 # the gpt-5.5 family (gpt-5.5, gpt-5.5-pro), the gpt-5.6 family (sol/terra/luna),
-# and gpt-6-astra.
+# and the gpt-6 family (astra/sol/luna).
 REGIONAL_UPLIFT = 1.1
 _REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4", "gpt-5.5", "gpt-5.6", "gpt-6")
 # The "cyber" variants share those family prefixes but are absent from OpenAI's

@@ -131,6 +131,23 @@ class TestCalculateBedrockAnthropicCost:
         assert cost is not None
         assert cost.cache_read_cost == pytest.approx(0.275)
 
+    def test_gated_global_profile_takes_the_global_rate(self) -> None:
+        """Mythos 5.1 is gated, so its global. profile is not in the catalog but still bills the Global rate."""
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        glob = calculate_bedrock_anthropic_cost("global.anthropic.claude-mythos-5-1", usage)
+        standard = calculate_bedrock_anthropic_cost("anthropic.claude-mythos-5-1", usage)
+        assert glob is not None
+        assert standard is not None
+        assert glob.total_cost == pytest.approx(10.0 + 50.0)
+        assert standard.total_cost == pytest.approx(11.0 + 55.0)
+
+    def test_in_geo_profile_strips_to_the_base_model(self) -> None:
+        usage = Usage(input_tokens=1000, output_tokens=1000)
+        cost = calculate_bedrock_anthropic_cost("in.anthropic.claude-opus-5-5", usage)
+        bare = calculate_bedrock_anthropic_cost("anthropic.claude-opus-5-5", usage)
+        assert cost is not None
+        assert cost == bare
+
     def test_dated_schedule(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """``as_of`` picks the schedule in effect on that date; no ``as_of`` picks the latest."""
         model = "anthropic.claude-scheduled"

@@ -50,8 +50,11 @@ SHARED_PRICING_PATH = (
     / "pricing.py"
 )
 
-# Long-context tier threshold (tokens). Anthropic uses 200K for all models.
+# Default long-context tier threshold (tokens). Anthropic uses 200K for all models.
 LCTX_THRESHOLD = 200_000
+# Vendors whose long-context band starts elsewhere, keyed by bare model-ID prefix. AWS publishes the
+# long-context meters without the boundary; OpenAI documents it as 272K input tokens.
+LCTX_THRESHOLD_BY_PREFIX: dict[str, int] = {"openai.": 272_000}
 
 # ── Model ID mappings ────────────────────────────────────────────────────────
 
@@ -65,6 +68,8 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     "Claude Fable 5": "anthropic.claude-fable-5-v1",
     "Claude Mythos 5.1": "anthropic.claude-mythos-5-1",
     "Claude Mythos 5": "anthropic.claude-mythos-5-v1",
+    "Claude Mythos Preview": "anthropic.claude-mythos-preview",
+    "Claude Opus 5.5": "anthropic.claude-opus-5-5",
     "Claude Opus 5": "anthropic.claude-opus-5-v1",
     "Claude Sonnet 5": "anthropic.claude-sonnet-5-v1",
     "Claude Opus 4.8": "anthropic.claude-opus-4-8-v1",
@@ -83,7 +88,7 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     "Claude 3.5 Haiku": "anthropic.claude-3-5-haiku-20241022-v1",
     "Claude 3 Opus": "anthropic.claude-3-opus-20240229-v1",
     "Claude 3 Sonnet": "anthropic.claude-3-sonnet-20240229-v1",
-    "Claude 3 Haiku": "anthropic.claude-3-haiku-v1",
+    "Claude 3 Haiku": "anthropic.claude-3-haiku-20240307-v1",
     "Claude": "anthropic.claude-v2",
     "Claude Instant": "anthropic.claude-instant-v1",
     # Cohere
@@ -138,6 +143,7 @@ NON_MANTLE_MODEL_MAP: dict[str, str] = {
     "Mistral 7B": "mistral.mistral-7b-instruct-v0:2",
     "Mixtral 8x7B": "mistral.mixtral-8x7b-instruct-v0:1",
     "Mistral Large": "mistral.mistral-large-2402-v1",
+    "Mistral Large 2407": "mistral.mistral-large-2407-v1",
     "Mistral Small": "mistral.mistral-small-2402-v1",
     "Mistral Large 3": "mistral.mistral-large-3-675b-instruct",
     "Pixtral Large 25.02": "mistral.pixtral-large-2502",
@@ -194,7 +200,12 @@ EMBEDDING_PREFIXES = (
 )
 
 # Cross-region inference profile prefixes (excluding "global." which gets its own pricing)
-INFERENCE_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.")
+INFERENCE_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.", "in.")
+
+# Gated models are absent from list_foundation_models and list_inference_profiles, so none of their
+# profiles are discovered. These document a global. profile on their model card; without a key of its
+# own it would strip to the bare model and bill the standard rate instead of the lower Global rate.
+GATED_GLOBAL_PROFILE_MODELS = frozenset({"anthropic.claude-mythos-5-1"})
 
 # ── Bedrock API integration ──────────────────────────────────────────────────
 
@@ -224,6 +235,7 @@ GEO_DISCOVERY_REGIONS: dict[str, str] = {
     "ap-southeast-2": "au.",
     "ap-northeast-1": "jp.",
     "ca-central-1": "ca.",
+    "ap-south-1": "in.",
 }
 
 
@@ -312,6 +324,7 @@ KNOWN_UNRESOLVED_IDS: frozenset[str] = frozenset(
         "ai21.j2-mid-v1",
         "ai21.j2-ultra-v1",
         "ai21.jamba-instruct-v1",
+        "amazon.nova-premier-v1",
         "amazon.titan-text-express-v1",
         "amazon.titan-text-lite-v1",
         "amazon.titan-text-premier-v1",
@@ -335,6 +348,7 @@ KNOWN_UNRESOLVED_IDS: frozenset[str] = frozenset(
         "anthropic.claude-3-5-sonnet-20240620-v1",
         "anthropic.claude-3-5-sonnet-20241022-v2",
         "anthropic.claude-3-7-sonnet-20250219-v1",
+        "anthropic.claude-3-haiku-20240307-v1",
         "anthropic.claude-3-opus-20240229-v1",
         "anthropic.claude-3-sonnet-20240229-v1",
         "anthropic.claude-opus-4-20250514-v1",
@@ -344,6 +358,7 @@ KNOWN_UNRESOLVED_IDS: frozenset[str] = frozenset(
         "amazon.nova-2-pro-v1",
         "anthropic.claude-mythos-5-1",
         "anthropic.claude-mythos-5-v1",
+        "anthropic.claude-mythos-preview",
         "deepseek.v3.1",
         "google.gemma-4-26b-a4b",
         "google.gemma-4-31b",
@@ -439,7 +454,7 @@ class ModelPrices:
     cache_read_cost: Decimal | None = None
     cache_write_cost: Decimal | None = None
     cache_write_1h_cost: Decimal | None = None
-    # Long-context tier (>200K tokens)
+    # Long-context tier (see LCTX_THRESHOLD)
     lctx_input_cost: Decimal | None = None
     lctx_output_cost: Decimal | None = None
     lctx_cache_read_cost: Decimal | None = None
@@ -523,16 +538,42 @@ def fetch_pricing(service: str, region: str) -> dict[str, Any]:
 # ── Parsing: AmazonBedrock mantle models ─────────────────────────────────────
 
 
-def parse_mantle_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
+# Mantle dimension names after the optional "-global" / "-long-ctx" qualifiers are removed.
+_MANTLE_DIMENSIONS: dict[str, str] = {
+    "input-tokens": "input",
+    "output-tokens": "output",
+    "cache-read-input-tokens": "cache_read",
+    "cache-read-tokens": "cache_read",
+    "cache-write-input-tokens": "cache_write",
+    "cache-write-tokens": "cache_write",
+    # Moonshot and OpenAI publish only a 30-minute cache write, so it is the default write rate.
+    "cache-write-tokens-30m": "cache_write",
+}
+
+
+def _parse_mantle_dimension(dimension_part: str) -> tuple[str, bool, bool] | None:
+    """Split a mantle dimension (e.g. ``input-tokens-global``) into (dimension, is_lctx, is_global)."""
+    is_lctx = "-long-ctx" in dimension_part
+    is_global = "-global" in dimension_part
+    base = dimension_part.replace("-long-ctx", "").replace("-global", "")
+    dimension = _MANTLE_DIMENSIONS.get(base)
+    return None if dimension is None else (dimension, is_lctx, is_global)
+
+
+def parse_mantle_models(data: dict[str, Any]) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
     """Parse mantle entries from AmazonBedrock API.
 
     Token prices are scaled to per-million based on each dimension's ``unit``
     (usually ``1K tokens``, but AWS ships ``1M tokens`` for some models such as
     xAI Grok).
+
+    Returns (default_pricing, global_pricing) where global_pricing contains only models with a
+    ``-global`` meter, which bills ``global.`` profile calls below the standard rate. A model with
+    only Global meters has no standard rate and is dropped.
     """
     products = data.get("products", {})
     terms = data.get("terms", {}).get("OnDemand", {})
-    result: dict[str, ModelPrices] = {}
+    collected: dict[str, dict[tuple[str, bool, bool], Decimal]] = {}
 
     for sku, prod in products.items():
         attrs = prod.get("attributes", {})
@@ -541,11 +582,13 @@ def parse_mantle_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
             continue
 
         # Extract model ID and dimension from usagetype
-        # Pattern: {REGION_PREFIX}-{model_id}-mantle-{dimension}-standard
+        # Pattern: {REGION_PREFIX}-{model_id}-mantle-{dimension}[-30m][-global][-long-ctx]-standard
         mantle_idx = ut.index("-mantle-")
         prefix_end = ut.index("-") + 1  # skip region prefix like "USE1-"
         model_id = ut[prefix_end:mantle_idx]
-        dimension_part = ut[mantle_idx + len("-mantle-") : -len("-standard")]
+        parsed = _parse_mantle_dimension(ut[mantle_idx + len("-mantle-") : -len("-standard")])
+        if parsed is None:
+            continue
 
         priced = _get_price_with_unit(sku, terms)
         if priced is None:
@@ -557,21 +600,9 @@ def parse_mantle_models(data: dict[str, Any]) -> dict[str, ModelPrices]:
             _warn(f"Unrecognized price unit {unit!r} for {ut}; skipping dimension")
             continue
 
-        if model_id not in result:
-            result[model_id] = ModelPrices()
+        collected.setdefault(model_id, {})[parsed] = price_per_m
 
-        mp = result[model_id]
-        if dimension_part == "input-tokens":
-            mp.input_cost = price_per_m
-        elif dimension_part == "output-tokens":
-            mp.output_cost = price_per_m
-        elif dimension_part in ("cache-read-input-tokens", "cache-read-tokens"):
-            mp.cache_read_cost = price_per_m
-        elif dimension_part in ("cache-write-input-tokens", "cache-write-tokens"):
-            mp.cache_write_cost = price_per_m
-
-    # Remove models with incomplete pricing
-    return {k: v for k, v in result.items() if v.input_cost is not None}
+    return _build_scoped_result(collected, fallback_to_global=False)
 
 
 # ── Parsing: AmazonBedrock non-mantle models (Amazon Nova/Titan, legacy) ─────
@@ -893,15 +924,15 @@ def parse_foundation_models(
     if unmapped:
         _warn(f"Unmapped Foundation Models servicenames: {sorted(unmapped)}")
 
-    return _build_fm_result(collected, fallback_to_global=fallback_to_global)
+    return _build_scoped_result(collected, fallback_to_global=fallback_to_global)
 
 
-def _build_fm_result(
+def _build_scoped_result(
     collected: dict[str, dict[tuple[str, bool, bool], Decimal]],
     *,
     fallback_to_global: bool = True,
 ) -> tuple[dict[str, ModelPrices], dict[str, ModelPrices]]:
-    """Build ModelPrices from collected Foundation Models data.
+    """Build ModelPrices from ``{model_id: {(dimension, is_lctx, is_global): price}}``.
 
     Returns (default_pricing, global_pricing). ``default`` uses non-global (standard) prices;
     ``fallback_to_global`` fills a missing standard dimension from the global rate (see
@@ -1275,7 +1306,7 @@ DEFAULT_PRICING_REGION = "us-east-1"
 # resolves to the base model. "global." is priced separately (~10% below standard) and is never
 # resolved to the base model inside a regional table: absent there means it matches the default
 # table, not that it takes the Region's standard rate.
-GEO_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.")
+GEO_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.", "in.")
 GLOBAL_PROFILE_PREFIX = "global."
 INFERENCE_PROFILE_PREFIXES = (GLOBAL_PROFILE_PREFIX, *GEO_PROFILE_PREFIXES)
 
@@ -1350,7 +1381,7 @@ def cost_or_none(pricing: ModelPricing, usage: Usage, as_of: date | None = None)
 
     A Region may publish input/output but no cache meter; ``calculate_cost`` treats a missing rate
     as zero, which would bill those cache tokens for free, so the unknown cost is reported as None
-    instead. Regional overrides are single-tier, so the base tier's rates decide.
+    instead. The base tier's rates decide: a long-context tier publishes the same dimensions.
     """
     tier = pricing.tiers[0]
     creation = max(usage.cache_creation_tokens or 0, sum((usage.cache_creation_tokens_by_ttl or {}).values()))
@@ -1420,13 +1451,22 @@ def _scale_prices(mp: ModelPrices, multiplier: Decimal) -> ModelPrices:
     return replace(mp, **scaled)
 
 
-def _emit_tiers_block(lines: list[str], mp: ModelPrices, is_emb: bool, tiers_indent: int) -> None:
+def _lctx_threshold(model_id: str) -> int:
+    """Input-token count above which ``model_id``'s long-context tier applies."""
+    bare_id = _strip_profile_prefix(model_id)
+    return next(
+        (threshold for prefix, threshold in LCTX_THRESHOLD_BY_PREFIX.items() if bare_id.startswith(prefix)),
+        LCTX_THRESHOLD,
+    )
+
+
+def _emit_tiers_block(lines: list[str], mp: ModelPrices, is_emb: bool, tiers_indent: int, lctx_threshold: int) -> None:
     """Emit a ``tiers=[...]`` block: the standard tier plus the long-context tier if present."""
     pad = " " * tiers_indent
     lines.append(f"{pad}tiers=[")
-    _emit_tier(lines, mp, is_emb, tiers_indent + 4, is_lctx=False)
+    _emit_tier(lines, mp, is_emb, tiers_indent + 4, lctx_threshold=None)
     if mp.has_lctx:
-        _emit_tier(lines, mp, is_emb, tiers_indent + 4, is_lctx=True)
+        _emit_tier(lines, mp, is_emb, tiers_indent + 4, lctx_threshold=lctx_threshold)
     lines.append(f"{pad}],")
 
 
@@ -1434,9 +1474,10 @@ def _emit_model_pricing(lines: list[str], model_id: str, mp: ModelPrices, indent
     """Emit a single ModelPricing entry, including a dated schedule override if one applies."""
     pad = " " * indent
     is_emb = _is_embedding(model_id)
+    lctx_threshold = _lctx_threshold(model_id)
 
     lines.append(f'{pad}"{model_id}": ModelPricing(')
-    _emit_tiers_block(lines, mp, is_emb, indent + 4)
+    _emit_tiers_block(lines, mp, is_emb, indent + 4, lctx_threshold)
 
     schedule = _dated_schedule_for(model_id)
     if schedule is not None:
@@ -1444,19 +1485,19 @@ def _emit_model_pricing(lines: list[str], model_id: str, mp: ModelPrices, indent
         lines.append(f"{pad}    schedules=[")
         lines.append(f"{pad}        PricingSchedule(")
         lines.append(f"{pad}            valid_from=date({valid_from.year}, {valid_from.month}, {valid_from.day}),")
-        _emit_tiers_block(lines, _scale_prices(mp, multiplier), is_emb, indent + 12)
+        _emit_tiers_block(lines, _scale_prices(mp, multiplier), is_emb, indent + 12, lctx_threshold)
         lines.append(f"{pad}        ),")
         lines.append(f"{pad}    ],")
 
     lines.append(f"{pad}),")
 
 
-def _emit_tier(lines: list[str], mp: ModelPrices, is_emb: bool, indent: int, *, is_lctx: bool) -> None:
-    """Emit a single PricingTier."""
+def _emit_tier(lines: list[str], mp: ModelPrices, is_emb: bool, indent: int, *, lctx_threshold: int | None) -> None:
+    """Emit a single PricingTier; ``lctx_threshold`` is set only for the long-context tier."""
     pad = " " * indent
     lines.append(f"{pad}PricingTier(")
 
-    if is_lctx:
+    if lctx_threshold is not None:
         input_cost = mp.lctx_input_cost
         output_cost = mp.lctx_output_cost
         cache_read = mp.lctx_cache_read_cost
@@ -1483,8 +1524,8 @@ def _emit_tier(lines: list[str], mp: ModelPrices, is_emb: bool, indent: int, *, 
         lines.append(
             f'{pad}    cache_creation_cost_per_token_by_ttl={{"1h": per_million_tokens({_fmt(cache_write_1h)})}},'
         )
-    if is_lctx:
-        lines.append(f"{pad}    min_input_tokens={LCTX_THRESHOLD},")
+    if lctx_threshold is not None:
+        lines.append(f"{pad}    min_input_tokens={lctx_threshold},")
 
     lines.append(f"{pad}),")
 
@@ -1564,14 +1605,16 @@ def _region_overrides(  # noqa: PLR0913
     carry a Global *meter* in the price list but no invokable Global profile, so a ``global.`` key
     for them would price a call that cannot be made.
     """
-    reg_mantle = parse_mantle_models(reg_bedrock)
+    reg_mantle, reg_mantle_global = parse_mantle_models(reg_bedrock)
     reg_amazon, reg_amazon_global = parse_amazon_models(reg_bedrock, fallback_to_global=False)
     reg_foundation, reg_foundation_global = parse_foundation_models(reg_fm, fallback_to_global=False)
 
     reg_std = resolve_pricing_ids(merge_pricing(reg_mantle, reg_amazon, reg_foundation), resolution_map)
     std_diffs, std_dropped = drop_unemittable(compute_regional_diffs(default_pricing, reg_std))
 
-    reg_global = resolve_pricing_ids(merge_pricing({}, reg_amazon_global, reg_foundation_global), resolution_map)
+    reg_global = resolve_pricing_ids(
+        merge_pricing(reg_mantle_global, reg_amazon_global, reg_foundation_global), resolution_map
+    )
     reg_global = {mid: mp for mid, mp in reg_global.items() if mid in global_models}
     global_diffs, global_dropped = drop_unemittable(compute_regional_diffs(global_pricing, reg_global))
 
@@ -1678,8 +1721,8 @@ def main() -> None:
 
     # Parse
     _info("Parsing mantle models...")
-    mantle = parse_mantle_models(bedrock_data)
-    _info(f"  Found {len(mantle)} mantle models")
+    mantle, mantle_global = parse_mantle_models(bedrock_data)
+    _info(f"  Found {len(mantle)} mantle models ({len(mantle_global)} with global pricing)")
 
     _info("Parsing Amazon models (Nova/Titan/legacy)...")
     amazon, amazon_global = parse_amazon_models(bedrock_data, report_unmapped=True)
@@ -1691,7 +1734,7 @@ def main() -> None:
 
     # Merge
     default_pricing = merge_pricing(mantle, amazon, foundation)
-    global_pricing: dict[str, ModelPrices] = {**amazon_global, **foundation_global}
+    global_pricing = merge_pricing(mantle_global, amazon_global, foundation_global)
     _info(f"Total models after merge: {len(default_pricing)} ({len(global_pricing)} with global pricing)")
 
     # Fetch real model/profile IDs from Bedrock API and resolve pricing keys
@@ -1705,7 +1748,10 @@ def main() -> None:
         default_pricing = resolve_pricing_ids(default_pricing, resolution_map)
         global_pricing = resolve_pricing_ids(global_pricing, resolution_map)
 
-    expanded_pricing = expand_with_real_profiles(default_pricing, global_pricing, real_profile_ids)
+    gated_global_profiles = [f"global.{model_id}" for model_id in sorted(GATED_GLOBAL_PROFILE_MODELS)]
+    expanded_pricing = expand_with_real_profiles(
+        default_pricing, global_pricing, [*real_profile_ids, *gated_global_profiles]
+    )
     _info(f"Total entries after inference profile expansion: {len(expanded_pricing)}")
 
     # Regional pricing (compared against unexpanded default/global, re-keyed the same way). Only

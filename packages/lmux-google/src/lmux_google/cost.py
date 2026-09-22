@@ -28,6 +28,15 @@ from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
     # ── Google Gemini 3 ────────────────────────────────────────
+    "gemini-3.8-flash-cyber": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.50),
+                output_cost_per_token=per_million_tokens(7.50),
+                cache_read_cost_per_token=per_million_tokens(0.15),
+            ),
+        ],
+    ),
     "gemini-3.8-flash": ModelPricing(
         tiers=[
             PricingTier(
@@ -280,6 +289,27 @@ _PRICING: dict[str, ModelPricing] = {
     # ── Google Gemini (additional) ────────────────────────────
     # gemini-2.5-flash-image is intentionally unpriced (see _UNPRICED_IMAGE_PREFIXES) — its image output
     # is billed far above the modeled text-output rate.
+    "gemini-robotics-er-2-preview": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.00),
+                output_cost_per_token=per_million_tokens(5.00),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+            ),
+        ],
+        schedules=[
+            PricingSchedule(
+                valid_from=date(2027, 1, 1),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(2.00),
+                        output_cost_per_token=per_million_tokens(10.00),
+                        cache_read_cost_per_token=per_million_tokens(0.20),
+                    ),
+                ],
+            ),
+        ],
+    ),
     # Robotics-ER 1.6: text/image/video input $1; audio input ($2) is higher and not modeled.
     "gemini-robotics-er-1.6-preview": ModelPricing(
         tiers=[
@@ -301,6 +331,22 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(2.50),
                 output_cost_per_token=per_million_tokens(15.00),
                 min_input_tokens=200_000,
+            ),
+        ],
+    ),
+    "gemini-3.5-transcribe": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(12.00),
+            ),
+        ],
+    ),
+    "gemini-3.5-transcribe-live": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.50),
+                output_cost_per_token=per_million_tokens(21.00),
             ),
         ],
     ),

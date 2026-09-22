@@ -51,6 +51,51 @@ class TestCalculateBedrockCost:
         assert cost.output_cost == pytest.approx(500 * 2.50 / 1_000_000)
         assert cost.cache_read_cost == pytest.approx(200 * 0.20 / 1_000_000)
 
+    @pytest.mark.parametrize(
+        ("model", "input_rate", "output_rate", "cache_read_rate"),
+        [("xai.grok-4.6", 2.20, 6.60, 0.55), ("global.xai.grok-4.6", 2.00, 6.00, 0.50)],
+    )
+    def test_mantle_global_profile_takes_the_global_rate(
+        self, model: str, input_rate: float, output_rate: float, cache_read_rate: float
+    ) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_tokens=100_000)
+        cost = calculate_bedrock_cost(model, usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(0.9 * input_rate)
+        assert cost.output_cost == pytest.approx(output_rate)
+        assert cost.cache_read_cost == pytest.approx(0.1 * cache_read_rate)
+
+    @pytest.mark.parametrize(
+        ("model", "cache_write_rate"), [("moonshotai.kimi-k3", 4.125), ("global.moonshotai.kimi-k3", 3.75)]
+    )
+    def test_mantle_30m_cache_write_is_billed(self, model: str, cache_write_rate: float) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=0, cache_creation_tokens=1_000_000)
+        cost = calculate_bedrock_cost(model, usage)
+        assert cost is not None
+        assert cost.cache_creation_cost == pytest.approx(cache_write_rate)
+
+    @pytest.mark.parametrize(
+        ("input_tokens", "input_rate", "output_rate", "cache_write_rate"),
+        [(272_000, 2.64, 15.84, 3.30), (272_001, 5.28, 23.76, 6.60)],
+    )
+    def test_govcloud_gpt_5_6_long_context_tier(
+        self, input_tokens: int, input_rate: float, output_rate: float, cache_write_rate: float
+    ) -> None:
+        """OpenAI's long-context band starts above 272K input tokens, not Anthropic's 200K."""
+        usage = Usage(input_tokens=input_tokens, output_tokens=1_000_000, cache_creation_tokens=100_000)
+        cost = calculate_bedrock_cost("openai.gpt-5.6-terra", usage, region="us-gov-west-1")
+        assert cost is not None
+        assert cost.input_cost == pytest.approx((input_tokens - 100_000) * input_rate / 1_000_000)
+        assert cost.output_cost == pytest.approx(output_rate)
+        assert cost.cache_creation_cost == pytest.approx(0.1 * cache_write_rate)
+
+    def test_regional_only_model_prices_in_its_region(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        assert calculate_bedrock_cost("mistral.mistral-large-2407-v1:0", usage) is None
+        cost = calculate_bedrock_cost("mistral.mistral-large-2407-v1:0", usage, region="us-west-2")
+        assert cost is not None
+        assert cost.total_cost == pytest.approx(2.0 + 6.0)
+
     def test_claude_3_5_haiku_dated_key_still_prices(self) -> None:
         """The dated 3.5 Haiku key is retained so real calls still price after AWS delisted it."""
         usage = Usage(input_tokens=1000, output_tokens=500)

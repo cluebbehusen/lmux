@@ -83,6 +83,17 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "claude-opus-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(20.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_creation_cost_per_token=per_million_tokens(5.00),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(8.00)},
+            ),
+        ],
+    ),
     # Claude Opus 5 family
     "claude-opus-5": ModelPricing(
         tiers=[

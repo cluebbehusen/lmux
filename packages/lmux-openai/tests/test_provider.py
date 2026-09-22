@@ -166,11 +166,12 @@ class TestChat:
             "stop": ["END"],
         }
 
+    @pytest.mark.parametrize("model", ["gpt-5", "gpt-6-luna"])
     def test_max_completion_tokens_for_reasoning_models(
-        self, sync_provider: OpenAIProvider, respx_mock: respx.MockRouter
+        self, model: str, sync_provider: OpenAIProvider, respx_mock: respx.MockRouter
     ) -> None:
-        route = _ok(_completion("gpt-5"), _CHAT_URL, respx_mock)
-        sync_provider.chat("gpt-5", [UserMessage(content="Hi")], max_tokens=50)
+        route = _ok(_completion(model), _CHAT_URL, respx_mock)
+        sync_provider.chat(model, [UserMessage(content="Hi")], max_tokens=50)
         body = json.loads(route.calls.last.request.content)
         assert body["max_completion_tokens"] == 50
         assert "max_tokens" not in body
