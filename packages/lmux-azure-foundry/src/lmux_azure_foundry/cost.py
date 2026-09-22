@@ -46,6 +46,60 @@ and US Gov is 1.375x. This constant uses the US multiplier; use
 # MARK: Global Standard pricing (base rates)
 
 _PRICING: dict[str, ModelPricing] = {
+    # --- OpenAI: GPT-6 family (astra/sol/luna) ---
+    # Azure lists these with no published meter yet, so the rates are OpenAI's list prices, which
+    # Azure matched for gpt-5.6 Terra and Luna. Cache writes carry the same reporting caveat as gpt-5.6.
+    "gpt-6-astra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(50.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                cache_creation_cost_per_token=per_million_tokens(12.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(20.00),
+                output_cost_per_token=per_million_tokens(75.00),
+                cache_read_cost_per_token=per_million_tokens(2.00),
+                cache_creation_cost_per_token=per_million_tokens(25.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-6-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.40),
+                cache_creation_cost_per_token=per_million_tokens(5.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.10),
+                output_cost_per_token=per_million_tokens(0.50),
+                cache_read_cost_per_token=per_million_tokens(0.01),
+                cache_creation_cost_per_token=per_million_tokens(0.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.20),
+                output_cost_per_token=per_million_tokens(0.75),
+                cache_read_cost_per_token=per_million_tokens(0.02),
+                cache_creation_cost_per_token=per_million_tokens(0.25),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
     # --- OpenAI: GPT-5 family ---
     "gpt-5": ModelPricing(
         tiers=[

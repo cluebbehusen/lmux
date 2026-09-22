@@ -103,6 +103,39 @@ class TestCalculateOpenAICost:
         assert cost.cache_read_cost == pytest.approx(100 * 1.00 / 1_000_000)
         assert cost.cache_creation_cost == pytest.approx(200 * 12.50 / 1_000_000)
 
+    @pytest.mark.parametrize(
+        ("model", "base_rates", "hi_rates"),
+        [
+            ("gpt-6-sol", (2.00, 10.00, 0.20, 2.50), (4.00, 15.00, 0.40, 5.00)),
+            ("gpt-6-luna", (0.10, 0.50, 0.01, 0.125), (0.20, 0.75, 0.02, 0.25)),
+        ],
+    )
+    def test_gpt_6_sol_and_luna_rates(
+        self,
+        model: str,
+        base_rates: tuple[float, float, float, float],
+        hi_rates: tuple[float, float, float, float],
+    ) -> None:
+        in_base, out_base, cr_base, cw_base = base_rates
+        in_hi, out_hi, cr_hi, cw_hi = hi_rates
+        base = calculate_openai_cost(
+            model, Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=100, cache_creation_tokens=200)
+        )
+        assert base is not None
+        assert base.input_cost == pytest.approx((1000 - 100 - 200) * in_base / 1_000_000)
+        assert base.output_cost == pytest.approx(500 * out_base / 1_000_000)
+        assert base.cache_read_cost == pytest.approx(100 * cr_base / 1_000_000)
+        assert base.cache_creation_cost == pytest.approx(200 * cw_base / 1_000_000)
+        hi = calculate_openai_cost(
+            model,
+            Usage(input_tokens=300_000, output_tokens=1000, cache_read_tokens=100_000, cache_creation_tokens=50_000),
+        )
+        assert hi is not None
+        assert hi.input_cost == pytest.approx(150_000 * in_hi / 1_000_000)
+        assert hi.output_cost == pytest.approx(1000 * out_hi / 1_000_000)
+        assert hi.cache_read_cost == pytest.approx(100_000 * cr_hi / 1_000_000)
+        assert hi.cache_creation_cost == pytest.approx(50_000 * cw_hi / 1_000_000)
+
     def test_gpt_6_astra_long_context_tier(self) -> None:
         usage = Usage(
             input_tokens=300_000,
@@ -236,7 +269,7 @@ class TestRegionalUpliftApplies:
     def test_applies_to_gpt_5_6_family(self, model: str) -> None:
         assert regional_uplift_applies(model) is True
 
-    @pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6-astra-2026-09-03"])
+    @pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6-astra-2026-09-03", "gpt-6-sol", "gpt-6-luna"])
     def test_applies_to_gpt_6_family(self, model: str) -> None:
         assert regional_uplift_applies(model) is True
 

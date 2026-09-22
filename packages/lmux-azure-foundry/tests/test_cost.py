@@ -253,15 +253,18 @@ class TestCalculateAzureFoundryCost:
             ("gpt-5.6-sol", (5.00, 30.00, 0.50, 6.25), (10.00, 45.00, 1.00, 12.50)),
             ("gpt-5.6-terra", (2.00, 12.00, 0.20, 2.50), (4.00, 18.00, 0.40, 5.00)),
             ("gpt-5.6-luna", (0.20, 1.20, 0.02, 0.25), (0.40, 1.80, 0.04, 0.50)),
+            ("gpt-6-astra", (10.00, 50.00, 1.00, 12.50), (20.00, 75.00, 2.00, 25.00)),
+            ("gpt-6-sol", (2.00, 10.00, 0.20, 2.50), (4.00, 15.00, 0.40, 5.00)),
+            ("gpt-6-luna", (0.10, 0.50, 0.01, 0.125), (0.20, 0.75, 0.02, 0.25)),
         ],
     )
-    def test_gpt_5_6_family_rates_including_cache_write(
+    def test_gpt_5_6_and_6_family_rates_including_cache_write(
         self,
         model: str,
         base_rates: tuple[float, float, float, float],
         hi_rates: tuple[float, float, float, float],
     ) -> None:
-        """gpt-5.6-* bill input/output/cache-read/cache-write on both tiers, cache write at 1.25x input."""
+        """gpt-5.6-* and gpt-6-* bill input/output/cache-read/cache-write on both tiers, cache write at 1.25x input."""
         in_base, out_base, cr_base, cw_base = base_rates
         in_hi, out_hi, cr_hi, cw_hi = hi_rates
         base = calculate_azure_foundry_cost(

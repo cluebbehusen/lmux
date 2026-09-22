@@ -735,7 +735,7 @@ provides-extras = ["async"]
 
 [[package]]
 name = "lmux-azure-foundry"
-version = "0.10.3"
+version = "0.10.4"
 source = { editable = "packages/lmux-azure-foundry" }
 dependencies = [
     { name = "httpx" },
@@ -833,7 +833,7 @@ requires-dist = [{ name = "lmux", editable = "packages/lmux" }]
 
 [[package]]
 name = "lmux-openai"
-version = "0.10.3"
+version = "0.10.4"
 source = { editable = "packages/lmux-openai" }
 dependencies = [
     { name = "httpx" },
