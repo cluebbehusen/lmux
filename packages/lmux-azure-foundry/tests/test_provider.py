@@ -225,11 +225,16 @@ class TestChat:
             "stop": ["END"],
         }
 
+    @pytest.mark.parametrize("model", ["gpt-5-mini", "gpt-6-luna"])
     def test_max_completion_tokens_for_newer_models(
-        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+        self,
+        model: str,
+        sync_provider: AzureFoundryProvider,
+        completion: dict[str, Any],
+        respx_mock: respx.MockRouter,
     ) -> None:
-        route = respx_mock.post(_chat_url("gpt-5-mini")).mock(return_value=httpx.Response(200, json=completion))
-        sync_provider.chat("gpt-5-mini", [UserMessage(content="Hi")], max_tokens=100)
+        route = respx_mock.post(_chat_url(model)).mock(return_value=httpx.Response(200, json=completion))
+        sync_provider.chat(model, [UserMessage(content="Hi")], max_tokens=100)
         body = json.loads(route.calls.last.request.content)
         assert body["max_completion_tokens"] == 100
         assert "max_tokens" not in body

@@ -485,7 +485,7 @@ class OpenAIProvider(
         if temperature is not None:
             body["temperature"] = temperature
         if max_tokens is not None:
-            if model.startswith(("gpt-5", "o1", "o3", "o4")):
+            if model.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4")):
                 body["max_completion_tokens"] = max_tokens
             else:
                 body["max_tokens"] = max_tokens

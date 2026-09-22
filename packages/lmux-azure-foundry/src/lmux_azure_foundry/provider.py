@@ -67,7 +67,7 @@ _RESPONSES_PATH = "/responses"
 _HTTP_ERROR = 400
 _SSE_DONE = "[DONE]"
 # Models that use max_completion_tokens instead of max_tokens.
-_MAX_COMPLETION_TOKEN_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+_MAX_COMPLETION_TOKEN_PREFIXES = ("gpt-5", "gpt-6", "o1", "o3", "o4")
 
 
 class AzureFoundryProvider(
