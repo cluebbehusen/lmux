@@ -118,6 +118,11 @@ response = provider.chat(
 | `prompt_cache_key`       | `str`                                   | Cache key for Azure's automatic prompt caching (chat + responses) |
 | `prompt_cache_retention` | `"in_memory" \| "24h"`                  | Prompt cache retention policy (chat + responses)                  |
 | `deployment_type`        | `"global" \| "data_zone" \| "regional"` | Affects cost calculation only, not sent to API                    |
+| `data_zone`              | `"us" \| "eu"`                         | Pricing zone for Data Zone deployments; defaults to `"us"`        |
+
+`deployment_type="data_zone"` uses US pricing when `data_zone` is omitted. Set `data_zone="eu"` for an EU
+Data Zone deployment. This selects the applicable model-specific premium for cost reporting; it does not
+change API routing. Other deployment types ignore `data_zone`.
 
 ## Constructor Options
 

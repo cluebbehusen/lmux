@@ -911,6 +911,40 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # -- OpenAI (via Bedrock) ------------------------------------
+    "global.openai.gpt-6-astra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.0),
+                output_cost_per_token=per_million_tokens(50.0),
+                cache_read_cost_per_token=per_million_tokens(1.0),
+                cache_creation_cost_per_token=per_million_tokens(12.5),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(20.0),
+                output_cost_per_token=per_million_tokens(75.0),
+                cache_read_cost_per_token=per_million_tokens(2.0),
+                cache_creation_cost_per_token=per_million_tokens(25.0),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "openai.gpt-6-astra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(11.0),
+                output_cost_per_token=per_million_tokens(55.0),
+                cache_read_cost_per_token=per_million_tokens(1.1),
+                cache_creation_cost_per_token=per_million_tokens(13.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(22.0),
+                output_cost_per_token=per_million_tokens(82.5),
+                cache_read_cost_per_token=per_million_tokens(2.2),
+                cache_creation_cost_per_token=per_million_tokens(27.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
     "openai.gpt-oss-120b-1": ModelPricing(
         tiers=[
             PricingTier(
@@ -940,6 +974,23 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.07),
                 output_cost_per_token=per_million_tokens(0.2),
+            ),
+        ],
+    ),
+    "us.openai.gpt-6-astra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(11.0),
+                output_cost_per_token=per_million_tokens(55.0),
+                cache_read_cost_per_token=per_million_tokens(1.1),
+                cache_creation_cost_per_token=per_million_tokens(13.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(22.0),
+                output_cost_per_token=per_million_tokens(82.5),
+                cache_read_cost_per_token=per_million_tokens(2.2),
+                cache_creation_cost_per_token=per_million_tokens(27.5),
+                min_input_tokens=272000,
             ),
         ],
     ),
@@ -1076,7 +1127,25 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "global.xai.grok-4.7": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(6.0),
+                cache_read_cost_per_token=per_million_tokens(0.5),
+            ),
+        ],
+    ),
     "us.xai.grok-4.6": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(6.6),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+            ),
+        ],
+    ),
+    "us.xai.grok-4.7": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(2.2),
@@ -1095,6 +1164,15 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     "xai.grok-4.6": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(6.6),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+            ),
+        ],
+    ),
+    "xai.grok-4.7": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(2.2),
@@ -5529,6 +5607,15 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "global.xai.grok-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.4),
+                    output_cost_per_token=per_million_tokens(7.2),
+                    cache_read_cost_per_token=per_million_tokens(0.6),
+                ),
+            ],
+        ),
         "moonshotai.kimi-k3": ModelPricing(
             tiers=[
                 PricingTier(
@@ -5613,6 +5700,15 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "xai.grok-4.7": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.64),
+                    output_cost_per_token=per_million_tokens(7.92),
+                    cache_read_cost_per_token=per_million_tokens(0.66),
+                ),
+            ],
+        ),
     },
     "us-gov-west-1": {
         "amazon.nova-lite-v1": ModelPricing(
@@ -5669,6 +5765,15 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
             ],
         ),
         "global.xai.grok-4.6": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.4),
+                    output_cost_per_token=per_million_tokens(7.2),
+                    cache_read_cost_per_token=per_million_tokens(0.6),
+                ),
+            ],
+        ),
+        "global.xai.grok-4.7": ModelPricing(
             tiers=[
                 PricingTier(
                     input_cost_per_token=per_million_tokens(2.4),
@@ -5820,6 +5925,15 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
             ],
         ),
         "xai.grok-4.6": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.64),
+                    output_cost_per_token=per_million_tokens(7.92),
+                    cache_read_cost_per_token=per_million_tokens(0.66),
+                ),
+            ],
+        ),
+        "xai.grok-4.7": ModelPricing(
             tiers=[
                 PricingTier(
                     input_cost_per_token=per_million_tokens(2.64),

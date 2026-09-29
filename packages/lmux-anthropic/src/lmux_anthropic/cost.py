@@ -106,6 +106,18 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    # Claude Sonnet 5.5 family
+    "claude-sonnet-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.00)},
+            ),
+        ],
+    ),
     # Claude Sonnet 5 family — the $2/$10 launch rate is the standard price; the
     # increase once scheduled for 2026-09-01 was cancelled. Full 1M context at
     # standard pricing, so there is no >200K tier.
@@ -337,6 +349,7 @@ _VERTEX_PREMIUM_PRICING_MODELS = (
     "claude-mythos-5",
     "claude-opus-5",
     "claude-sonnet-5",
+    "claude-sonnet-5-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",

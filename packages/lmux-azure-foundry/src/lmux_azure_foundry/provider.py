@@ -52,10 +52,10 @@ from lmux_azure_foundry._wire import (
 )
 from lmux_azure_foundry.auth import AzureFoundryCredential, AzureFoundryKeyAuthProvider
 from lmux_azure_foundry.cost import (
-    DATA_ZONE_MULTIPLIER,
     REGIONAL_MULTIPLIER,
     apply_cost_multiplier,
     calculate_azure_foundry_cost,
+    data_zone_multiplier,
 )
 from lmux_azure_foundry.params import AzureFoundryParams
 
@@ -416,29 +416,31 @@ class AzureFoundryProvider(
     # MARK: Cost Multipliers
 
     @staticmethod
-    def _cost_multiplier(provider_params: AzureFoundryParams | None) -> float:
+    def _cost_multiplier(model: str, provider_params: AzureFoundryParams | None) -> float:
         """Compute the combined cost multiplier from provider params."""
         multiplier = 1.0
         if provider_params is None:
             return multiplier
         if provider_params.deployment_type == "data_zone":
-            multiplier *= DATA_ZONE_MULTIPLIER
+            multiplier *= data_zone_multiplier(model, provider_params.data_zone)
         elif provider_params.deployment_type == "regional":
             multiplier *= REGIONAL_MULTIPLIER
         return multiplier
 
     @staticmethod
-    def _apply_cost_multipliers(cost: Cost | None, provider_params: AzureFoundryParams | None) -> Cost | None:
+    def _apply_cost_multipliers(
+        cost: Cost | None, model: str, provider_params: AzureFoundryParams | None
+    ) -> Cost | None:
         if cost is None:
             return None
-        multiplier = AzureFoundryProvider._cost_multiplier(provider_params)
+        multiplier = AzureFoundryProvider._cost_multiplier(model, provider_params)
         if multiplier == 1.0:
             return cost
         return apply_cost_multiplier(cost, multiplier)
 
     def _apply_multipliers(self, response: ChatResponse, provider_params: AzureFoundryParams | None) -> ChatResponse:
         """Apply deployment_type cost multipliers to a completed chat response."""
-        adjusted = self._apply_cost_multipliers(response.cost, provider_params)
+        adjusted = self._apply_cost_multipliers(response.cost, response.model, provider_params)
         if adjusted is response.cost:
             return response
         return response.model_copy(update={"cost": adjusted})
@@ -447,7 +449,7 @@ class AzureFoundryProvider(
         self, response: EmbeddingResponse, provider_params: AzureFoundryParams | None
     ) -> EmbeddingResponse:
         """Apply deployment_type cost multipliers to an embedding response."""
-        adjusted = self._apply_cost_multipliers(response.cost, provider_params)
+        adjusted = self._apply_cost_multipliers(response.cost, response.model, provider_params)
         if adjusted is response.cost:
             return response
         return response.model_copy(update={"cost": adjusted})
@@ -456,7 +458,7 @@ class AzureFoundryProvider(
         self, response: ResponseResponse, provider_params: AzureFoundryParams | None
     ) -> ResponseResponse:
         """Apply deployment_type cost multipliers to a Responses API response."""
-        adjusted = self._apply_cost_multipliers(response.cost, provider_params)
+        adjusted = self._apply_cost_multipliers(response.cost, response.model, provider_params)
         if adjusted is response.cost:
             return response
         return response.model_copy(update={"cost": adjusted})
@@ -470,7 +472,7 @@ class AzureFoundryProvider(
         mapped = map_chat_chunk(wire, PROVIDER_NAME)
         if mapped.usage is not None:
             cost = self._calculate_cost(wire.model or model, mapped.usage)
-            cost = self._apply_cost_multipliers(cost, provider_params)
+            cost = self._apply_cost_multipliers(cost, wire.model or model, provider_params)
             mapped = mapped.model_copy(update={"cost": cost})
         return mapped
 

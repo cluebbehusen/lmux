@@ -281,6 +281,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "anthropic.claude-sonnet-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(11.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.4)},
+            ),
+        ],
+    ),
     "anthropic.claude-v2": ModelPricing(
         tiers=[
             PricingTier(
@@ -711,6 +722,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
         ],
     ),
     "global.anthropic.claude-sonnet-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(10.0),
+                cache_read_cost_per_token=per_million_tokens(0.2),
+                cache_creation_cost_per_token=per_million_tokens(2.5),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.0)},
+            ),
+        ],
+    ),
+    "global.anthropic.claude-sonnet-5-5": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(2.0),
@@ -1172,6 +1194,17 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "anthropic.claude-sonnet-5-5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.4),
+                    output_cost_per_token=per_million_tokens(12.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                    cache_creation_cost_per_token=per_million_tokens(3.0),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.8)},
+                ),
+            ],
+        ),
     },
     "us-gov-west-1": {
         "anthropic.claude-3-5-sonnet-20240620-v1": ModelPricing(
@@ -1256,6 +1289,17 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
             ],
         ),
         "anthropic.claude-sonnet-5": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.4),
+                    output_cost_per_token=per_million_tokens(12.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                    cache_creation_cost_per_token=per_million_tokens(3.0),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.8)},
+                ),
+            ],
+        ),
+        "anthropic.claude-sonnet-5-5": ModelPricing(
             tiers=[
                 PricingTier(
                     input_cost_per_token=per_million_tokens(2.4),

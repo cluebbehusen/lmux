@@ -28,8 +28,13 @@ class AzureFoundryParams(BaseProviderParams):
     """Deployment type for cost calculation.
 
     - ``None`` / ``"global"`` — Global Standard pricing (default, no multiplier).
-    - ``"data_zone"`` — Data Zone deployment (1.1x multiplier).
+    - ``"data_zone"`` — Data Zone deployment, using ``data_zone`` to select US or EU pricing.
     - ``"regional"`` — Regional deployment (~1.1x multiplier).
 
     This parameter only affects cost calculation and is **not** sent to the API.
+    """
+    data_zone: Literal["us", "eu"] = "us"
+    """Pricing zone for ``deployment_type="data_zone"``; omitted zones default to US.
+
+    Ignored for other deployment types. Only affects cost calculation, not API routing.
     """
