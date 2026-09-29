@@ -15,6 +15,23 @@ from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
     # GPT-6 family
+    "gpt-6.1-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_creation_cost_per_token=per_million_tokens(5.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
     "gpt-6-astra": ModelPricing(
         tiers=[
             PricingTier(
