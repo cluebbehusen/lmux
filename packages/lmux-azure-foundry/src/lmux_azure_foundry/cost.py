@@ -37,7 +37,7 @@ sovereign cloud is ~1.375x. Use ``register_pricing()`` for any of these.
 """
 
 _EU_DATA_ZONE_MULTIPLIER = 1.2
-_EU_DATA_ZONE_PREMIUM_MODELS = ("gpt-6-astra", "gpt-6-sol", "gpt-6-luna")
+_EU_DATA_ZONE_PREMIUM_MODELS = ("gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna")
 
 REGIONAL_MULTIPLIER = 1.1
 """Regional deployments are approximately 1.1x global pricing.
@@ -91,6 +91,24 @@ _PRICING: dict[str, ModelPricing] = {
     # cached_tokens, a read counter. So the cache-write rates below apply only when a caller
     # passes cache_creation_tokens to calculate_azure_foundry_cost directly. In a cost derived
     # from an Azure response those tokens stay inside input_tokens and bill at 1.0x, not 1.25x.
+    # Azure has not published GPT-6.1 Sol meters; infer its rates from OpenAI's direct pricing.
+    "gpt-6.1-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(15.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_creation_cost_per_token=per_million_tokens(5.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
     "gpt-6-astra": ModelPricing(
         tiers=[
             PricingTier(
