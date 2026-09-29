@@ -3,7 +3,18 @@
 import pytest
 
 from lmux.types import Cost, Usage
-from lmux_azure_foundry.cost import apply_cost_multiplier, calculate_azure_foundry_cost
+from lmux_azure_foundry.cost import apply_cost_multiplier, calculate_azure_foundry_cost, data_zone_multiplier
+
+
+class TestDataZoneMultiplier:
+    @pytest.mark.parametrize("model", ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "GPT-6-Astra-20260908"])
+    def test_gpt6_us_and_eu_premiums(self, model: str) -> None:
+        assert data_zone_multiplier(model, "us") == 1.1
+        assert data_zone_multiplier(model, "eu") == 1.2
+
+    @pytest.mark.parametrize("model", ["gpt-5.6-sol", "gpt-4o", "text-embedding-3-small", "gpt-6-unknown"])
+    def test_other_models_keep_default_premium(self, model: str) -> None:
+        assert data_zone_multiplier(model, "eu") == 1.1
 
 
 class TestCalculateAzureFoundryCost:

@@ -15,6 +15,7 @@ from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError
 from lmux.types import (
     CachePointContent,
+    Cost,
     FunctionDefinition,
     ImageContent,
     JsonObjectResponseFormat,
@@ -148,6 +149,43 @@ def responses_body() -> dict[str, Any]:
     }
 
 
+@pytest.fixture
+def gpt6_completion(completion: dict[str, Any]) -> dict[str, Any]:
+    completion["model"] = "gpt-6-astra"
+    completion["usage"] = {
+        "prompt_tokens": 100_000,
+        "completion_tokens": 10_000,
+        "prompt_tokens_details": {"cached_tokens": 20_000},
+    }
+    return completion
+
+
+@pytest.fixture
+def gpt6_responses_body(responses_body: dict[str, Any]) -> dict[str, Any]:
+    responses_body["model"] = "gpt-6-astra"
+    responses_body["usage"] = {
+        "input_tokens": 100_000,
+        "output_tokens": 10_000,
+        "input_tokens_details": {"cached_tokens": 20_000},
+    }
+    return responses_body
+
+
+@pytest.fixture
+def gpt6_stream(gpt6_completion: dict[str, Any]) -> bytes:
+    chunk = {
+        "model": gpt6_completion["model"],
+        "choices": [{"index": 0, "finish_reason": "stop", "delta": {"content": "Hi"}}],
+        "usage": gpt6_completion["usage"],
+    }
+    return f"data: {json.dumps(chunk)}\n\ndata: [DONE]\n\n".encode()
+
+
+@pytest.fixture
+def gpt6_eu_cost() -> Cost:
+    return Cost(input_cost=0.96, output_cost=0.60, cache_read_cost=0.024, total_cost=1.584)
+
+
 def _sse_stream() -> bytes:
     chunks = [
         {"model": "gpt-4o", "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "Hel"}}]},
@@ -170,6 +208,94 @@ def _ok_chat(completion: dict[str, Any], respx_mock: respx.MockRouter, model: st
 
 
 class TestChat:
+    def test_eu_data_zone_uses_response_model(
+        self,
+        sync_provider: AzureFoundryProvider,
+        gpt6_completion: dict[str, Any],
+        gpt6_eu_cost: Cost,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        route = _ok_chat(gpt6_completion, respx_mock, model="my-deployment")
+        result = sync_provider.chat(
+            "my-deployment",
+            [UserMessage(content="Hi")],
+            provider_params=AzureFoundryParams(deployment_type="data_zone", data_zone="eu"),
+        )
+        assert result.cost is not None
+        assert result.cost.model_dump() == pytest.approx(gpt6_eu_cost.model_dump())
+        assert json.loads(route.calls.last.request.content) == {
+            "model": "my-deployment",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "stream": False,
+        }
+
+    @pytest.mark.parametrize(
+        "params",
+        [
+            AzureFoundryParams(deployment_type="data_zone"),
+            AzureFoundryParams(deployment_type="data_zone", data_zone="us"),
+        ],
+    )
+    def test_gpt6_omitted_and_explicit_us_zone(
+        self,
+        sync_provider: AzureFoundryProvider,
+        gpt6_completion: dict[str, Any],
+        respx_mock: respx.MockRouter,
+        params: AzureFoundryParams,
+    ) -> None:
+        _ok_chat(gpt6_completion, respx_mock, model="gpt-6-astra")
+        result = sync_provider.chat("gpt-6-astra", [UserMessage(content="Hi")], provider_params=params)
+        assert result.cost is not None
+        assert result.cost.model_dump() == pytest.approx(
+            Cost(input_cost=0.88, output_cost=0.55, cache_read_cost=0.022, total_cost=1.452).model_dump()
+        )
+
+    @pytest.mark.parametrize(
+        ("input_tokens", "expected"),
+        [
+            (272_000, Cost(input_cost=3.024, output_cost=0.6, cache_read_cost=0.024, total_cost=3.648)),
+            (272_001, Cost(input_cost=6.048024, output_cost=0.9, cache_read_cost=0.048, total_cost=6.996024)),
+        ],
+    )
+    def test_eu_data_zone_context_boundary(
+        self,
+        sync_provider: AzureFoundryProvider,
+        gpt6_completion: dict[str, Any],
+        respx_mock: respx.MockRouter,
+        input_tokens: int,
+        expected: Cost,
+    ) -> None:
+        gpt6_completion["usage"]["prompt_tokens"] = input_tokens
+        _ok_chat(gpt6_completion, respx_mock, model="gpt-6-astra")
+        result = sync_provider.chat(
+            "gpt-6-astra",
+            [UserMessage(content="Hi")],
+            provider_params=AzureFoundryParams(deployment_type="data_zone", data_zone="eu"),
+        )
+        assert result.cost is not None
+        assert result.cost.model_dump() == pytest.approx(expected.model_dump())
+
+    @pytest.mark.parametrize(
+        ("params", "expected_total"),
+        [
+            (AzureFoundryParams(data_zone="eu"), 1.32),
+            (AzureFoundryParams(deployment_type="global", data_zone="eu"), 1.32),
+            (AzureFoundryParams(deployment_type="regional", data_zone="eu"), 1.452),
+        ],
+    )
+    def test_zone_ignored_outside_data_zone_deployments(
+        self,
+        sync_provider: AzureFoundryProvider,
+        gpt6_completion: dict[str, Any],
+        respx_mock: respx.MockRouter,
+        params: AzureFoundryParams,
+        expected_total: float,
+    ) -> None:
+        _ok_chat(gpt6_completion, respx_mock, model="gpt-6-astra")
+        result = sync_provider.chat("gpt-6-astra", [UserMessage(content="Hi")], provider_params=params)
+        assert result.cost is not None
+        assert result.cost.total_cost == pytest.approx(expected_total)
+
     def test_basic(
         self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
@@ -362,6 +488,22 @@ class TestChat:
 
 
 class TestAchat:
+    async def test_eu_data_zone(
+        self,
+        async_provider: AzureFoundryProvider,
+        gpt6_completion: dict[str, Any],
+        gpt6_eu_cost: Cost,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        _ok_chat(gpt6_completion, respx_mock, model="gpt-6-astra")
+        result = await async_provider.achat(
+            "gpt-6-astra",
+            [UserMessage(content="Hi")],
+            provider_params=AzureFoundryParams(deployment_type="data_zone", data_zone="eu"),
+        )
+        assert result.cost is not None
+        assert result.cost.model_dump() == pytest.approx(gpt6_eu_cost.model_dump())
+
     async def test_basic(
         self, async_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:
@@ -411,6 +553,24 @@ class TestAchat:
 
 
 class TestChatStream:
+    def test_eu_data_zone(
+        self,
+        sync_provider: AzureFoundryProvider,
+        gpt6_stream: bytes,
+        gpt6_eu_cost: Cost,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        respx_mock.post(_chat_url("my-deployment")).mock(return_value=httpx.Response(200, content=gpt6_stream))
+        chunks = list(
+            sync_provider.chat_stream(
+                "my-deployment",
+                [UserMessage(content="Hi")],
+                provider_params=AzureFoundryParams(deployment_type="data_zone", data_zone="eu"),
+            )
+        )
+        assert chunks[-1].cost is not None
+        assert chunks[-1].cost.model_dump() == pytest.approx(gpt6_eu_cost.model_dump())
+
     def test_yields_and_costs(self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
         route = respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=_sse_stream()))
         chunks = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
@@ -477,6 +637,26 @@ class TestChatStream:
 
 
 class TestAchatStream:
+    async def test_eu_data_zone_without_wire_model(
+        self,
+        async_provider: AzureFoundryProvider,
+        gpt6_stream: bytes,
+        gpt6_eu_cost: Cost,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        gpt6_stream = gpt6_stream.replace(b'"model": "gpt-6-astra", ', b"")
+        respx_mock.post(_chat_url("gpt-6-astra")).mock(return_value=httpx.Response(200, content=gpt6_stream))
+        chunks = [
+            c
+            async for c in async_provider.achat_stream(
+                "gpt-6-astra",
+                [UserMessage(content="Hi")],
+                provider_params=AzureFoundryParams(deployment_type="data_zone", data_zone="eu"),
+            )
+        ]
+        assert chunks[-1].cost is not None
+        assert chunks[-1].cost.model_dump() == pytest.approx(gpt6_eu_cost.model_dump())
+
     async def test_yields_and_costs(self, async_provider: AzureFoundryProvider, respx_mock: respx.MockRouter) -> None:
         respx_mock.post(_chat_url("gpt-4o")).mock(return_value=httpx.Response(200, content=_sse_stream()))
         chunks = [c async for c in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")])]
@@ -599,7 +779,9 @@ class TestEmbed:
         )
         result_global = sync_provider.embed("text-embedding-3-small", "hello")
         result_dz = sync_provider.embed(
-            "text-embedding-3-small", "hello", provider_params=AzureFoundryParams(deployment_type="data_zone")
+            "text-embedding-3-small",
+            "hello",
+            provider_params=AzureFoundryParams(deployment_type="data_zone", data_zone="eu"),
         )
         assert result_global.cost is not None
         assert result_dz.cost is not None
@@ -636,6 +818,43 @@ class TestEmbed:
 
 
 class TestCreateResponse:
+    def test_eu_data_zone(
+        self,
+        sync_provider: AzureFoundryProvider,
+        gpt6_responses_body: dict[str, Any],
+        gpt6_eu_cost: Cost,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=gpt6_responses_body))
+        result = sync_provider.create_response(
+            "my-deployment",
+            "Hi",
+            provider_params=AzureFoundryParams(deployment_type="data_zone", data_zone="eu"),
+        )
+        assert result.cost is not None
+        assert result.cost.model_dump() == pytest.approx(gpt6_eu_cost.model_dump())
+        assert json.loads(route.calls.last.request.content) == {
+            "model": "my-deployment",
+            "input": "Hi",
+            "stream": False,
+        }
+
+    async def test_acreate_response_eu_data_zone(
+        self,
+        async_provider: AzureFoundryProvider,
+        gpt6_responses_body: dict[str, Any],
+        gpt6_eu_cost: Cost,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=gpt6_responses_body))
+        result = await async_provider.acreate_response(
+            "my-deployment",
+            "Hi",
+            provider_params=AzureFoundryParams(deployment_type="data_zone", data_zone="eu"),
+        )
+        assert result.cost is not None
+        assert result.cost.model_dump() == pytest.approx(gpt6_eu_cost.model_dump())
+
     def test_basic(
         self, sync_provider: AzureFoundryProvider, responses_body: dict[str, Any], respx_mock: respx.MockRouter
     ) -> None:

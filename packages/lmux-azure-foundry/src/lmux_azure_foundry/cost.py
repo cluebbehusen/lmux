@@ -12,6 +12,8 @@ Models pages, e.g. https://azure.microsoft.com/en-us/pricing/details/ai-foundry-
 swap the trailing path segment for the vendor (/deepseek, /grok, /llama, /mistral-ai, /cohere, /kimi).
 """
 
+from typing import Literal
+
 from lmux.cost import (
     ModelPricing,
     PricingTier,
@@ -25,14 +27,17 @@ from lmux.types import Cost, Usage
 # MARK: Deployment-type multipliers
 
 DATA_ZONE_MULTIPLIER = 1.1
-"""Commercial US/EU Data Zone Standard deployments are 1.1x global pricing.
+"""Default commercial Data Zone Standard premium over global pricing.
 
-US and EU Data Zone prices are identical, and the ratio holds for input, output
-and cache on nearly every model — Kimi-K2.6 and Kimi-K2.7-Code are the exception,
-billing output at 1.25x global. Non-commercial data zones are not modeled and run
-higher: the Asia-Pacific data zone is ~1.2x and the US Government sovereign cloud
-is ~1.375x. Use ``register_pricing()`` for any of these.
+US pricing is 1.1x; EU uses the same default except for the GPT-6 models handled
+by ``data_zone_multiplier``. Kimi-K2.6 and Kimi-K2.7-Code output remains an
+unmodeled exception, billing at 1.25x global. Non-commercial data zones are not
+modeled and run higher: the Asia-Pacific data zone is ~1.2x and the US Government
+sovereign cloud is ~1.375x. Use ``register_pricing()`` for any of these.
 """
+
+_EU_DATA_ZONE_MULTIPLIER = 1.2
+_EU_DATA_ZONE_PREMIUM_MODELS = ("gpt-6-astra", "gpt-6-sol", "gpt-6-luna")
 
 REGIONAL_MULTIPLIER = 1.1
 """Regional deployments are approximately 1.1x global pricing.
@@ -969,6 +974,13 @@ def calculate_azure_foundry_cost(model: str, usage: Usage) -> Cost | None:
     if pricing is None:
         return None
     return calculate_cost(usage, pricing)
+
+
+def data_zone_multiplier(model: str, data_zone: Literal["us", "eu"]) -> float:
+    """Return the Standard Data Zone premium for the model and pricing zone."""
+    if data_zone == "eu" and model.lower().startswith(_EU_DATA_ZONE_PREMIUM_MODELS):
+        return _EU_DATA_ZONE_MULTIPLIER
+    return DATA_ZONE_MULTIPLIER
 
 
 def apply_cost_multiplier(cost: Cost, multiplier: float) -> Cost:

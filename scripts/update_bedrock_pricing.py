@@ -72,6 +72,7 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     "Claude Opus 5.5": "anthropic.claude-opus-5-5",
     "Claude Opus 5": "anthropic.claude-opus-5-v1",
     "Claude Sonnet 5": "anthropic.claude-sonnet-5-v1",
+    "Claude Sonnet 5.5": "anthropic.claude-sonnet-5-5",
     "Claude Opus 4.8": "anthropic.claude-opus-4-8-v1",
     "Claude Opus 4.7": "anthropic.claude-opus-4-7-v1",
     "Claude Opus 4.6": "anthropic.claude-opus-4-6-v1",
@@ -108,6 +109,8 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     # Meta Llama 2 (via Foundation Models)
     "Meta Llama 2 Chat 13B": "meta.llama2-13b-chat-v1",
     "Meta Llama 2 Chat 70B": "meta.llama2-70b-chat-v1",
+    # OpenAI
+    "OpenAI GPT-6 Astra": "openai.gpt-6-astra",
     # Writer
     "Palmyra X4": "writer.palmyra-x4-v1",
     "Palmyra X5": "writer.palmyra-x5-v1",
@@ -833,7 +836,7 @@ def _parse_fm_dimension(usagetype: str) -> tuple[str, bool] | None:
     if any(p in field for p in skip_patterns):
         return None
 
-    is_lctx = "_LCtx" in field or "_lctx" in field
+    is_lctx = any(marker in field for marker in ("_LCtx", "_lctx", "_long_ctx"))
 
     # 1h cache-write dimensions need handling BEFORE the pattern table: the legacy
     # field is "CacheWrite1hInputTokenCount", which does NOT match the
