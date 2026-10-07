@@ -833,6 +833,16 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "in.moonshotai.kimi-k3": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(3.3),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.33),
+                cache_creation_cost_per_token=per_million_tokens(4.125),
+            ),
+        ],
+    ),
     "moonshotai.kimi-k2-thinking": ModelPricing(
         tiers=[
             PricingTier(
