@@ -36,7 +36,7 @@ from lmux.types import Cost, Usage
 _PRICING: dict[str, ModelPricing] = {
     # Claude Fable 5.1 / Mythos 5.1 family. These need explicit keys ahead of the 5.0
     # entries: input, output and cache writes match, but cache reads are 0.025x input
-    # rather than the 0.1x the rest of the fleet uses, so prefix-matching claude-fable-5
+    # rather than the 0.1x Fable 5 / Mythos 5 use, so prefix-matching claude-fable-5
     # would bill cache reads at 1.00 instead of 0.25.
     "claude-fable-5-1": ModelPricing(
         tiers=[
@@ -112,9 +112,29 @@ _PRICING: dict[str, ModelPricing] = {
             PricingTier(
                 input_cost_per_token=per_million_tokens(2.00),
                 output_cost_per_token=per_million_tokens(10.00),
-                cache_read_cost_per_token=per_million_tokens(0.20),
+                cache_read_cost_per_token=per_million_tokens(0.10),
                 cache_creation_cost_per_token=per_million_tokens(2.50),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.00)},
+            ),
+        ],
+    ),
+    # Claude Haiku 5.5 family
+    "claude-haiku-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.10),
+                output_cost_per_token=per_million_tokens(0.50),
+                cache_read_cost_per_token=per_million_tokens(0.01),
+                cache_creation_cost_per_token=per_million_tokens(0.125),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(0.20)},
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.50),
+                output_cost_per_token=per_million_tokens(2.50),
+                cache_read_cost_per_token=per_million_tokens(0.05),
+                cache_creation_cost_per_token=per_million_tokens(0.625),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(1.00)},
+                min_input_tokens=100000,
             ),
         ],
     ),
@@ -350,6 +370,7 @@ _VERTEX_PREMIUM_PRICING_MODELS = (
     "claude-opus-5",
     "claude-sonnet-5",
     "claude-sonnet-5-5",
+    "claude-haiku-5-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",

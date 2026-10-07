@@ -143,8 +143,8 @@ class TestCalculateBedrockAnthropicCost:
 
     def test_in_geo_profile_strips_to_the_base_model(self) -> None:
         usage = Usage(input_tokens=1000, output_tokens=1000)
-        cost = calculate_bedrock_anthropic_cost("in.anthropic.claude-opus-5-5", usage)
-        bare = calculate_bedrock_anthropic_cost("anthropic.claude-opus-5-5", usage)
+        cost = calculate_bedrock_anthropic_cost("in.anthropic.claude-opus-4-8", usage)
+        bare = calculate_bedrock_anthropic_cost("anthropic.claude-opus-4-8", usage)
         assert cost is not None
         assert cost == bare
 
