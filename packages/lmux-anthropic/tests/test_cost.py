@@ -168,6 +168,36 @@ class TestCalculateAnthropicCost:
         assert cost is not None
         assert cost.cache_creation_cost == pytest.approx(1000 * 4.0 / 1_000_000)
 
+    def test_haiku_5_5_pricing(self) -> None:
+        """Claude Haiku 5.5 bills at $0.10/$0.50 with $0.01 cache reads and $0.125 cache writes."""
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200, cache_creation_tokens=100)
+        cost = calculate_anthropic_cost("claude-haiku-5-5", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx((1000 - 200 - 100) * 0.10 / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * 0.50 / 1_000_000)
+        assert cost.cache_read_cost == pytest.approx(200 * 0.01 / 1_000_000)
+        assert cost.cache_creation_cost == pytest.approx(100 * 0.125 / 1_000_000)
+
+    def test_haiku_5_5_long_context_pricing_above_100k(self) -> None:
+        """Claude Haiku 5.5 bills prompts over 100K input tokens at $0.50/$2.50."""
+        at_threshold = calculate_anthropic_cost("claude-haiku-5-5", Usage(input_tokens=100_000, output_tokens=1000))
+        above = calculate_anthropic_cost("claude-haiku-5-5", Usage(input_tokens=100_001, output_tokens=1000))
+        assert at_threshold is not None
+        assert above is not None
+        assert at_threshold.input_cost == pytest.approx(100_000 * 0.10 / 1_000_000)
+        assert above.input_cost == pytest.approx(100_001 * 0.50 / 1_000_000)
+        assert above.output_cost == pytest.approx(1000 * 2.50 / 1_000_000)
+
+    def test_haiku_5_5_does_not_match_haiku_4_5(self) -> None:
+        """The Haiku 4.5 prefix must not shadow Haiku 5.5, and vice versa."""
+        usage = Usage(input_tokens=50_000, output_tokens=0)
+        haiku_5_5 = calculate_anthropic_cost("claude-haiku-5-5", usage)
+        haiku_4_5 = calculate_anthropic_cost("claude-haiku-4-5-20251001", usage)
+        assert haiku_5_5 is not None
+        assert haiku_4_5 is not None
+        assert haiku_5_5.input_cost == pytest.approx(50_000 * 0.10 / 1_000_000)
+        assert haiku_4_5.input_cost == pytest.approx(50_000 * 1.00 / 1_000_000)
+
 
 class TestApplyCostMultiplier:
     def test_applies_multiplier_to_all_fields(self) -> None:
@@ -208,6 +238,9 @@ class TestHasVertexRegionalPremium:
         """claude-opus-4-8 (premium) must not be shadowed by the claude-opus-4 (uniform) prefix."""
         assert has_vertex_regional_premium("claude-opus-4-8") is True
         assert has_vertex_regional_premium("claude-opus-4@20250514") is False
+
+    def test_haiku_5_5_is_premium(self) -> None:
+        assert has_vertex_regional_premium("claude-haiku-5-5") is True
 
     def test_unknown_future_models_default_to_premium(self) -> None:
         assert has_vertex_regional_premium("claude-sonnet-6") is True

@@ -132,6 +132,26 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    # Claude Haiku 5.5 family — prompts over 100K input tokens bill at the higher tier.
+    "claude-haiku-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.10),
+                output_cost_per_token=per_million_tokens(0.50),
+                cache_read_cost_per_token=per_million_tokens(0.01),
+                cache_creation_cost_per_token=per_million_tokens(0.125),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(0.20)},
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.50),
+                output_cost_per_token=per_million_tokens(2.50),
+                cache_read_cost_per_token=per_million_tokens(0.05),
+                cache_creation_cost_per_token=per_million_tokens(0.625),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(1.00)},
+                min_input_tokens=100000,
+            ),
+        ],
+    ),
     # Claude 4.8 family
     "claude-opus-4-8": ModelPricing(
         tiers=[
@@ -350,6 +370,7 @@ _VERTEX_PREMIUM_PRICING_MODELS = (
     "claude-opus-5",
     "claude-sonnet-5",
     "claude-sonnet-5-5",
+    "claude-haiku-5-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",

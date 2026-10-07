@@ -50,11 +50,12 @@ SHARED_PRICING_PATH = (
     / "pricing.py"
 )
 
-# Default long-context tier threshold (tokens). Anthropic uses 200K for all models.
+# Default long-context tier threshold (tokens). Anthropic uses 200K for every model except Haiku 5.5.
 LCTX_THRESHOLD = 200_000
-# Vendors whose long-context band starts elsewhere, keyed by bare model-ID prefix. AWS publishes the
-# long-context meters without the boundary; OpenAI documents it as 272K input tokens.
-LCTX_THRESHOLD_BY_PREFIX: dict[str, int] = {"openai.": 272_000}
+# Models whose long-context band starts elsewhere, keyed by bare model-ID prefix. AWS publishes the
+# long-context meters without the boundary; OpenAI documents it as 272K input tokens and Anthropic
+# prices Claude Haiku 5.5 prompts over 100K tokens at the higher rate.
+LCTX_THRESHOLD_BY_PREFIX: dict[str, int] = {"openai.": 272_000, "anthropic.claude-haiku-5-5": 100_000}
 
 # ── Model ID mappings ────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     "Claude Sonnet 4.6": "anthropic.claude-sonnet-4-6",
     "Claude Opus 4.5": "anthropic.claude-opus-4-5-v1",
     "Claude Sonnet 4.5": "anthropic.claude-sonnet-4-5-v1",
+    "Claude Haiku 5.5": "anthropic.claude-haiku-5-5",
     "Claude Haiku 4.5": "anthropic.claude-haiku-4-5-v1",
     "Claude Sonnet 4": "anthropic.claude-sonnet-4-v1",
     "Claude Opus 4": "anthropic.claude-opus-4-20250514-v1",

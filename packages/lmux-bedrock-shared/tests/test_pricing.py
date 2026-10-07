@@ -51,6 +51,18 @@ class TestCalculateBedrockAnthropicCost:
         assert cost.output_cost == 27.5
         assert cost.total_cost == 33.0
 
+    def test_haiku_5_5_long_context_tier_starts_above_100k(self) -> None:
+        at_threshold = calculate_bedrock_anthropic_cost(
+            "global.anthropic.claude-haiku-5-5", Usage(input_tokens=100_000, output_tokens=0)
+        )
+        above = calculate_bedrock_anthropic_cost(
+            "global.anthropic.claude-haiku-5-5", Usage(input_tokens=100_001, output_tokens=0)
+        )
+        assert at_threshold is not None
+        assert above is not None
+        assert at_threshold.input_cost == pytest.approx(100_000 * 0.10 / 1_000_000)
+        assert above.input_cost == pytest.approx(100_001 * 0.50 / 1_000_000)
+
     def test_unknown_model_returns_none(self) -> None:
         # Non-anthropic id: no exact key, no prefix match, no profile prefix to strip.
         assert calculate_bedrock_anthropic_cost("openai.gpt-9", Usage(input_tokens=1, output_tokens=1)) is None
