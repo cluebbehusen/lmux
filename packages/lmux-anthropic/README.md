@@ -106,14 +106,14 @@ response = provider.chat(
 )
 ```
 
-| Parameter       | Type                        | Description                                                                                                          |
-| --------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `thinking`      | `dict`                      | Extended thinking configuration                                                                                      |
-| `metadata`      | `dict[str, str]`            | Request metadata                                                                                                     |
-| `top_k`         | `int`                       | Top-k sampling                                                                                                       |
-| `service_tier`  | `"auto" \| "standard_only"` | Service tier selection                                                                                               |
-| `inference_geo` | `"us"`                      | Inference geography (affects cost)                                                                                   |
-| `cache_control` | `dict`                      | Top-level prompt-cache control — auto-places a breakpoint on the last cacheable block (e.g. `{"type": "ephemeral"}`) |
+| Parameter       | Type                        | Description                                                                                                           |
+| --------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `thinking`      | `dict`                      | Extended thinking configuration                                                                                       |
+| `metadata`      | `dict[str, str]`            | Request metadata                                                                                                      |
+| `top_k`         | `int`                       | Top-k sampling                                                                                                        |
+| `service_tier`  | `"auto" \| "standard_only"` | Service tier selection                                                                                                |
+| `inference_geo` | `"us"`                      | Inference geography (affects cost)                                                                                    |
+| `cache_control` | `dict`                      | Top-level prompt-cache control — auto-places a breakpoint on the last cacheable block (e.g. `{"type": "ephemeral"}`)  |
 | `pricing_as_of` | `datetime.date`             | Override the date used for dated pricing, e.g. replaying usage from before a scheduled rate change; defaults to today |
 
 For manual thinking, an integer `budget_tokens` raises the default `max_tokens` when needed. An explicit `max_tokens` is preserved instead, along with the provider-specific thinking configuration. Ensure those explicit values are compatible with the deployed model; manual thinking normally requires `budget_tokens < max_tokens`, except when interleaved thinking applies.
