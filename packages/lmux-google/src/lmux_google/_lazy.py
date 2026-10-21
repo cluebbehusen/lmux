@@ -13,6 +13,7 @@ request/response JSON shape but differ in base URL and authentication:
 """
 
 from collections.abc import Mapping
+from time import monotonic
 from typing import TYPE_CHECKING, cast
 
 from lmux._http import create_async_client as _create_async
@@ -92,7 +93,16 @@ class HttpxAuthRequest:
 
     Lets credential refresh reuse httpx instead of pulling in the ``requests`` library that
     ``google.auth.transport.requests`` (and the ``google-auth[requests]`` extra) needs.
+
+    Requests made through one instance share a deadline ``timeout`` seconds after it is created, so a
+    refresh that makes several requests in a row (e.g. a workload identity token exchange, then service
+    account impersonation) can't spend the full timeout on each. Each request's httpx timeout is capped
+    at the time left, but httpx applies it per connect, send, and read, so this bounds stalls rather than
+    total elapsed time.
     """
+
+    def __init__(self, timeout: float | None = None) -> None:
+        self._deadline = monotonic() + (timeout if timeout is not None else _REFRESH_TIMEOUT)
 
     def __call__(
         self,
@@ -105,20 +115,27 @@ class HttpxAuthRequest:
     ) -> _HttpxAuthResponse:
         import httpx  # noqa: PLC0415
 
+        remaining = self._deadline - monotonic()
+        if remaining <= 0:
+            msg = "Credential refresh deadline exceeded"
+            raise httpx.TimeoutException(msg)
         response = httpx.request(
             method,
             url,
             content=body,
             headers=dict(headers) if headers else None,
-            timeout=timeout if timeout is not None else _REFRESH_TIMEOUT,
+            timeout=min(timeout, remaining) if timeout is not None else remaining,
         )
         return _HttpxAuthResponse(response)
 
 
-def bearer_token(credentials: "Credentials") -> str:
-    """Return a valid access token from google-auth credentials, refreshing if needed."""
+def bearer_token(credentials: "Credentials", timeout: float | None = None) -> str:
+    """Return a valid access token from google-auth credentials, refreshing if needed.
+
+    ``timeout`` sets the refresh deadline (default 120 seconds); see ``HttpxAuthRequest``.
+    """
     if not credentials.valid:
-        credentials.refresh(HttpxAuthRequest())
+        credentials.refresh(HttpxAuthRequest(timeout=timeout))
     return cast("str", credentials.token)
 
 

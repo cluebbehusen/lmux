@@ -2,10 +2,12 @@
 
 import json
 from typing import TYPE_CHECKING, cast
+from unittest.mock import MagicMock, sentinel
 
 import httpx
 import pytest
 import respx
+from pytest_mock import MockerFixture
 
 from lmux.exceptions import (
     AuthenticationError,
@@ -39,10 +41,27 @@ class _Credentials:
         self.expired = expired
         self._refreshed_access = refreshed_access
         self.refreshed = False
+        self.refresh_request: object | None = None
 
-    def refresh(self, request: object) -> None:  # noqa: ARG002
+    def refresh(self, request: object) -> None:
         self.refreshed = True
+        self.refresh_request = request
         self.token = self._refreshed_access
+
+
+@pytest.fixture
+def mock_transport_request(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic._lazy.HttpxTransportRequest", return_value=sentinel.request)
+
+
+@pytest.fixture
+def mock_resolve_vertex_token(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic._lazy.resolve_vertex_token", return_value="patched-token")
+
+
+@pytest.fixture
+def mock_monotonic(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_anthropic._lazy.monotonic")
 
 
 class TestResolveVertexToken:
@@ -66,6 +85,23 @@ class TestResolveVertexToken:
         with pytest.raises(RuntimeError, match="access token"):
             resolve_vertex_token(cast("Credentials", creds))
 
+    def test_refresh_uses_default_deadline(self, mock_transport_request: MagicMock) -> None:
+        creds = _Credentials(access=None)
+        assert resolve_vertex_token(cast("Credentials", creds)) == "refreshed"
+        assert creds.refresh_request is sentinel.request
+        mock_transport_request.assert_called_once_with(timeout=None)
+
+    def test_bounds_refresh_with_timeout(self, mock_transport_request: MagicMock) -> None:
+        creds = _Credentials(access=None)
+        assert resolve_vertex_token(cast("Credentials", creds), timeout=5.0) == "refreshed"
+        assert creds.refresh_request is sentinel.request
+        mock_transport_request.assert_called_once_with(timeout=5.0)
+
+    def test_no_refresh_request_for_live_token(self, mock_transport_request: MagicMock) -> None:
+        creds = _Credentials(access="live-token")
+        assert resolve_vertex_token(cast("Credentials", creds), timeout=5.0) == "live-token"
+        mock_transport_request.assert_not_called()
+
 
 class TestVertexAuthHeaders:
     def test_builds_bearer(self) -> None:
@@ -76,6 +112,11 @@ class TestVertexAuthHeaders:
         creds = _Credentials(access="stale", expired=True)
         assert vertex_auth_headers(cast("Credentials", creds)) == {"Authorization": "Bearer refreshed"}
         assert creds.refreshed is True
+
+    def test_forwards_timeout(self, mock_resolve_vertex_token: MagicMock) -> None:
+        creds = cast("Credentials", _Credentials(access=None))
+        assert vertex_auth_headers(creds, timeout=5.0) == {"Authorization": "Bearer patched-token"}
+        mock_resolve_vertex_token.assert_called_once_with(creds, timeout=5.0)
 
 
 class TestHttpxTransportRequest:
@@ -95,6 +136,39 @@ class TestHttpxTransportRequest:
         respx_mock.get("https://oauth2.example/ping").mock(return_value=httpx.Response(204))
         response = HttpxTransportRequest()("https://oauth2.example/ping")
         assert response.status == 204
+
+    def test_defaults_to_refresh_timeout(self, mock_monotonic: MagicMock, respx_mock: respx.MockRouter) -> None:
+        mock_monotonic.side_effect = [100.0, 100.0]
+        route = respx_mock.get("https://oauth2.example/ping").mock(return_value=httpx.Response(204))
+        HttpxTransportRequest()("https://oauth2.example/ping")
+        assert route.calls.last.request.extensions["timeout"] == httpx.Timeout(120.0).as_dict()
+
+    def test_shares_deadline_across_requests(self, mock_monotonic: MagicMock, respx_mock: respx.MockRouter) -> None:
+        mock_monotonic.side_effect = [100.0, 102.0, 107.0]
+        route = respx_mock.get("https://oauth2.example/ping").mock(return_value=httpx.Response(204))
+        request = HttpxTransportRequest(timeout=10.0)
+        request("https://oauth2.example/ping")
+        request("https://oauth2.example/ping")
+        assert route.calls[0].request.extensions["timeout"] == httpx.Timeout(8.0).as_dict()
+        assert route.calls[1].request.extensions["timeout"] == httpx.Timeout(3.0).as_dict()
+
+    def test_caps_caller_timeout_at_deadline(self, mock_monotonic: MagicMock, respx_mock: respx.MockRouter) -> None:
+        mock_monotonic.side_effect = [100.0, 104.0]
+        route = respx_mock.get("https://oauth2.example/ping").mock(return_value=httpx.Response(204))
+        HttpxTransportRequest(timeout=10.0)("https://oauth2.example/ping", timeout=30.0)
+        assert route.calls.last.request.extensions["timeout"] == httpx.Timeout(6.0).as_dict()
+
+    def test_keeps_shorter_caller_timeout(self, mock_monotonic: MagicMock, respx_mock: respx.MockRouter) -> None:
+        mock_monotonic.side_effect = [100.0, 101.0]
+        route = respx_mock.get("https://oauth2.example/ping").mock(return_value=httpx.Response(204))
+        HttpxTransportRequest(timeout=10.0)("https://oauth2.example/ping", timeout=5.0)
+        assert route.calls.last.request.extensions["timeout"] == httpx.Timeout(5.0).as_dict()
+
+    def test_raises_once_deadline_passes(self, mock_monotonic: MagicMock, respx_mock: respx.MockRouter) -> None:
+        mock_monotonic.side_effect = [100.0, 110.0]
+        with pytest.raises(httpx.TimeoutException, match="deadline exceeded"):
+            HttpxTransportRequest(timeout=10.0)("https://oauth2.example/ping")
+        assert not respx_mock.calls
 
 
 class TestVertexBaseUrl:

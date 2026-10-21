@@ -727,12 +727,12 @@ class AnthropicVertexProvider(AnthropicProvider):
 
     @override
     def _request_headers(self) -> Mapping[str, str]:
-        return vertex_auth_headers(self._sync_credentials())
+        return vertex_auth_headers(self._sync_credentials(), timeout=self._timeout)
 
     @override
     async def _arequest_headers(self) -> Mapping[str, str]:
         # The token refresh does blocking HTTP; run it off the event loop.
-        return await asyncio.to_thread(vertex_auth_headers, self._sync_credentials())
+        return await asyncio.to_thread(vertex_auth_headers, self._sync_credentials(), timeout=self._timeout)
 
     @override
     def _create_sync_client(self) -> "httpx.Client":

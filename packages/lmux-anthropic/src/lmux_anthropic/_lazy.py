@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import Callable, Mapping
+from time import monotonic
 from typing import TYPE_CHECKING
 
 from lmux._http import create_async_client as _create_async
@@ -238,7 +239,16 @@ class HttpxTransportRequest:
 
     Lets Vertex credential refresh reuse httpx instead of pulling in the
     ``requests`` library that ``google.auth.transport.requests`` needs.
+
+    Requests made through one instance share a deadline ``timeout`` seconds after it is created, so a
+    refresh that makes several requests in a row (e.g. a workload identity token exchange, then service
+    account impersonation) can't spend the full timeout on each. Each request's httpx timeout is capped
+    at the time left, but httpx applies it per connect, send, and read, so this bounds stalls rather than
+    total elapsed time.
     """
+
+    def __init__(self, timeout: float | None = None) -> None:
+        self._deadline = monotonic() + (timeout if timeout is not None else _REFRESH_TIMEOUT)
 
     def __call__(
         self,
@@ -251,12 +261,16 @@ class HttpxTransportRequest:
     ) -> _HttpxTransportResponse:
         import httpx  # noqa: PLC0415
 
+        remaining = self._deadline - monotonic()
+        if remaining <= 0:
+            msg = "Credential refresh deadline exceeded"
+            raise httpx.TimeoutException(msg)
         response = httpx.request(
             method,
             url,
             content=body,
             headers=dict(headers) if headers else None,
-            timeout=timeout if timeout is not None else _REFRESH_TIMEOUT,
+            timeout=min(timeout, remaining) if timeout is not None else remaining,
         )
         return _HttpxTransportResponse(response)
 
@@ -274,18 +288,21 @@ def vertex_base_url(region: str) -> str:
     return f"https://{region}-aiplatform.googleapis.com/v1"
 
 
-def resolve_vertex_token(credentials: "Credentials") -> str:
-    """Resolve a bearer token from Google credentials, refreshing them if needed."""
+def resolve_vertex_token(credentials: "Credentials", timeout: float | None = None) -> str:
+    """Resolve a bearer token from Google credentials, refreshing them if needed.
+
+    ``timeout`` sets the refresh deadline (default 120 seconds); see ``HttpxTransportRequest``.
+    """
     if not credentials.token or credentials.expired:
-        credentials.refresh(HttpxTransportRequest())
+        credentials.refresh(HttpxTransportRequest(timeout=timeout))
     if not credentials.token:
         raise RuntimeError("Could not resolve a Vertex access token from the credentials")  # noqa: TRY003
     return credentials.token
 
 
-def vertex_auth_headers(credentials: "Credentials") -> dict[str, str]:
+def vertex_auth_headers(credentials: "Credentials", timeout: float | None = None) -> dict[str, str]:
     """Per-request Vertex auth header, refreshing the (short-lived) access token if needed."""
-    return {"Authorization": f"Bearer {resolve_vertex_token(credentials)}"}
+    return {"Authorization": f"Bearer {resolve_vertex_token(credentials, timeout=timeout)}"}
 
 
 def create_sync_vertex_client(
