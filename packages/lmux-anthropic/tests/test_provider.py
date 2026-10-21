@@ -1028,6 +1028,13 @@ def vertex_sync_provider(vertex_auth: FakeVertexAuth) -> AnthropicVertexProvider
     return AnthropicVertexProvider(auth=vertex_auth, project_id="my-proj", region="us-east5")
 
 
+@pytest.fixture
+def mock_vertex_auth_headers(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch(
+        "lmux_anthropic.provider.vertex_auth_headers", return_value={"Authorization": "Bearer patched-token"}
+    )
+
+
 class TestVertexChat:
     def test_basic(self, vertex_sync_provider: AnthropicVertexProvider, respx_mock: respx.MockRouter) -> None:
         route = respx_mock.post(_vertex_url(MODEL)).mock(return_value=httpx.Response(200, json=_message()))
@@ -1091,6 +1098,24 @@ class TestVertexChat:
         # The refresh must run on a worker thread (asyncio.to_thread), not stall the event loop.
         assert auth.credentials.refresh_thread is not None
         assert auth.credentials.refresh_thread != threading.get_ident()
+
+    def test_refresh_uses_provider_timeout(
+        self, vertex_auth: FakeVertexAuth, respx_mock: respx.MockRouter, mock_vertex_auth_headers: MagicMock
+    ) -> None:
+        route = respx_mock.post(_vertex_url(MODEL)).mock(return_value=httpx.Response(200, json=_message()))
+        provider = AnthropicVertexProvider(auth=vertex_auth, project_id="my-proj", region="us-east5", timeout=5.0)
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        mock_vertex_auth_headers.assert_called_once_with(vertex_auth.credentials, timeout=5.0)
+        assert route.calls.last.request.headers["authorization"] == "Bearer patched-token"
+
+    async def test_async_refresh_uses_provider_timeout(
+        self, vertex_auth: FakeVertexAuth, respx_mock: respx.MockRouter, mock_vertex_auth_headers: MagicMock
+    ) -> None:
+        route = respx_mock.post(_vertex_url(MODEL)).mock(return_value=httpx.Response(200, json=_message()))
+        provider = AnthropicVertexProvider(auth=vertex_auth, project_id="my-proj", region="us-east5", timeout=5.0)
+        await provider.achat(MODEL, [UserMessage(content="Hi")])
+        mock_vertex_auth_headers.assert_called_once_with(vertex_auth.credentials, timeout=5.0)
+        assert route.calls.last.request.headers["authorization"] == "Bearer patched-token"
 
     def test_model_prefix_pricing(
         self, vertex_sync_provider: AnthropicVertexProvider, respx_mock: respx.MockRouter

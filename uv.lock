@@ -677,7 +677,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.16.5"
+version = "0.16.6"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "httpx" },
@@ -783,7 +783,7 @@ requires-dist = [{ name = "lmux-google", editable = "packages/lmux-google" }]
 
 [[package]]
 name = "lmux-google"
-version = "0.12.5"
+version = "0.12.6"
 source = { editable = "packages/lmux-google" }
 dependencies = [
     { name = "google-auth" },

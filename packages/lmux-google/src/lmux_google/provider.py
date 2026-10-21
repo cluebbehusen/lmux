@@ -210,13 +210,14 @@ class GoogleProvider(
     def _request_headers(self) -> Mapping[str, str]:
         if self._credentials is None:
             return {}
-        return bearer_headers(bearer_token(self._credentials), self._credentials.quota_project_id)
+        token = bearer_token(self._credentials, timeout=self._timeout)
+        return bearer_headers(token, self._credentials.quota_project_id)
 
     async def _arequest_headers(self) -> Mapping[str, str]:
         if self._credentials is None:
             return {}
         # Credential refresh does blocking HTTP; run it off the event loop.
-        token = await asyncio.to_thread(bearer_token, self._credentials)
+        token = await asyncio.to_thread(bearer_token, self._credentials, timeout=self._timeout)
         return bearer_headers(token, self._credentials.quota_project_id)
 
     def _path(self, model: str, method: str, *, sse: bool = False) -> str:

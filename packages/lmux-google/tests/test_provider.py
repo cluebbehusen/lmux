@@ -115,6 +115,11 @@ def mock_get_running_loop(mocker: MockerFixture) -> MagicMock:
     return mocker.patch("lmux_google.provider.asyncio.get_running_loop")
 
 
+@pytest.fixture
+def mock_bearer_token(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch("lmux_google.provider.bearer_token", return_value="patched-token")
+
+
 def _gen_response(
     text: str = "Hello!", prompt_tokens: int = 10, output_tokens: int = 5, *, finish_reason: str = "STOP"
 ) -> dict[str, Any]:
@@ -619,6 +624,32 @@ class TestVertexTransport:
         provider.chat(MODEL, [UserMessage(content="Hi")])
         assert creds.refreshed is True
         assert route.calls.last.request.headers["authorization"] == "Bearer refreshed-token"
+
+    def test_vertex_refresh_uses_provider_timeout(
+        self, gen_response: dict[str, Any], respx_mock: respx.MockRouter, mock_bearer_token: MagicMock
+    ) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(
+            auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1", timeout=5.0
+        )
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        provider.chat(MODEL, [UserMessage(content="Hi")])
+        mock_bearer_token.assert_called_once_with(creds, timeout=5.0)
+        assert route.calls.last.request.headers["authorization"] == "Bearer patched-token"
+
+    async def test_vertex_async_refresh_uses_provider_timeout(
+        self, gen_response: dict[str, Any], respx_mock: respx.MockRouter, mock_bearer_token: MagicMock
+    ) -> None:
+        creds = FakeCredentials()
+        provider = GoogleProvider(
+            auth=FakeCredentialsAuth(creds), project="my-proj", location="us-central1", timeout=5.0
+        )
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/my-proj/locations/us-central1/publishers/google/models/{MODEL}:generateContent"
+        route = respx_mock.post(url).mock(return_value=httpx.Response(200, json=gen_response))
+        await provider.achat(MODEL, [UserMessage(content="Hi")])
+        mock_bearer_token.assert_called_once_with(creds, timeout=5.0)
+        assert route.calls.last.request.headers["authorization"] == "Bearer patched-token"
 
     def test_vertex_requires_project(self) -> None:
         creds = FakeCredentials()
