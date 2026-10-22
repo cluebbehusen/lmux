@@ -42,6 +42,12 @@ def response() -> ChatResponse:
 
 
 @pytest.fixture
+def endpoint_metadata() -> LoadBalancerMetadata:
+    # A nested load balancer is a real BaseProviderMetadata subclass a child endpoint can return.
+    return LoadBalancerMetadata(primary="c/x", served="c/x", attempted=["c/x"])
+
+
+@pytest.fixture
 def chunks() -> list[ChatChunk]:
     return [
         ChatChunk(delta="he"),
@@ -140,6 +146,21 @@ class TestChat:
         result = lb.chat("m", _messages(), provider_params=BaseProviderParams())  # ty: ignore[invalid-argument-type]
         assert result.content == "hi"
 
+    def test_keeps_served_endpoint_metadata(
+        self, response: ChatResponse, endpoint_metadata: LoadBalancerMetadata
+    ) -> None:
+        registry = Registry()
+        registry.register(
+            "a", MockProvider(chat_responses=[response.model_copy(update={"provider_metadata": endpoint_metadata})])
+        )
+        lb = LoadBalancerProvider(registry, {"m": {"a/x": 1.0}})
+
+        result = lb.chat("m", _messages())
+
+        assert result.provider_metadata == LoadBalancerMetadata(
+            primary="a/x", served="a/x", attempted=["a/x"], served_metadata=endpoint_metadata
+        )
+
 
 # MARK: achat
 
@@ -182,6 +203,21 @@ class TestAchat:
 
         with pytest.raises(ProviderError, match="last"):
             _ = await lb.achat("m", _messages())
+
+    async def test_keeps_served_endpoint_metadata(
+        self, response: ChatResponse, endpoint_metadata: LoadBalancerMetadata
+    ) -> None:
+        registry = Registry()
+        registry.register(
+            "a", MockProvider(chat_responses=[response.model_copy(update={"provider_metadata": endpoint_metadata})])
+        )
+        lb = LoadBalancerProvider(registry, {"m": {"a/x": 1.0}})
+
+        result = await lb.achat("m", _messages())
+
+        assert result.provider_metadata == LoadBalancerMetadata(
+            primary="a/x", served="a/x", attempted=["a/x"], served_metadata=endpoint_metadata
+        )
 
 
 # MARK: Failover modes
@@ -284,6 +320,48 @@ class TestChatStream:
         with pytest.raises(ProviderError, match="last"):
             _ = list(lb.chat_stream("m", _messages()))
 
+    def test_keeps_served_endpoint_metadata(self, endpoint_metadata: LoadBalancerMetadata) -> None:
+        only = [ChatChunk(finish_reason="stop", provider_metadata=endpoint_metadata)]
+        registry = Registry()
+        registry.register("a", MockProvider(chat_stream_responses=[only]))
+        lb = LoadBalancerProvider(registry, {"m": {"a/x": 1.0}})
+
+        out = list(lb.chat_stream("m", _messages()))
+
+        assert out == [
+            ChatChunk(
+                finish_reason="stop",
+                provider_metadata=LoadBalancerMetadata(
+                    primary="a/x", served="a/x", attempted=["a/x"], served_metadata=endpoint_metadata
+                ),
+            )
+        ]
+
+    def test_wraps_later_endpoint_metadata(self, endpoint_metadata: LoadBalancerMetadata) -> None:
+        streamed = [
+            ChatChunk(delta="he"),
+            ChatChunk(delta="llo"),
+            ChatChunk(finish_reason="stop", provider_metadata=endpoint_metadata),
+        ]
+        registry = Registry()
+        registry.register("a", MockProvider(chat_stream_responses=[streamed]))
+        lb = LoadBalancerProvider(registry, {"m": {"a/x": 1.0}})
+
+        out = list(lb.chat_stream("m", _messages()))
+
+        assert out == [
+            ChatChunk(
+                delta="he", provider_metadata=LoadBalancerMetadata(primary="a/x", served="a/x", attempted=["a/x"])
+            ),
+            ChatChunk(delta="llo"),
+            ChatChunk(
+                finish_reason="stop",
+                provider_metadata=LoadBalancerMetadata(
+                    primary="a/x", served="a/x", attempted=["a/x"], served_metadata=endpoint_metadata
+                ),
+            ),
+        ]
+
 
 # MARK: achat_stream
 
@@ -345,3 +423,45 @@ class TestAchatStream:
 
         with pytest.raises(ProviderError, match="last"):
             _ = [chunk async for chunk in lb.achat_stream("m", _messages())]
+
+    async def test_keeps_served_endpoint_metadata(self, endpoint_metadata: LoadBalancerMetadata) -> None:
+        only = [ChatChunk(finish_reason="stop", provider_metadata=endpoint_metadata)]
+        registry = Registry()
+        registry.register("a", MockProvider(chat_stream_responses=[only]))
+        lb = LoadBalancerProvider(registry, {"m": {"a/x": 1.0}})
+
+        out = [chunk async for chunk in lb.achat_stream("m", _messages())]
+
+        assert out == [
+            ChatChunk(
+                finish_reason="stop",
+                provider_metadata=LoadBalancerMetadata(
+                    primary="a/x", served="a/x", attempted=["a/x"], served_metadata=endpoint_metadata
+                ),
+            )
+        ]
+
+    async def test_wraps_later_endpoint_metadata(self, endpoint_metadata: LoadBalancerMetadata) -> None:
+        streamed = [
+            ChatChunk(delta="he"),
+            ChatChunk(delta="llo"),
+            ChatChunk(finish_reason="stop", provider_metadata=endpoint_metadata),
+        ]
+        registry = Registry()
+        registry.register("a", MockProvider(chat_stream_responses=[streamed]))
+        lb = LoadBalancerProvider(registry, {"m": {"a/x": 1.0}})
+
+        out = [chunk async for chunk in lb.achat_stream("m", _messages())]
+
+        assert out == [
+            ChatChunk(
+                delta="he", provider_metadata=LoadBalancerMetadata(primary="a/x", served="a/x", attempted=["a/x"])
+            ),
+            ChatChunk(delta="llo"),
+            ChatChunk(
+                finish_reason="stop",
+                provider_metadata=LoadBalancerMetadata(
+                    primary="a/x", served="a/x", attempted=["a/x"], served_metadata=endpoint_metadata
+                ),
+            ),
+        ]

@@ -46,6 +46,7 @@ from lmux_anthropic._wire import (
     WireMessageStartEvent,
     WireOutputTokensDetails,
     WireSignatureDelta,
+    WireStopDetails,
     WireTextBlock,
     WireTextDelta,
     WireThinkingBlock,
@@ -53,6 +54,7 @@ from lmux_anthropic._wire import (
     WireToolUseBlock,
     WireUsage,
 )
+from lmux_anthropic.metadata import AnthropicMetadata, AnthropicStopDetails
 
 type CostCalculator = Callable[[str, Usage], Cost | None]
 type Json = dict[str, Any]
@@ -74,6 +76,16 @@ def _map_stop_reason(stop_reason: str | None) -> str | None:
     if stop_reason is None:
         return None
     return _STOP_REASON_MAP.get(stop_reason, stop_reason)
+
+
+def _metadata_from_stop_details(stop_details: WireStopDetails | None) -> AnthropicMetadata | None:
+    if stop_details is None:
+        return None
+    return AnthropicMetadata(
+        stop_details=AnthropicStopDetails(
+            type=stop_details.type, category=stop_details.category, explanation=stop_details.explanation
+        )
+    )
 
 
 # MARK: Input Mappers (lmux -> Anthropic Messages API JSON)
@@ -345,6 +357,7 @@ def map_message_response(
         model=message.model,
         provider=provider_name,
         finish_reason=_map_stop_reason(message.stop_reason),
+        provider_metadata=_metadata_from_stop_details(message.stop_details),
         continuation=_continuation_from_blocks(message.content, continuation_namespace),
     )
 
@@ -442,6 +455,7 @@ def map_message_delta(event: WireMessageDeltaEvent, start_usage: Usage) -> ChatC
     return ChatChunk(
         finish_reason=_map_stop_reason(event.delta.stop_reason),
         usage=usage,
+        provider_metadata=_metadata_from_stop_details(event.delta.stop_details),
     )
 
 

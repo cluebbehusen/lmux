@@ -78,6 +78,18 @@ messages.append(ToolMessage(content=tool_result, tool_call_id=response.tool_call
 
 Continuations are scoped to the Anthropic API surface that produced them, including Vertex AI, Microsoft Foundry, and Amazon Bedrock. A matching continuation is replayed exactly; other providers ignore it and use the normalized content and tool calls.
 
+### Refusals
+
+A refusal finishes with `finish_reason == "refusal"`. When the API reports `stop_details`, `provider_metadata` (on the terminal chunk when streaming) is an `AnthropicMetadata` whose `stop_details` has a `category` (for example `"cyber"` or `"bio"`) and an `explanation`. Both can be `None` even on a refusal, so branch on `finish_reason`:
+
+```python
+from lmux_anthropic import AnthropicMetadata
+
+meta = response.provider_metadata
+if response.finish_reason == "refusal" and isinstance(meta, AnthropicMetadata) and meta.stop_details:
+    print(meta.stop_details.category)
+```
+
 ### Async
 
 All methods have async variants: `achat`, `achat_stream`.

@@ -11,6 +11,7 @@ from lmux_anthropic.auth import (
     AnthropicWorkloadIdentityAuthProvider,
 )
 from lmux_anthropic.cost import calculate_anthropic_cost
+from lmux_anthropic.metadata import AnthropicMetadata, AnthropicStopDetails
 from lmux_anthropic.params import AnthropicParams
 from lmux_anthropic.provider import (
     AnthropicBedrockProvider,
@@ -27,8 +28,10 @@ __all__ = [
     "AnthropicFoundryEnvAuthProvider",
     "AnthropicFoundryProvider",
     "AnthropicFoundryTokenAuthProvider",
+    "AnthropicMetadata",
     "AnthropicParams",
     "AnthropicProvider",
+    "AnthropicStopDetails",
     "AnthropicVertexADCAuthProvider",
     "AnthropicVertexProvider",
     "AnthropicVertexServiceAccountAuthProvider",

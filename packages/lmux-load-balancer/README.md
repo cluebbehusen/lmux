@@ -54,7 +54,7 @@ if isinstance(meta, LoadBalancerMetadata):
 
 Weights are honored in aggregate across many distinct keys, not per call: a sticky conversation's whole traffic lands on the endpoint its key hashes to. A weight of `0` disables an endpoint. The load balancer delegates to each child by model string and does not forward its own `provider_params`, so each child uses the default params it was registered with.
 
-The served endpoint is reported on `provider_metadata` as a `LoadBalancerMetadata` (`primary` selected, `served` actual, `attempted` in order) on the non-streaming response and on the first streaming chunk.
+The served endpoint is reported on `provider_metadata` as a `LoadBalancerMetadata` (`primary` selected, `served` actual, `attempted` in order) on the non-streaming response, on the first streaming chunk, and on any later chunk that carries the endpoint's own metadata. The endpoint's metadata is kept on `served_metadata`, so behind the load balancer `provider_metadata` is always a `LoadBalancerMetadata` or `None`.
 
 ## Failover
 

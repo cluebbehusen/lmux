@@ -22,6 +22,12 @@ from lmux_load_balancer.params import LoadBalancerParams
 # ruff: noqa: PLR0913
 
 
+def _with_metadata[ResultT: ChatResponse | ChatChunk](result: ResultT, meta: LoadBalancerMetadata) -> ResultT:
+    """Stamp ``meta`` on ``result``, keeping the endpoint's own metadata as ``served_metadata``."""
+    stamped = meta.model_copy(update={"served_metadata": result.provider_metadata})
+    return result.model_copy(update={"provider_metadata": stamped})
+
+
 class LoadBalancerProvider:
     """Distributes chat requests across a group of registered provider endpoints.
 
@@ -111,7 +117,7 @@ class LoadBalancerProvider:
                     raise
                 continue
             meta = LoadBalancerMetadata(primary=candidates[0], served=child, attempted=list(attempted))
-            return response.model_copy(update={"provider_metadata": meta})
+            return _with_metadata(response, meta)
         raise AssertionError  # pragma: no cover
 
     async def achat(
@@ -153,7 +159,7 @@ class LoadBalancerProvider:
                     raise
                 continue
             meta = LoadBalancerMetadata(primary=candidates[0], served=child, attempted=list(attempted))
-            return response.model_copy(update={"provider_metadata": meta})
+            return _with_metadata(response, meta)
         raise AssertionError  # pragma: no cover
 
     def chat_stream(
@@ -198,11 +204,13 @@ class LoadBalancerProvider:
                     raise
                 continue
             # Committed to this endpoint: failover cannot happen once output has started.
-            # Metadata rides the first chunk so it survives even a mid-stream failure; the rest pass
-            # through as-is, and a mid-stream error propagates after them without dropping any chunk.
+            # Metadata rides the first chunk so it survives even a mid-stream failure, and any later chunk
+            # carrying the endpoint's own metadata. No chunk is held back, so a mid-stream error propagates
+            # after them without dropping any.
             meta = LoadBalancerMetadata(primary=candidates[0], served=child, attempted=list(attempted))
-            yield first.model_copy(update={"provider_metadata": meta})
-            yield from stream
+            yield _with_metadata(first, meta)
+            for chunk in stream:
+                yield chunk if chunk.provider_metadata is None else _with_metadata(chunk, meta)
             return
         raise AssertionError  # pragma: no cover
 
@@ -248,11 +256,12 @@ class LoadBalancerProvider:
                     raise
                 continue
             # Committed to this endpoint: failover cannot happen once output has started.
-            # Metadata rides the first chunk so it survives even a mid-stream failure; the rest pass
-            # through as-is, and a mid-stream error propagates after them without dropping any chunk.
+            # Metadata rides the first chunk so it survives even a mid-stream failure, and any later chunk
+            # carrying the endpoint's own metadata. No chunk is held back, so a mid-stream error propagates
+            # after them without dropping any.
             meta = LoadBalancerMetadata(primary=candidates[0], served=child, attempted=list(attempted))
-            yield first.model_copy(update={"provider_metadata": meta})
+            yield _with_metadata(first, meta)
             async for chunk in stream:
-                yield chunk
+                yield chunk if chunk.provider_metadata is None else _with_metadata(chunk, meta)
             return
         raise AssertionError  # pragma: no cover
