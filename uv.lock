@@ -719,7 +719,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.16.6"
+version = "0.17.0"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "httpx" },
@@ -864,7 +864,7 @@ requires-dist = [
 
 [[package]]
 name = "lmux-load-balancer"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "packages/lmux-load-balancer" }
 dependencies = [
     { name = "lmux" },

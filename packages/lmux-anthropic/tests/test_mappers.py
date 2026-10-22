@@ -53,6 +53,7 @@ from lmux_anthropic._wire import (
     WireMessageDeltaEvent,
     WireMessageStartEvent,
 )
+from lmux_anthropic.metadata import AnthropicMetadata, AnthropicStopDetails
 
 # MARK: Fixtures
 
@@ -600,6 +601,28 @@ class TestMapMessageResponse:
             finish_reason="stop",
         )
 
+    def test_refusal_carries_stop_details(self, cost_fn: CostCalculator) -> None:
+        message = {
+            "model": "claude-sonnet-5-5",
+            "stop_reason": "refusal",
+            "stop_details": {"type": "refusal", "category": "general_harms", "explanation": "Declined."},
+            "content": [],
+            "usage": self._usage(output_tokens=0),
+        }
+        result = map_message_response(WireMessage.model_validate(message), "anthropic", cost_fn)
+        assert result == ChatResponse(
+            content=None,
+            tool_calls=None,
+            usage=Usage(input_tokens=10, output_tokens=0),
+            cost=Cost(input_cost=0.01, output_cost=0.02, total_cost=0.03),
+            model="claude-sonnet-5-5",
+            provider="anthropic",
+            finish_reason="refusal",
+            provider_metadata=AnthropicMetadata(
+                stop_details=AnthropicStopDetails(type="refusal", category="general_harms", explanation="Declined.")
+            ),
+        )
+
     def test_tool_use_response(self, cost_fn: CostCalculator) -> None:
         message = {
             "model": "claude-sonnet-4-6",
@@ -1024,6 +1047,37 @@ class TestMapMessageDelta:
         assert result == ChatChunk(
             finish_reason="stop",
             usage=Usage(input_tokens=100, output_tokens=50, cache_read_tokens=10, cache_creation_tokens=5),
+        )
+
+    def test_refusal_carries_stop_details(self) -> None:
+        event = {
+            "type": "message_delta",
+            "delta": {"stop_reason": "refusal", "stop_details": {"type": "refusal", "category": "bio"}},
+            "usage": {"output_tokens": 0},
+        }
+        result = map_message_delta(
+            WireMessageDeltaEvent.model_validate(event), Usage(input_tokens=100, output_tokens=0)
+        )
+        assert result == ChatChunk(
+            finish_reason="refusal",
+            usage=Usage(input_tokens=100, output_tokens=0),
+            provider_metadata=AnthropicMetadata(stop_details=AnthropicStopDetails(type="refusal", category="bio")),
+        )
+
+    def test_refusal_with_null_category(self) -> None:
+        event = {
+            "type": "message_delta",
+            "delta": {
+                "stop_reason": "refusal",
+                "stop_details": {"type": "refusal", "category": None, "explanation": None},
+            },
+            "usage": {"output_tokens": 0},
+        }
+        result = map_message_delta(WireMessageDeltaEvent.model_validate(event), Usage(input_tokens=1, output_tokens=0))
+        assert result == ChatChunk(
+            finish_reason="refusal",
+            usage=Usage(input_tokens=1, output_tokens=0),
+            provider_metadata=AnthropicMetadata(stop_details=AnthropicStopDetails(type="refusal")),
         )
 
     def test_delta_usage_carries_breakdown(self) -> None:

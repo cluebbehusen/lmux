@@ -1,5 +1,7 @@
 """Response metadata for the load-balancer provider."""
 
+from pydantic import SerializeAsAny
+
 from lmux import BaseProviderMetadata
 
 
@@ -8,9 +10,12 @@ class LoadBalancerMetadata(BaseProviderMetadata):
 
     ``primary`` is the endpoint the routing key selected; ``served`` is the one that
     actually produced the response; ``attempted`` lists the endpoints tried in order
-    (a length greater than one means at least one failover occurred).
+    (a length greater than one means at least one failover occurred). ``served_metadata``
+    is the served endpoint's own ``provider_metadata``, which this metadata replaces on
+    the response or chunk it is attached to.
     """
 
     primary: str
     served: str
     attempted: list[str]
+    served_metadata: SerializeAsAny[BaseProviderMetadata | None] = None
