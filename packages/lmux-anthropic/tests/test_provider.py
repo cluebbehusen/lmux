@@ -19,12 +19,16 @@ if TYPE_CHECKING:
 from lmux.cost import ModelPricing, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError, UnsupportedFeatureError
 from lmux.types import (
+    ChatChunk,
+    Cost,
     FunctionDefinition,
     JsonObjectResponseFormat,
     JsonSchemaResponseFormat,
+    StopDetails,
     SystemMessage,
     TextResponseFormat,
     Tool,
+    Usage,
     UserMessage,
 )
 from lmux_anthropic import preload
@@ -691,6 +695,44 @@ class TestChatStream:
 
         assert chunks[-1].finish_reason == "length"
         assert chunks[-1].continuation is None
+
+    def test_pre_output_refusal_yields_stop_details(
+        self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        events = _sse(
+            [
+                (
+                    "message_start",
+                    {
+                        "type": "message_start",
+                        "message": {"model": MODEL, "usage": {"input_tokens": 10, "output_tokens": 0}},
+                    },
+                ),
+                (
+                    "message_delta",
+                    {
+                        "type": "message_delta",
+                        "delta": {"stop_reason": "refusal", "stop_details": {"type": "refusal", "category": "bio"}},
+                        "usage": {"output_tokens": 0},
+                    },
+                ),
+                ("message_stop", {"type": "message_stop"}),
+            ]
+        )
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=events))
+
+        chunks = list(sync_provider.chat_stream(MODEL, [UserMessage(content="Hi")]))
+
+        assert chunks == [
+            ChatChunk(
+                finish_reason="refusal",
+                stop_details=StopDetails(type="refusal", category="bio"),
+                usage=Usage(input_tokens=10, output_tokens=0),
+                cost=Cost(input_cost=3e-05, output_cost=0.0, total_cost=3e-05),
+                model=MODEL,
+                provider="anthropic",
+            )
+        ]
 
     def test_mid_stream_error_raises_after_partial(
         self, sync_provider: AnthropicProvider, respx_mock: respx.MockRouter

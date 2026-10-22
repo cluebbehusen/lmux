@@ -15,6 +15,7 @@ from lmux.types import (
     ProviderContinuation,
     ResponseInputMessage,
     ServerToolResult,
+    StopDetails,
     TextContent,
     ToolCall,
     Usage,
@@ -95,6 +96,20 @@ class TestSerialization:
         data = r.model_dump()
         restored = ChatResponse.model_validate(data)
         assert restored == r
+
+    def test_chat_response_with_stop_details(self) -> None:
+        r = ChatResponse(
+            content=None,
+            usage=Usage(input_tokens=10, output_tokens=0),
+            cost=None,
+            model="claude-sonnet-5-5",
+            provider="anthropic",
+            finish_reason="refusal",
+            stop_details=StopDetails(type="refusal", category="bio", explanation="Declined."),
+        )
+        data = r.model_dump()
+        assert data["stop_details"] == {"type": "refusal", "category": "bio", "explanation": "Declined."}
+        assert ChatResponse.model_validate(data) == r
 
     def test_provider_continuation_roundtrip(self) -> None:
         continuation = ProviderContinuation(

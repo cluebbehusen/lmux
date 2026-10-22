@@ -78,6 +78,15 @@ messages.append(ToolMessage(content=tool_result, tool_call_id=response.tool_call
 
 Continuations are scoped to the Anthropic API surface that produced them, including Vertex AI, Microsoft Foundry, and Amazon Bedrock. A matching continuation is replayed exactly; other providers ignore it and use the normalized content and tool calls.
 
+### Refusals
+
+A refusal finishes with `finish_reason == "refusal"`. When the API reports `stop_details`, they are on `response.stop_details`, or on the terminal chunk when streaming, as a `StopDetails` with `category` (for example `"cyber"` or `"bio"`) and `explanation`. Both can be `None` even on a refusal, so branch on `finish_reason`:
+
+```python
+if response.finish_reason == "refusal" and response.stop_details:
+    print(response.stop_details.category)
+```
+
 ### Async
 
 All methods have async variants: `achat`, `achat_stream`.

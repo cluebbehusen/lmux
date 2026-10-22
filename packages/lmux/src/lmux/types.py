@@ -277,6 +277,18 @@ class Cost(BaseModel):
 # MARK: Chat Response
 
 
+class StopDetails(BaseModel):
+    """Structured detail a provider reports about why generation stopped.
+
+    Informational only: ``category`` and ``explanation`` may be ``None`` even when the
+    provider stopped for the reason ``type`` names, so branch on ``finish_reason``.
+    """
+
+    type: str
+    category: str | None = None
+    explanation: str | None = None
+
+
 class ChatResponse[MetadataT: BaseProviderMetadata = BaseProviderMetadata](BaseModel):
     """Flattened chat completion response."""
 
@@ -289,6 +301,7 @@ class ChatResponse[MetadataT: BaseProviderMetadata = BaseProviderMetadata](BaseM
     model: str
     provider: str
     finish_reason: str | None = None
+    stop_details: StopDetails | None = None
     provider_metadata: SerializeAsAny[MetadataT | None] = None
     continuation: ProviderContinuation | None = None
 
@@ -311,6 +324,7 @@ class ChatChunk[MetadataT: BaseProviderMetadata = BaseProviderMetadata](BaseMode
     usage: Usage | None = None
     cost: Cost | None = None
     finish_reason: str | None = None
+    stop_details: StopDetails | None = None
     model: str | None = None
     provider: str | None = None
     provider_metadata: SerializeAsAny[MetadataT | None] = None

@@ -666,7 +666,7 @@ wheels = [
 
 [[package]]
 name = "lmux"
-version = "0.12.0"
+version = "0.13.0"
 source = { editable = "packages/lmux" }
 dependencies = [
     { name = "pydantic" },
@@ -677,7 +677,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.16.6"
+version = "0.17.0"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "httpx" },

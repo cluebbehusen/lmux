@@ -16,8 +16,9 @@ You don't need to install this directly; provider packages (e.g., `lmux-openai`)
 
 ### Responses
 
-- `ChatResponse`: chat completion result with `content`, `usage`, `cost`, `model`, `provider`, `finish_reason`, optional `provider_metadata`, and optional provider continuation state
-- `ChatChunk`: streaming chunk with `delta`, `tool_call_deltas`, `usage`, `cost`, plus the serving `model`/`provider` stamped on the terminal chunk and optional metadata and continuation state
+- `ChatResponse`: chat completion result with `content`, `usage`, `cost`, `model`, `provider`, `finish_reason`, optional `stop_details`, optional `provider_metadata`, and optional provider continuation state
+- `ChatChunk`: streaming chunk with `delta`, `tool_call_deltas`, `usage`, `cost`, plus the serving `model`/`provider` stamped on the terminal chunk and optional stop details, metadata and continuation state
+- `StopDetails`: why a provider stopped, when it says (`type`, optional `category` and `explanation`); informational only, so branch on `finish_reason`
 - `EmbeddingResponse`: embedding result with `embeddings`, `usage`, `cost`
 - `ResponseResponse`: Responses API result with `output_text`, `usage`, `cost`
 - `ResponseInputMessage`: Responses API message input, supporting text and multimodal content (`TextContent`, `ImageContent`, `CachePointContent`)

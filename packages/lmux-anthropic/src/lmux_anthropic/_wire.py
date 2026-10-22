@@ -146,6 +146,12 @@ WireStreamDelta = Annotated[
 ]
 
 
+class WireStopDetails(BaseModel):
+    type: str
+    category: str | None = None
+    explanation: str | None = None
+
+
 # MARK: Non-streamed response
 
 
@@ -154,6 +160,7 @@ class WireMessage(BaseModel):
     content: list[WireContentBlock]
     usage: WireUsage
     stop_reason: str | None = None
+    stop_details: WireStopDetails | None = None
 
 
 # MARK: Stream events
@@ -180,6 +187,7 @@ class WireContentBlockDeltaEvent(BaseModel):
 
 class WireMessageDeltaBody(BaseModel):
     stop_reason: str | None = None
+    stop_details: WireStopDetails | None = None
 
 
 class WireMessageDeltaEvent(BaseModel):
