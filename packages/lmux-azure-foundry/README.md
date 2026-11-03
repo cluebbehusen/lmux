@@ -82,6 +82,25 @@ response = provider.create_response("gpt-5-pro", "Hello")
 print(response.output_text)
 ```
 
+### Chat over the Responses API
+
+GPT-6 models refuse function tools with reasoning on Chat Completions. Set `api="responses"` to send
+chat calls to `/responses` instead, with the same lmux chat types in and out:
+
+```python
+params = AzureFoundryParams(api="responses", reasoning_effort="medium")
+response = provider.chat("gpt-6-luna", messages, tools=tools, provider_params=params)
+messages.append(response.to_assistant_message())
+```
+
+Requests are stateless (`store: false`) and always ask for encrypted reasoning, so use this with reasoning
+deployments. The encrypted reasoning comes back on `response.continuation`; keep it on the assistant message (as
+`to_assistant_message()` does) and the next call replays it. It is replayed to whichever Azure Foundry endpoint gets
+the history next, and only on this path; the same history sent through Chat Completions drops it. When a reasoning
+effort is set, the request also asks for reasoning summaries, which fill `response.reasoning` and
+`chunk.reasoning_delta`. `chat_stream`/`achat_stream` take the same parameter; `stop` and `seed` are not supported
+here.
+
 ### Async
 
 All methods have async variants: `achat`, `achat_stream`, `aembed`, `acreate_response`.
@@ -118,7 +137,8 @@ response = provider.chat(
 | `prompt_cache_key`       | `str`                                   | Cache key for Azure's automatic prompt caching (chat + responses) |
 | `prompt_cache_retention` | `"in_memory" \| "24h"`                  | Prompt cache retention policy (chat + responses)                  |
 | `deployment_type`        | `"global" \| "data_zone" \| "regional"` | Affects cost calculation only, not sent to API                    |
-| `data_zone`              | `"us" \| "eu"`                         | Pricing zone for Data Zone deployments; defaults to `"us"`        |
+| `data_zone`              | `"us" \| "eu"`                          | Pricing zone for Data Zone deployments; defaults to `"us"`        |
+| `api`                    | `"chat_completions" \| "responses"`     | Endpoint chat calls use; not sent to API                          |
 
 `deployment_type="data_zone"` uses US pricing when `data_zone` is omitted. Set `data_zone="eu"` for an EU
 Data Zone deployment. This selects the applicable model-specific premium for cost reporting; it does not

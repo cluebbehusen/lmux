@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 from lmux._http import aiter_sse, iter_sse
 from lmux.cost import ModelPricing, calculate_cost
-from lmux.exceptions import LmuxError
+from lmux.exceptions import LmuxError, UnsupportedFeatureError
 from lmux.protocols import AuthProvider, CompletionProvider, EmbeddingProvider, PricingProvider, ResponsesProvider
 from lmux.types import (
     ChatChunk,
@@ -27,6 +27,7 @@ from lmux.types import (
 )
 from lmux_azure_foundry._exceptions import (
     error_from_response,
+    error_from_responses_event,
     error_from_stream,
     map_transport_error,
     parse_body,
@@ -34,12 +35,18 @@ from lmux_azure_foundry._exceptions import (
 )
 from lmux_azure_foundry._lazy import auth_headers, create_async_client, create_sync_client
 from lmux_azure_foundry._mappers import (
+    ResponsesStreamMapper,
     map_chat_chunk,
     map_chat_completion,
     map_embedding_response,
     map_messages,
+    map_messages_to_response_input,
     map_response_format,
     map_response_input,
+    map_response_text_format,
+    map_response_tool_choice,
+    map_response_tools,
+    map_responses_chat,
     map_responses_response,
     map_tool_choice,
     map_tools,
@@ -49,6 +56,7 @@ from lmux_azure_foundry._wire import (
     WireCompletion,
     WireEmbeddingResponse,
     WireResponsesResponse,
+    WireResponsesStreamEvent,
 )
 from lmux_azure_foundry.auth import AzureFoundryCredential, AzureFoundryKeyAuthProvider
 from lmux_azure_foundry.cost import (
@@ -188,20 +196,17 @@ class AzureFoundryProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AzureFoundryParams | None = None,
     ) -> ChatResponse:
-        body = self._build_body(
+        path, body = self._chat_request(
             model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
         )  # fmt: skip
         try:
             client = self._get_sync_client()
-            response = client.post(
-                _chat_path(model), json={**body, "stream": False}, params=self._query, headers=self._sync_headers()
-            )
+            response = client.post(path, json=body, params=self._query, headers=self._sync_headers())
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_chat_completion(parse_body(response, WireCompletion), PROVIDER_NAME, self._calculate_cost)
-        return self._apply_multipliers(result, provider_params)
+        return self._apply_multipliers(self._map_chat_body(response, provider_params), provider_params)
 
     @override
     async def achat(
@@ -219,23 +224,17 @@ class AzureFoundryProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         provider_params: AzureFoundryParams | None = None,
     ) -> ChatResponse:
-        body = self._build_body(
+        path, body = self._chat_request(
             model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
         )  # fmt: skip
         try:
             client = await self._get_async_client()
-            response = await client.post(
-                _chat_path(model),
-                json={**body, "stream": False},
-                params=self._query,
-                headers=await self._async_headers(),
-            )
+            response = await client.post(path, json=body, params=self._query, headers=await self._async_headers())
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        result = map_chat_completion(parse_body(response, WireCompletion), PROVIDER_NAME, self._calculate_cost)
-        return self._apply_multipliers(result, provider_params)
+        return self._apply_multipliers(self._map_chat_body(response, provider_params), provider_params)
 
     @override
     def chat_stream(
@@ -262,18 +261,18 @@ class AzureFoundryProvider(
             headers = self._sync_headers()
         except Exception as e:
             raise map_transport_error(e) from e
+        path, map_event = self._stream_route(model, provider_params)
         try:
-            with client.stream("POST", _chat_path(model), json=body, params=self._query, headers=headers) as response:
+            with client.stream("POST", path, json=body, params=self._query, headers=headers) as response:
                 if response.status_code >= _HTTP_ERROR:
                     response.read()
                     raise error_from_response(response)  # noqa: TRY301
                 for _event, data in iter_sse(response):
                     if data == _SSE_DONE:
                         break
-                    chunk = json.loads(data)
-                    if "error" in chunk:
-                        raise error_from_stream(chunk)  # noqa: TRY301
-                    yield self._map_stream_chunk(chunk, model, provider_params)
+                    chunk = map_event(json.loads(data))
+                    if chunk is not None:
+                        yield chunk
         except LmuxError:
             raise
         except Exception as e:
@@ -304,20 +303,18 @@ class AzureFoundryProvider(
             headers = await self._async_headers()
         except Exception as e:
             raise map_transport_error(e) from e
+        path, map_event = self._stream_route(model, provider_params)
         try:
-            async with client.stream(
-                "POST", _chat_path(model), json=body, params=self._query, headers=headers
-            ) as response:
+            async with client.stream("POST", path, json=body, params=self._query, headers=headers) as response:
                 if response.status_code >= _HTTP_ERROR:
                     await response.aread()
                     raise error_from_response(response)  # noqa: TRY301
                 async for _event, data in aiter_sse(response):
                     if data == _SSE_DONE:
                         break
-                    chunk = json.loads(data)
-                    if "error" in chunk:
-                        raise error_from_stream(chunk)  # noqa: TRY301
-                    yield self._map_stream_chunk(chunk, model, provider_params)
+                    chunk = map_event(json.loads(data))
+                    if chunk is not None:
+                        yield chunk
         except LmuxError:
             raise
         except Exception as e:
@@ -465,6 +462,35 @@ class AzureFoundryProvider(
 
     # MARK: Internal Helpers
 
+    def _stream_route(
+        self, model: str, provider_params: AzureFoundryParams | None
+    ) -> tuple[str, Callable[[dict[str, Any]], ChatChunk | None]]:
+        """Path and per-event mapper for a streamed chat call; raises on an in-stream error."""
+        if not _uses_responses(provider_params):
+
+            def map_chat_event(event: dict[str, Any]) -> ChatChunk:
+                if "error" in event:
+                    raise error_from_stream(event)
+                return self._map_stream_chunk(event, model, provider_params)
+
+            return _chat_path(model), map_chat_event
+
+        mapper = ResponsesStreamMapper(PROVIDER_NAME, self._calculate_cost)
+
+        def map_responses_event(data: dict[str, Any]) -> ChatChunk | None:
+            event = WireResponsesStreamEvent.model_validate(data)
+            error = error_from_responses_event(event)
+            if error is not None:
+                raise error
+            chunk = mapper.map_event(event)
+            if chunk is None or chunk.cost is None or chunk.model is None:
+                return chunk
+            return chunk.model_copy(
+                update={"cost": self._apply_cost_multipliers(chunk.cost, chunk.model, provider_params)}
+            )
+
+        return _RESPONSES_PATH, map_responses_event
+
     def _map_stream_chunk(
         self, chunk: dict[str, Any], model: str, provider_params: AzureFoundryParams | None
     ) -> ChatChunk:
@@ -490,11 +516,94 @@ class AzureFoundryProvider(
         reasoning_effort: Literal["low", "medium", "high"] | None,
         provider_params: AzureFoundryParams | None,
     ) -> dict[str, Any]:
+        if _uses_responses(provider_params):
+            body = self._chat_responses_body(
+                model, messages, temperature, max_tokens, top_p, stop,
+                tools, tool_choice, response_format, reasoning_effort, provider_params,
+            )  # fmt: skip
+            return {**body, "stream": True}
         body = self._build_body(
             model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
         )  # fmt: skip
         return {**body, "stream": True, "stream_options": {"include_usage": True}}
+
+    def _chat_request(  # noqa: PLR0913
+        self,
+        model: str,
+        messages: Sequence[Message],
+        temperature: float | None,
+        max_tokens: int | None,
+        top_p: float | None,
+        stop: str | list[str] | None,
+        tools: list[Tool] | None,
+        tool_choice: ToolChoice | None,
+        response_format: ResponseFormat | None,
+        reasoning_effort: Literal["low", "medium", "high"] | None,
+        provider_params: AzureFoundryParams | None,
+    ) -> tuple[str, dict[str, Any]]:
+        """Path and body for a non-streamed chat call, on Chat Completions or the Responses API."""
+        if _uses_responses(provider_params):
+            body = self._chat_responses_body(
+                model, messages, temperature, max_tokens, top_p, stop,
+                tools, tool_choice, response_format, reasoning_effort, provider_params,
+            )  # fmt: skip
+            return _RESPONSES_PATH, body
+        body = self._build_body(
+            model, messages, temperature, max_tokens, top_p, stop,
+            tools, tool_choice, response_format, reasoning_effort, provider_params,
+        )  # fmt: skip
+        return _chat_path(model), {**body, "stream": False}
+
+    def _map_chat_body(self, response: "httpx.Response", provider_params: AzureFoundryParams | None) -> ChatResponse:
+        if _uses_responses(provider_params):
+            return map_responses_chat(parse_body(response, WireResponsesResponse), PROVIDER_NAME, self._calculate_cost)
+        return map_chat_completion(parse_body(response, WireCompletion), PROVIDER_NAME, self._calculate_cost)
+
+    @staticmethod
+    def _chat_responses_body(  # noqa: PLR0913
+        model: str,
+        messages: Sequence[Message],
+        temperature: float | None,
+        max_tokens: int | None,
+        top_p: float | None,
+        stop: str | list[str] | None,
+        tools: list[Tool] | None,
+        tool_choice: ToolChoice | None,
+        response_format: ResponseFormat | None,
+        reasoning_effort: Literal["low", "medium", "high"] | None,
+        provider_params: AzureFoundryParams | None,
+    ) -> dict[str, Any]:
+        """Chat request body for the Responses API, stateless: reasoning comes back encrypted for replay."""
+        if stop is not None or (provider_params is not None and provider_params.seed is not None):
+            msg = "stop and seed are not supported when chat runs over the Responses API"
+            raise UnsupportedFeatureError(msg, provider=PROVIDER_NAME)
+        body: dict[str, Any] = {
+            "model": model,
+            "input": map_messages_to_response_input(messages),
+            "stream": False,
+            "store": False,
+            "include": ["reasoning.encrypted_content"],
+        }
+        if temperature is not None:
+            body["temperature"] = temperature
+        if max_tokens is not None:
+            body["max_output_tokens"] = max_tokens
+        if top_p is not None:
+            body["top_p"] = top_p
+        if tools is not None:
+            body["tools"] = map_response_tools(tools)
+        if tool_choice is not None:
+            body["tool_choice"] = map_response_tool_choice(tool_choice)
+        if response_format is not None:
+            body["text"] = {"format": map_response_text_format(response_format)}
+        if reasoning_effort is not None:
+            body["reasoning"] = {"effort": reasoning_effort}
+        body.update(AzureFoundryProvider._responses_kwargs(provider_params))
+        if "reasoning" in body:
+            # Summaries come back only when requested; they fill ``reasoning`` / ``reasoning_delta``.
+            body["reasoning"] = {**body["reasoning"], "summary": "auto"}
+        return body
 
     @staticmethod
     def _build_body(  # noqa: PLR0913
@@ -600,6 +709,10 @@ class AzureFoundryProvider(
             extra["user"] = provider_params.user
         extra.update(AzureFoundryProvider._cache_kwargs(provider_params))
         return extra
+
+
+def _uses_responses(provider_params: AzureFoundryParams | None) -> bool:
+    return provider_params is not None and provider_params.api == "responses"
 
 
 def _chat_path(model: str) -> str:

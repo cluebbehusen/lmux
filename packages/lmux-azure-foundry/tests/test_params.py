@@ -18,6 +18,7 @@ class TestAzureFoundryParams:
         assert params.user is None
         assert params.deployment_type is None
         assert params.data_zone == "us"
+        assert params.api is None
 
     def test_invalid_data_zone(self) -> None:
         with pytest.raises(ValidationError):
@@ -34,3 +35,11 @@ class TestAzureFoundryParams:
         assert AzureFoundryParams(deployment_type="global").deployment_type == "global"
         assert AzureFoundryParams(deployment_type="data_zone").deployment_type == "data_zone"
         assert AzureFoundryParams(deployment_type="regional").deployment_type == "regional"
+
+    def test_invalid_api(self) -> None:
+        with pytest.raises(ValidationError):
+            _ = AzureFoundryParams(api="invalid")  # ty: ignore[invalid-argument-type]
+
+    def test_valid_apis(self) -> None:
+        assert AzureFoundryParams(api="chat_completions").api == "chat_completions"
+        assert AzureFoundryParams(api="responses").api == "responses"

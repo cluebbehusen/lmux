@@ -777,7 +777,7 @@ provides-extras = ["async"]
 
 [[package]]
 name = "lmux-azure-foundry"
-version = "0.10.6"
+version = "0.11.0"
 source = { editable = "packages/lmux-azure-foundry" }
 dependencies = [
     { name = "httpx" },

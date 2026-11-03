@@ -12,16 +12,26 @@ import respx
 from pytest_mock import MockerFixture
 
 from lmux.cost import ModelPricing, PricingTier
-from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError
+from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError, UnsupportedFeatureError
 from lmux.types import (
+    AssistantMessage,
     CachePointContent,
+    ChatChunk,
+    ChatResponse,
     Cost,
+    FunctionCallResult,
     FunctionDefinition,
     ImageContent,
     JsonObjectResponseFormat,
+    Message,
+    ProviderContinuation,
     ResponseInputMessage,
     TextContent,
     Tool,
+    ToolCall,
+    ToolChoiceFunction,
+    ToolMessage,
+    Usage,
     UserMessage,
 )
 from lmux_azure_foundry import preload
@@ -202,6 +212,109 @@ def _sse_stream() -> bytes:
 
 def _ok_chat(completion: dict[str, Any], respx_mock: respx.MockRouter, model: str = "gpt-4o") -> respx.Route:
     return respx_mock.post(_chat_url(model)).mock(return_value=httpx.Response(200, json=completion))
+
+
+# MARK: Chat over the Responses API fixtures
+
+
+@pytest.fixture
+def responses_params() -> AzureFoundryParams:
+    return AzureFoundryParams(api="responses", reasoning_effort="medium")
+
+
+@pytest.fixture
+def tool_loop_messages() -> list[Message]:
+    continuation = ProviderContinuation(
+        namespace="lmux_azure_foundry.responses",
+        data={
+            "output": [
+                {"type": "reasoning", "id": "rs_1", "encrypted_content": "enc"},
+                {"type": "function_call", "call_id": "call_1", "name": "lab", "arguments": "{}"},
+            ]
+        },
+    )
+    call = ToolCall(id="call_1", function=FunctionCallResult(name="lab", arguments="{}"))
+    return [
+        UserMessage(content="LDL?"),
+        AssistantMessage(tool_calls=[call], continuation=continuation),
+        ToolMessage(content="141", tool_call_id="call_1"),
+    ]
+
+
+@pytest.fixture
+def responses_tool_call_body() -> dict[str, Any]:
+    return {
+        "id": "resp_9",
+        "model": "unpriced-reasoner",
+        "status": "completed",
+        "output": [{"type": "function_call", "call_id": "call_2", "name": "lab", "arguments": "{}"}],
+        "usage": {"input_tokens": 10, "output_tokens": 5},
+    }
+
+
+@pytest.fixture
+def expected_tool_call_response() -> ChatResponse:
+    return ChatResponse(
+        content=None,
+        tool_calls=[ToolCall(id="call_2", function=FunctionCallResult(name="lab", arguments="{}"))],
+        usage=Usage(input_tokens=10, output_tokens=5),
+        cost=None,
+        model="unpriced-reasoner",
+        provider="azure-foundry",
+        finish_reason="tool_calls",
+    )
+
+
+@pytest.fixture
+def expected_responses_request() -> dict[str, Any]:
+    return {
+        "model": "gpt-6-luna",
+        "input": [
+            {"role": "user", "content": "LDL?"},
+            {"type": "reasoning", "id": "rs_1", "encrypted_content": "enc"},
+            {"type": "function_call", "call_id": "call_1", "name": "lab", "arguments": "{}"},
+            {"type": "function_call_output", "call_id": "call_1", "output": "141"},
+        ],
+        "stream": False,
+        "store": False,
+        "include": ["reasoning.encrypted_content"],
+        "temperature": 0.2,
+        "max_output_tokens": 500,
+        "top_p": 0.9,
+        "tools": [{"type": "function", "name": "lab", "strict": False}],
+        "tool_choice": {"type": "function", "name": "lab"},
+        "text": {"format": {"type": "json_object"}},
+        "reasoning": {"effort": "medium", "summary": "auto"},
+    }
+
+
+@pytest.fixture
+def responses_stream() -> bytes:
+    events = [
+        {"type": "response.created", "response": {"id": "r", "model": "unpriced-reasoner", "status": "in_progress"}},
+        {"type": "response.output_text.delta", "delta": "Hi"},
+        {"type": "response.completed", "response": {"id": "r", "model": "unpriced-reasoner", "status": "completed"}},
+    ]
+    return "".join(f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in events).encode()
+
+
+@pytest.fixture
+def gpt6_responses_stream() -> bytes:
+    done = {
+        "id": "r",
+        "model": "gpt-6-luna",
+        "status": "completed",
+        "usage": {"input_tokens": 1000, "output_tokens": 100},
+    }
+    return f"data: {json.dumps({'type': 'response.completed', 'response': done})}\n\n".encode()
+
+
+@pytest.fixture
+def expected_stream_chunks() -> list[ChatChunk]:
+    return [
+        ChatChunk(delta="Hi", provider="azure-foundry"),
+        ChatChunk(finish_reason="stop", model="unpriced-reasoner", provider="azure-foundry"),
+    ]
 
 
 # MARK: Chat
@@ -483,6 +596,106 @@ class TestChat:
         )
         assert result.cost is None
 
+    def test_responses_api(  # noqa: PLR0913
+        self,
+        sync_provider: AzureFoundryProvider,
+        responses_params: AzureFoundryParams,
+        tool_loop_messages: list[Message],
+        responses_tool_call_body: dict[str, Any],
+        expected_tool_call_response: ChatResponse,
+        expected_responses_request: dict[str, Any],
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=responses_tool_call_body))
+        chat_route = respx_mock.post(_chat_url("gpt-6-luna"))
+        result = sync_provider.chat(
+            "gpt-6-luna",
+            tool_loop_messages,
+            temperature=0.2,
+            max_tokens=500,
+            top_p=0.9,
+            tools=[Tool(function=FunctionDefinition(name="lab"))],
+            tool_choice=ToolChoiceFunction(name="lab"),
+            response_format=JsonObjectResponseFormat(),
+            reasoning_effort="low",
+            provider_params=responses_params,
+        )
+        assert result == expected_tool_call_response
+        assert json.loads(route.calls.last.request.content) == expected_responses_request
+        assert not chat_route.called
+
+    def test_responses_api_minimal_body(
+        self,
+        sync_provider: AzureFoundryProvider,
+        responses_tool_call_body: dict[str, Any],
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=responses_tool_call_body))
+        sync_provider.chat(
+            "gpt-6-luna", [UserMessage(content="Hi")], provider_params=AzureFoundryParams(api="responses")
+        )
+        assert json.loads(route.calls.last.request.content) == {
+            "model": "gpt-6-luna",
+            "input": [{"role": "user", "content": "Hi"}],
+            "stream": False,
+            "store": False,
+            "include": ["reasoning.encrypted_content"],
+        }
+
+    @pytest.mark.parametrize(
+        ("stop", "params"),
+        [("END", AzureFoundryParams(api="responses")), (None, AzureFoundryParams(api="responses", seed=1))],
+    )
+    def test_responses_api_rejects_stop_and_seed(
+        self,
+        sync_provider: AzureFoundryProvider,
+        stop: str | None,
+        params: AzureFoundryParams,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL)
+        with pytest.raises(UnsupportedFeatureError, match="stop and seed"):
+            sync_provider.chat("gpt-6-luna", [UserMessage(content="Hi")], stop=stop, provider_params=params)
+        assert not route.called
+
+    def test_chat_completions_api_param(
+        self, sync_provider: AzureFoundryProvider, completion: dict[str, Any], respx_mock: respx.MockRouter
+    ) -> None:
+        route = _ok_chat(completion, respx_mock)
+        responses_route = respx_mock.post(RESPONSES_URL)
+        sync_provider.chat(
+            "gpt-4o", [UserMessage(content="Hi")], provider_params=AzureFoundryParams(api="chat_completions")
+        )
+        assert json.loads(route.calls.last.request.content) == {
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "stream": False,
+        }
+        assert not responses_route.called
+
+    def test_responses_api_deployment_multiplier(
+        self, sync_provider: AzureFoundryProvider, respx_mock: respx.MockRouter
+    ) -> None:
+        body = {
+            "id": "r",
+            "model": "gpt-6-luna",
+            "status": "completed",
+            "output": [{"type": "message", "content": [{"type": "output_text", "text": "Hi"}]}],
+            "usage": {"input_tokens": 1000, "output_tokens": 100},
+        }
+        respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=body))
+        global_cost = sync_provider.chat(
+            "gpt-6-luna", [UserMessage(content="Hi")], provider_params=AzureFoundryParams(api="responses")
+        ).cost
+        regional_cost = sync_provider.chat(
+            "gpt-6-luna",
+            [UserMessage(content="Hi")],
+            provider_params=AzureFoundryParams(api="responses", deployment_type="regional"),
+        ).cost
+        assert global_cost is not None
+        assert regional_cost is not None
+        assert regional_cost.total_cost == pytest.approx(global_cost.total_cost * 1.1)
+
 
 # MARK: Achat
 
@@ -547,6 +760,32 @@ class TestAchat:
         with pytest.raises(ProviderError, match="client init failed"):
             await provider.achat("gpt-4o", [UserMessage(content="Hi")])
         async_create_raises.assert_called_once()
+
+    async def test_responses_api(  # noqa: PLR0913
+        self,
+        async_provider: AzureFoundryProvider,
+        responses_params: AzureFoundryParams,
+        tool_loop_messages: list[Message],
+        responses_tool_call_body: dict[str, Any],
+        expected_tool_call_response: ChatResponse,
+        expected_responses_request: dict[str, Any],
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, json=responses_tool_call_body))
+        result = await async_provider.achat(
+            "gpt-6-luna",
+            tool_loop_messages,
+            temperature=0.2,
+            max_tokens=500,
+            top_p=0.9,
+            tools=[Tool(function=FunctionDefinition(name="lab"))],
+            tool_choice=ToolChoiceFunction(name="lab"),
+            response_format=JsonObjectResponseFormat(),
+            reasoning_effort="low",
+            provider_params=responses_params,
+        )
+        assert result == expected_tool_call_response
+        assert json.loads(route.calls.last.request.content) == expected_responses_request
 
 
 # MARK: ChatStream
@@ -632,6 +871,59 @@ class TestChatStream:
         chunks = list(sync_provider.chat_stream("gpt-4o", [UserMessage(content="Hi")]))
         assert [c.delta for c in chunks] == ["x"]
 
+    def test_responses_api(
+        self,
+        sync_provider: AzureFoundryProvider,
+        responses_params: AzureFoundryParams,
+        responses_stream: bytes,
+        expected_stream_chunks: list[ChatChunk],
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        route = respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, content=responses_stream))
+        chunks = list(
+            sync_provider.chat_stream("gpt-6-luna", [UserMessage(content="Hi")], provider_params=responses_params)
+        )
+        assert chunks == expected_stream_chunks
+        assert json.loads(route.calls.last.request.content) == {
+            "model": "gpt-6-luna",
+            "input": [{"role": "user", "content": "Hi"}],
+            "stream": True,
+            "store": False,
+            "include": ["reasoning.encrypted_content"],
+            "reasoning": {"effort": "medium", "summary": "auto"},
+        }
+
+    def test_responses_api_error_event(
+        self, sync_provider: AzureFoundryProvider, responses_params: AzureFoundryParams, respx_mock: respx.MockRouter
+    ) -> None:
+        body = b'data: {"type": "error", "code": "server_error", "message": "boom"}\n\n'
+        respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, content=body))
+        with pytest.raises(ProviderError, match="boom"):
+            list(sync_provider.chat_stream("gpt-6-luna", [UserMessage(content="Hi")], provider_params=responses_params))
+
+    def test_responses_api_deployment_multiplier(
+        self,
+        sync_provider: AzureFoundryProvider,
+        gpt6_responses_stream: bytes,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, content=gpt6_responses_stream))
+        global_cost = list(
+            sync_provider.chat_stream(
+                "gpt-6-luna", [UserMessage(content="Hi")], provider_params=AzureFoundryParams(api="responses")
+            )
+        )[-1].cost
+        regional_cost = list(
+            sync_provider.chat_stream(
+                "gpt-6-luna",
+                [UserMessage(content="Hi")],
+                provider_params=AzureFoundryParams(api="responses", deployment_type="regional"),
+            )
+        )[-1].cost
+        assert global_cost is not None
+        assert regional_cost is not None
+        assert regional_cost.total_cost == pytest.approx(global_cost.total_cost * 1.1)
+
 
 # MARK: AchatStream
 
@@ -707,6 +999,23 @@ class TestAchatStream:
         )
         chunks = [c async for c in async_provider.achat_stream("gpt-4o", [UserMessage(content="Hi")])]
         assert [c.delta for c in chunks] == ["x"]
+
+    async def test_responses_api(
+        self,
+        async_provider: AzureFoundryProvider,
+        responses_params: AzureFoundryParams,
+        responses_stream: bytes,
+        expected_stream_chunks: list[ChatChunk],
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        respx_mock.post(RESPONSES_URL).mock(return_value=httpx.Response(200, content=responses_stream))
+        chunks = [
+            chunk
+            async for chunk in async_provider.achat_stream(
+                "gpt-6-luna", [UserMessage(content="Hi")], provider_params=responses_params
+            )
+        ]
+        assert chunks == expected_stream_chunks
 
 
 # MARK: Embed

@@ -1,11 +1,12 @@
 """Pydantic wire models for Azure AI Foundry (OpenAI-compatible) response bodies.
 
 Only the fields lmux consumes are declared; unknown fields are ignored (Pydantic's default),
-so new server fields do not break parsing. Covers the three response families the provider
-reads: chat completions (and streaming chunks), embeddings, and the Responses API.
+so new server fields do not break parsing. Responses API output items are the exception: they keep
+unknown fields so a turn can be replayed to the API as it was returned. Covers the three response
+families the provider reads: chat completions (and streaming chunks), embeddings, and the Responses API.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # MARK: Chat completion (non-streamed)
 
@@ -108,13 +109,30 @@ class WireEmbeddingResponse(BaseModel):
 
 
 class WireOutputContent(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: str
+    text: str | None = None
+
+
+class WireSummaryPart(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     type: str
     text: str | None = None
 
 
 class WireOutputItem(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     type: str
     content: list[WireOutputContent] | None = None
+    # function_call items
+    call_id: str | None = None
+    name: str | None = None
+    arguments: str | None = None
+    # reasoning items
+    summary: list[WireSummaryPart] | None = None
 
 
 class WireResponsesInputDetails(BaseModel):
@@ -132,8 +150,36 @@ class WireResponsesUsage(BaseModel):
     output_tokens_details: WireResponsesOutputDetails | None = None
 
 
+class WireIncompleteDetails(BaseModel):
+    reason: str | None = None
+
+
+class WireResponsesError(BaseModel):
+    message: str | None = None
+    code: str | None = None
+
+
 class WireResponsesResponse(BaseModel):
     id: str
     model: str
+    status: str | None = None
+    incomplete_details: WireIncompleteDetails | None = None
+    error: WireResponsesError | None = None
     output: list[WireOutputItem] | None = None
     usage: WireResponsesUsage | None = None
+
+
+# MARK: Responses API streaming
+
+
+class WireResponsesStreamEvent(BaseModel):
+    """One Responses API stream event; which fields are set depends on ``type``."""
+
+    type: str
+    delta: str | None = None
+    output_index: int | None = None
+    item: WireOutputItem | None = None
+    response: WireResponsesResponse | None = None
+    # top-level ``error`` events
+    message: str | None = None
+    code: str | None = None

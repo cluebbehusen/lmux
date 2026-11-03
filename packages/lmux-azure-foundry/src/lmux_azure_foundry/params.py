@@ -38,3 +38,12 @@ class AzureFoundryParams(BaseProviderParams):
 
     Ignored for other deployment types. Only affects cost calculation, not API routing.
     """
+    api: Literal["chat_completions", "responses"] | None = None
+    """Which Azure endpoint the chat methods call, streamed or not. Not sent to the API.
+
+    - ``None`` / ``"chat_completions"`` — ``/chat/completions`` (default).
+    - ``"responses"`` — ``/responses``, mapped to and from the chat types. Needed for models that refuse
+      function tools with reasoning on Chat Completions (GPT-6). The model's reasoning comes back as the
+      response's ``continuation``; pass the assistant turn back with it unchanged and the next round
+      replays it. ``stop`` and ``seed`` are not supported on this path.
+    """

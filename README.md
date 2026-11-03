@@ -101,7 +101,7 @@ Streaming returns reasoning in `chunk.reasoning_delta`. Each provider maps the e
 
 | Provider               | Mapping                                                                                                                                                                    |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OpenAI / Azure Foundry | `reasoning_effort`                                                                                                                                                         |
+| OpenAI / Azure Foundry | `reasoning_effort` (`reasoning.effort` + summaries with Azure `api="responses"`)                                                                                           |
 | Anthropic              | adaptive `thinking` + `output_config.effort` on Claude 4.6+; `thinking` with budget tokens (capped to `max_tokens - 1`) on 4.5 and older; summarized display in both modes |
 | Google                 | model-aware `thinkingBudget` on Gemini 2.5 or `thinkingLevel` on Gemini 3+, with `includeThoughts`                                                                         |
 | AWS Bedrock            | `additionalModelRequestFields.thinking` — adaptive + `output_config.effort` on Claude 4.6+, capped budget tokens on 4.5 and older, with summarized display in both modes   |

@@ -14,12 +14,13 @@ from lmux.exceptions import (
 )
 from lmux_azure_foundry._exceptions import (
     error_from_response,
+    error_from_responses_event,
     error_from_stream,
     map_transport_error,
     parse_body,
     raise_for_status,
 )
-from lmux_azure_foundry._wire import WireCompletion
+from lmux_azure_foundry._wire import WireCompletion, WireResponsesError, WireResponsesResponse, WireResponsesStreamEvent
 
 
 def _resp(status: int, *, json: object = None, text: str = "", headers: dict[str, str] | None = None) -> httpx.Response:
@@ -128,3 +129,29 @@ class TestErrorFromStream:
         err = error_from_stream({"error": "raw string error"})
         assert isinstance(err, ProviderError)
         assert "raw string error" in str(err)
+
+
+class TestErrorFromResponsesEvent:
+    def test_error_event(self) -> None:
+        err = error_from_responses_event(WireResponsesStreamEvent(type="error", code="server_error", message="boom"))
+        assert isinstance(err, ProviderError)
+        assert str(err) == "boom"
+
+    def test_error_event_without_message(self) -> None:
+        err = error_from_responses_event(WireResponsesStreamEvent(type="error"))
+        assert isinstance(err, ProviderError)
+        assert str(err) == "stream error"
+
+    def test_failed_response(self) -> None:
+        response = WireResponsesResponse(id="r", model="m", error=WireResponsesError(code="x", message="bad"))
+        err = error_from_responses_event(WireResponsesStreamEvent(type="response.failed", response=response))
+        assert isinstance(err, ProviderError)
+        assert str(err) == "bad"
+
+    def test_failed_response_without_error(self) -> None:
+        err = error_from_responses_event(WireResponsesStreamEvent(type="response.failed"))
+        assert isinstance(err, ProviderError)
+        assert str(err) == "response failed"
+
+    def test_other_events(self) -> None:
+        assert error_from_responses_event(WireResponsesStreamEvent(type="response.output_text.delta")) is None

@@ -18,6 +18,8 @@ from lmux.exceptions import (
 if TYPE_CHECKING:
     import httpx
 
+    from lmux_azure_foundry._wire import WireResponsesStreamEvent
+
 PROVIDER = "azure-foundry"
 
 _AUTH = 401
@@ -47,6 +49,16 @@ def error_from_stream(payload: dict[str, Any]) -> LmuxError:
     error = payload.get("error")
     message = error.get("message") if isinstance(error, dict) else error
     return ProviderError(str(message), provider=PROVIDER)
+
+
+def error_from_responses_event(event: "WireResponsesStreamEvent") -> LmuxError | None:
+    """Map a Responses API ``error`` or ``response.failed`` stream event to an lmux error; None for other events."""
+    if event.type == "error":
+        return ProviderError(event.message or "stream error", provider=PROVIDER)
+    if event.type == "response.failed":
+        error = event.response.error if event.response is not None else None
+        return ProviderError((error.message if error else None) or "response failed", provider=PROVIDER)
+    return None
 
 
 def error_from_response(response: "httpx.Response") -> LmuxError:
