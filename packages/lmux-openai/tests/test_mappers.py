@@ -173,13 +173,25 @@ class TestMapMessages:
             {"type": "text", "text": "ctx", "prompt_cache_breakpoint": {"mode": "explicit"}}
         ]
 
-    def test_explicit_cache_ttl_is_ignored(self) -> None:
-        # OpenAI's ttl is request-wide (prompt_cache_options.ttl, only "30m"); per-breakpoint ttl doesn't map.
+    def test_explicit_cache_ttl_passes_through(self) -> None:
         result = map_messages(
-            [UserMessage(content=[TextContent(text="ctx"), CachePointContent(ttl="1h")])], explicit_cache=True
+            [UserMessage(content=[TextContent(text="ctx"), CachePointContent(ttl="12h")])], explicit_cache=True
         )
         assert result[0]["content"] == [
-            {"type": "text", "text": "ctx", "prompt_cache_breakpoint": {"mode": "explicit"}}
+            {"type": "text", "text": "ctx", "prompt_cache_breakpoint": {"mode": "explicit", "ttl": "12h"}}
+        ]
+
+    def test_explicit_leading_cache_ttl_passes_through(self) -> None:
+        result = map_messages(
+            [UserMessage(content="Hello"), UserMessage(content=[CachePointContent(ttl="12h")])], explicit_cache=True
+        )
+        assert result == [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Hello", "prompt_cache_breakpoint": {"mode": "explicit", "ttl": "12h"}}
+                ],
+            }
         ]
 
     def test_explicit_leading_cache_attaches_to_previous_string_message(self) -> None:
@@ -421,6 +433,37 @@ class TestMapResponseInput:
             {"role": "user", "content": [{"type": "input_text", "text": "Question"}]},
         ]
 
+    def test_explicit_cache_ttl_passes_through(self) -> None:
+        items = [
+            ResponseInputMessage(role="developer", content=[TextContent(text="Shared")]),
+            ResponseInputMessage(
+                role="user",
+                content=[CachePointContent(ttl="12h"), TextContent(text="Session"), CachePointContent(ttl="30m")],
+            ),
+        ]
+        assert map_response_input(items, explicit_cache=True) == [
+            {
+                "role": "developer",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "Shared",
+                        "prompt_cache_breakpoint": {"mode": "explicit", "ttl": "12h"},
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "Session",
+                        "prompt_cache_breakpoint": {"mode": "explicit", "ttl": "30m"},
+                    }
+                ],
+            },
+        ]
+
     def test_cache_points_dropped_without_explicit_support(self) -> None:
         items = [ResponseInputMessage(role="user", content=[TextContent(text="Stable"), CachePointContent()])]
         assert map_response_input(items) == [{"role": "user", "content": [{"type": "input_text", "text": "Stable"}]}]
@@ -517,6 +560,25 @@ class TestMapChatCompletion:
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 2
         assert result.usage.cache_creation_tokens == 6
+
+    def test_cache_write_ttl_breakdown_omits_zero_counts(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        completion = {
+            "id": "c",
+            "model": "gpt-5.6-sol",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "prompt_tokens_details": {
+                    "cache_write_tokens": 6,
+                    "cache_write_tokens_details": {"ttl_30m_tokens": 6, "ttl_12h_tokens": 0},
+                },
+            },
+        }
+        result = map_chat_completion(WireCompletion.model_validate(completion), "openai", noop_cost_fn)
+        assert result.usage == Usage(
+            input_tokens=10, output_tokens=5, cache_creation_tokens=6, cache_creation_tokens_by_ttl={"30m": 6}
+        )
 
     def test_with_reasoning_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         completion = {
@@ -749,6 +811,47 @@ class TestMapResponsesResponse:
         assert result.usage is not None
         assert result.usage.cache_read_tokens == 2
         assert result.usage.cache_creation_tokens == 6
+
+    def test_cache_write_ttl_breakdown(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {
+            "id": "r",
+            "model": "gpt-6.1-sol",
+            "output": [],
+            "usage": {
+                "input_tokens": 12000,
+                "output_tokens": 5,
+                "input_tokens_details": {
+                    "cached_tokens": 4000,
+                    "cache_write_tokens": 7000,
+                    "cache_write_tokens_details": {"ttl_30m_tokens": 3000, "ttl_12h_tokens": 4000},
+                },
+            },
+        }
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn)
+        assert result.usage == Usage(
+            input_tokens=12000,
+            output_tokens=5,
+            cache_read_tokens=4000,
+            cache_creation_tokens=7000,
+            cache_creation_tokens_by_ttl={"30m": 3000, "12h": 4000},
+        )
+
+    def test_cache_write_ttl_breakdown_all_zero_is_none(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
+        response = {
+            "id": "r",
+            "model": "gpt-6.1-sol",
+            "output": [],
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "input_tokens_details": {
+                    "cache_write_tokens": 0,
+                    "cache_write_tokens_details": {"ttl_30m_tokens": 0, "ttl_12h_tokens": 0},
+                },
+            },
+        }
+        result = map_responses_response(WireResponsesResponse.model_validate(response), "openai", noop_cost_fn)
+        assert result.usage == Usage(input_tokens=10, output_tokens=5)
 
     def test_with_reasoning_tokens(self, noop_cost_fn: Any) -> None:  # noqa: ANN401
         response = {

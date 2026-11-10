@@ -78,7 +78,7 @@ response = provider.create_response(
 )
 ```
 
-When at least one breakpoint is present, lmux sets `prompt_cache_options.mode` to `"explicit"`, disabling OpenAI's implicit breakpoint so only the marked prefixes are read or written. Cache points are dropped for older models, which continue using automatic prompt caching. `CachePointContent.ttl` is not mapped because OpenAI's TTL is request-wide and currently fixed at `"30m"`.
+When at least one breakpoint is present, lmux sets `prompt_cache_options.mode` to `"explicit"`, disabling OpenAI's implicit breakpoint so only the marked prefixes are read or written. Cache points are dropped for older models, which continue using automatic prompt caching. `CachePointContent.ttl` passes through as the breakpoint's `ttl`: `"30m"` (the default) or `"12h"`, which the Responses API accepts and bills at a higher cache-write rate. Cost reflects the per-TTL split OpenAI reports in usage.
 
 ### Async
 

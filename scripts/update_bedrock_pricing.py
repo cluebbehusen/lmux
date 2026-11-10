@@ -65,8 +65,10 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     # model from list_foundation_models when it retires, so the catalog resolver can no longer
     # turn a dateless key into the ID a caller presents, and the dateless key would be written
     # out as an entry nothing can ever look up. See KNOWN_UNRESOLVED_IDS.
+    "Claude Fable 5.2": "anthropic.claude-fable-5-2",
     "Claude Fable 5.1": "anthropic.claude-fable-5-1",
     "Claude Fable 5": "anthropic.claude-fable-5-v1",
+    "Claude Mythos 5.2": "anthropic.claude-mythos-5-2",
     "Claude Mythos 5.1": "anthropic.claude-mythos-5-1",
     "Claude Mythos 5": "anthropic.claude-mythos-5-v1",
     "Claude Mythos Preview": "anthropic.claude-mythos-preview",
@@ -82,7 +84,7 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     "Claude Opus 4.5": "anthropic.claude-opus-4-5-v1",
     "Claude Sonnet 4.5": "anthropic.claude-sonnet-4-5-v1",
     "Claude Haiku 4.5": "anthropic.claude-haiku-4-5-v1",
-    "Claude Sonnet 4": "anthropic.claude-sonnet-4-v1",
+    "Claude Sonnet 4": "anthropic.claude-sonnet-4-20250514-v1",
     "Claude Opus 4": "anthropic.claude-opus-4-20250514-v1",
     "Claude Opus 4.1": "anthropic.claude-opus-4-1-v1",
     "Claude 3.7 Sonnet": "anthropic.claude-3-7-sonnet-20250219-v1",
@@ -112,7 +114,16 @@ FM_SERVICENAME_MAP: dict[str, str] = {
     "Meta Llama 2 Chat 13B": "meta.llama2-13b-chat-v1",
     "Meta Llama 2 Chat 70B": "meta.llama2-70b-chat-v1",
     # OpenAI
+    "OpenAI GPT-6.1 Sol": "openai.gpt-6.1-sol",
+    "OpenAI GPT-6.1 Terra": "openai.gpt-6.1-terra",
     "OpenAI GPT-6 Astra": "openai.gpt-6-astra",
+    "OpenAI GPT-6 Sol": "openai.gpt-6-sol",
+    "OpenAI GPT-6 Luna": "openai.gpt-6-luna",
+    "OpenAI GPT-5.6 Sol": "openai.gpt-5.6-sol",
+    "OpenAI GPT-5.6 Terra": "openai.gpt-5.6-terra",
+    "OpenAI GPT-5.6 Luna": "openai.gpt-5.6-luna",
+    "OpenAI GPT-5.5": "openai.gpt-5.5",
+    "OpenAI GPT-5.4": "openai.gpt-5.4",
     # Writer
     "Palmyra X4": "writer.palmyra-x4-v1",
     "Palmyra X5": "writer.palmyra-x5-v1",
@@ -196,6 +207,11 @@ PROVIDER_GROUPS: list[tuple[str, str]] = [
 # Deliberately not NON_MANTLE_MODEL_MAP entries, which would emit a second conflicting key.
 NON_MANTLE_PRICED_AS_FM = frozenset({"Claude 2.0", "Claude 2.1"})
 
+# Speech-to-speech and video models. lmux prices text and embedding models only, so these
+# Foundation Models servicenames and non-mantle display names are dropped without an
+# unmapped warning.
+OUT_OF_SCOPE_MODEL_NAMES = frozenset({"Nova Sonic", "Nova Sonic 2.0", "Nova 2.5 Sonic", "TwelveLabs Pegasus 1.2"})
+
 # Embedding models (output_cost_per_token = 0.0)
 EMBEDDING_PREFIXES = (
     "amazon.titan-embed",
@@ -210,7 +226,17 @@ INFERENCE_PROFILE_PREFIXES = ("us.", "eu.", "apac.", "au.", "jp.", "ca.", "in.")
 # Gated models are absent from list_foundation_models and list_inference_profiles, so none of their
 # profiles are discovered. These document a global. profile on their model card; without a key of its
 # own it would strip to the bare model and bill the standard rate instead of the lower Global rate.
-GATED_GLOBAL_PROFILE_MODELS = frozenset({"anthropic.claude-mythos-5-1"})
+GATED_GLOBAL_PROFILE_MODELS = frozenset({"anthropic.claude-mythos-5-1", "anthropic.claude-mythos-5-2"})
+
+# Inference profiles AWS stopped listing once their model retired. lmux keeps pricing for
+# legacy models, so these keys are re-added instead of dropping out on regeneration.
+RETIRED_PROFILE_IDS = frozenset(
+    {
+        "us.anthropic.claude-sonnet-4-20250514-v1",
+        "eu.anthropic.claude-sonnet-4-20250514-v1",
+        "apac.anthropic.claude-sonnet-4-20250514-v1",
+    }
+)
 
 # ── Bedrock API integration ──────────────────────────────────────────────────
 
@@ -357,11 +383,13 @@ KNOWN_UNRESOLVED_IDS: frozenset[str] = frozenset(
         "anthropic.claude-3-opus-20240229-v1",
         "anthropic.claude-3-sonnet-20240229-v1",
         "anthropic.claude-opus-4-20250514-v1",
+        "anthropic.claude-sonnet-4-20250514-v1",
         # Not confirmed reachable: the real ID may differ, which would price these as None.
         # These are live models rather than retirements, tracked as a separate known gap.
         "amazon.nova-2-omni-v1",
         "amazon.nova-2-pro-v1",
         "anthropic.claude-mythos-5-1",
+        "anthropic.claude-mythos-5-2",
         "anthropic.claude-mythos-5-v1",
         "anthropic.claude-mythos-preview",
         "deepseek.v3.1",
@@ -693,8 +721,9 @@ def _collect_non_mantle_prices(
     """
     # Most models priced elsewhere also publish non-mantle meters here: mantle models carry
     # the same `model` attribute, and Foundation Models are keyed by the same display name.
-    # Neither is a NON_MANTLE_MODEL_MAP gap, so neither is reported as unmapped.
-    priced_elsewhere = (
+    # Neither is a NON_MANTLE_MODEL_MAP gap, so neither is reported as unmapped; nor are
+    # out-of-scope models.
+    not_gaps = (
         {
             (prod.get("attributes", {}).get("model") or "").strip()
             for prod in products.values()
@@ -702,6 +731,7 @@ def _collect_non_mantle_prices(
         }
         | set(FM_SERVICENAME_MAP)
         | NON_MANTLE_PRICED_AS_FM
+        | OUT_OF_SCOPE_MODEL_NAMES
     )
 
     collected: dict[str, dict[str, dict[bool, Decimal]]] = {}
@@ -721,7 +751,7 @@ def _collect_non_mantle_prices(
         model_name = attrs.get("model", "").strip()
         model_id = _resolve_non_mantle_model_id(model_name, ut)
         if model_id is None:
-            if model_name and model_name not in priced_elsewhere:
+            if model_name and model_name not in not_gaps:
                 unmapped.add(model_name)
             continue
 
@@ -857,7 +887,8 @@ def _parse_fm_dimension(usagetype: str) -> tuple[str, bool] | None:
         ("CacheWriteInputTokenCount", "cache_write"),
         ("InputTokenCount", "input"),
         ("OutputTokenCount", "output"),
-        # New snake_case
+        # New snake_case. cached_input_tokens (GPT-5.5) must precede input_tokens, which it contains.
+        ("cached_input_tokens", "cache_read"),
         ("cache_read_tokens", "cache_read"),
         ("cache_write_tokens", "cache_write"),
         ("input_tokens", "input"),
@@ -916,7 +947,8 @@ def parse_foundation_models(
 
         model_id = FM_SERVICENAME_MAP.get(clean_name)
         if model_id is None:
-            unmapped.add(clean_name)
+            if clean_name not in OUT_OF_SCOPE_MODEL_NAMES:
+                unmapped.add(clean_name)
             continue
 
         price = _get_price(sku, terms)
@@ -1755,7 +1787,7 @@ def main() -> None:
 
     gated_global_profiles = [f"global.{model_id}" for model_id in sorted(GATED_GLOBAL_PROFILE_MODELS)]
     expanded_pricing = expand_with_real_profiles(
-        default_pricing, global_pricing, [*real_profile_ids, *gated_global_profiles]
+        default_pricing, global_pricing, [*real_profile_ids, *gated_global_profiles, *sorted(RETIRED_PROFILE_IDS)]
     )
     _info(f"Total entries after inference profile expansion: {len(expanded_pricing)}")
 

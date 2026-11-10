@@ -29,15 +29,26 @@ from lmux.types import Cost, Usage
 DATA_ZONE_MULTIPLIER = 1.1
 """Default commercial Data Zone Standard premium over global pricing.
 
-US pricing is 1.1x; EU uses the same default except for the GPT-6 models handled
-by ``data_zone_multiplier``. Kimi-K2.6 and Kimi-K2.7-Code output remains an
+US pricing is 1.1x; EU uses the same default except for the models that
+``data_zone_multiplier`` bills at 1.2x. Kimi-K2.6 and Kimi-K2.7-Code output remains an
 unmodeled exception, billing at 1.25x global. Non-commercial data zones are not
 modeled and run higher: the Asia-Pacific data zone is ~1.2x and the US Government
 sovereign cloud is ~1.375x. Use ``register_pricing()`` for any of these.
 """
 
 _EU_DATA_ZONE_MULTIPLIER = 1.2
-_EU_DATA_ZONE_PREMIUM_MODELS = ("gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna")
+_EU_DATA_ZONE_PREMIUM_MODELS = (
+    "gpt-6.1-sol",
+    "gpt-6.1-terra",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-chat-latest",
+    "grok-4.6",
+    "grok-4.7",
+    "deepseek-v4.1-flash",
+    "cohere-embed-v5",
+)
 
 REGIONAL_MULTIPLIER = 1.1
 """Regional deployments are approximately 1.1x global pricing.
@@ -91,7 +102,6 @@ _PRICING: dict[str, ModelPricing] = {
     # cached_tokens, a read counter. So the cache-write rates below apply only when a caller
     # passes cache_creation_tokens to calculate_azure_foundry_cost directly. In a cost derived
     # from an Azure response those tokens stay inside input_tokens and bill at 1.0x, not 1.25x.
-    # Azure has not published GPT-6.1 Sol meters; infer its rates from OpenAI's direct pricing.
     "gpt-6.1-sol": ModelPricing(
         tiers=[
             PricingTier(
@@ -105,6 +115,23 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(15.00),
                 cache_read_cost_per_token=per_million_tokens(0.20),
                 cache_creation_cost_per_token=per_million_tokens(5.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-6.1-terra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.00),
+                output_cost_per_token=per_million_tokens(5.00),
+                cache_read_cost_per_token=per_million_tokens(0.05),
+                cache_creation_cost_per_token=per_million_tokens(1.25),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(7.50),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
                 min_input_tokens=272_000,
             ),
         ],
@@ -126,8 +153,6 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
-    # gpt-6-sol and gpt-6-luna are provisional: Azure lists both models but had published no meters
-    # for them as of 2026-09-22, so these mirror OpenAI's direct list prices.
     "gpt-6-sol": ModelPricing(
         tiers=[
             PricingTier(
@@ -633,6 +658,15 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "deepseek-v4.1-flash": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.30),
+                output_cost_per_token=per_million_tokens(1.20),
+                cache_read_cost_per_token=per_million_tokens(0.006),
+            )
+        ],
+    ),
     # The 0731 snapshot is priced well above the base model, so it needs an explicit key
     # (it would otherwise prefix-match deepseek-v4-flash and be under-priced at 0.19/0.51).
     "deepseek-v4-flash-0731": ModelPricing(
@@ -678,8 +712,31 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "grok-4-20": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.25),
+                output_cost_per_token=per_million_tokens(2.50),
+            )
+        ],
+    ),
     # Azure publishes the long-context band as "4.x ... Glbl L" meters without stating the
     # boundary; xAI documents it as 200K prompt tokens, where the rate exactly doubles.
+    "grok-4.7": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(6.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(12.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
+                min_input_tokens=200_000,
+            ),
+        ],
+    ),
     "grok-4.6": ModelPricing(
         tiers=[
             PricingTier(
@@ -846,8 +903,14 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # Cohere Embed v4 text-input rate; image-input is metered separately and not modeled.
+    # Cohere Embed text-input rates; image input is metered separately and not modeled.
     "embed-v-4-0": ModelPricing(
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.12), output_cost_per_token=0.0)]
+    ),
+    "Cohere-embed-v5-Fast": ModelPricing(
+        tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.08), output_cost_per_token=0.0)]
+    ),
+    "Cohere-embed-v5-Pro": ModelPricing(
         tiers=[PricingTier(input_cost_per_token=per_million_tokens(0.12), output_cost_per_token=0.0)]
     ),
     # --- MoonshotAI Kimi. Runtime `model` ids per the Azure model catalog are Kimi-K2.5 /
@@ -976,18 +1039,9 @@ _PRICING: dict[str, ModelPricing] = {
 # (capital Cohere/Phi/Mistral/Kimi ids, lowercase deepseek/grok/gpt), so lookup folds case.
 _PRICING_BY_PREFIX = build_pricing_index(_PRICING)
 
-# Known Azure models with no published Global Standard rate (e.g. the grok-4-20 Preview
-# variants). Returning None is correct — do NOT let them fall through to a broad prefix
-# (e.g. "grok-4") and inherit a fabricated rate. Matched as prefixes, like the pricing
-# table, so dated snapshots (grok-4-20-reasoning-2026-09-03) are covered too. Add real
-# rates once Azure publishes meters.
-_UNPRICED_MODEL_PREFIXES = ("grok-4-20-reasoning", "grok-4-20-non-reasoning")
-
 
 def calculate_azure_foundry_cost(model: str, usage: Usage) -> Cost | None:
     """Calculate cost for an Azure AI Foundry API call. Returns None if model pricing is unknown."""
-    if model.lower().startswith(_UNPRICED_MODEL_PREFIXES):
-        return None
     pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:
         return None

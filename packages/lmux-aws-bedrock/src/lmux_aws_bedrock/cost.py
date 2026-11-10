@@ -921,6 +921,87 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # -- OpenAI (via Bedrock) ------------------------------------
+    "global.openai.gpt-5.4": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.75),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.275),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(24.75),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "global.openai.gpt-5.5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(33.0),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(11.0),
+                output_cost_per_token=per_million_tokens(49.5),
+                cache_read_cost_per_token=per_million_tokens(1.1),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "global.openai.gpt-5.6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.2),
+                output_cost_per_token=per_million_tokens(1.2),
+                cache_read_cost_per_token=per_million_tokens(0.02),
+                cache_creation_cost_per_token=per_million_tokens(0.25),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.4),
+                output_cost_per_token=per_million_tokens(1.8),
+                cache_read_cost_per_token=per_million_tokens(0.04),
+                cache_creation_cost_per_token=per_million_tokens(0.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "global.openai.gpt-5.6-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.0),
+                output_cost_per_token=per_million_tokens(20.0),
+                cache_read_cost_per_token=per_million_tokens(0.4),
+                cache_creation_cost_per_token=per_million_tokens(5.0),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(8.0),
+                output_cost_per_token=per_million_tokens(30.0),
+                cache_read_cost_per_token=per_million_tokens(0.8),
+                cache_creation_cost_per_token=per_million_tokens(10.0),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "global.openai.gpt-5.6-terra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(12.0),
+                cache_read_cost_per_token=per_million_tokens(0.2),
+                cache_creation_cost_per_token=per_million_tokens(2.5),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.0),
+                output_cost_per_token=per_million_tokens(18.0),
+                cache_read_cost_per_token=per_million_tokens(0.4),
+                cache_creation_cost_per_token=per_million_tokens(5.0),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
     "global.openai.gpt-6-astra": ModelPricing(
         tiers=[
             PricingTier(
@@ -938,6 +1019,189 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "global.openai.gpt-6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.1),
+                output_cost_per_token=per_million_tokens(0.5),
+                cache_read_cost_per_token=per_million_tokens(0.01),
+                cache_creation_cost_per_token=per_million_tokens(0.125),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.2),
+                output_cost_per_token=per_million_tokens(0.75),
+                cache_read_cost_per_token=per_million_tokens(0.02),
+                cache_creation_cost_per_token=per_million_tokens(0.25),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "global.openai.gpt-6-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(10.0),
+                cache_read_cost_per_token=per_million_tokens(0.2),
+                cache_creation_cost_per_token=per_million_tokens(2.5),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.4),
+                cache_creation_cost_per_token=per_million_tokens(5.0),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "global.openai.gpt-6.1-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(10.0),
+                cache_read_cost_per_token=per_million_tokens(0.1),
+                cache_creation_cost_per_token=per_million_tokens(2.5),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.0),
+                output_cost_per_token=per_million_tokens(15.0),
+                cache_read_cost_per_token=per_million_tokens(0.2),
+                cache_creation_cost_per_token=per_million_tokens(5.0),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "global.openai.gpt-6.1-terra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.0),
+                output_cost_per_token=per_million_tokens(5.0),
+                cache_read_cost_per_token=per_million_tokens(0.05),
+                cache_creation_cost_per_token=per_million_tokens(1.25),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.0),
+                output_cost_per_token=per_million_tokens(7.5),
+                cache_read_cost_per_token=per_million_tokens(0.1),
+                cache_creation_cost_per_token=per_million_tokens(2.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "in.openai.gpt-5.6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.22),
+                output_cost_per_token=per_million_tokens(1.32),
+                cache_read_cost_per_token=per_million_tokens(0.022),
+                cache_creation_cost_per_token=per_million_tokens(0.275),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.44),
+                output_cost_per_token=per_million_tokens(1.98),
+                cache_read_cost_per_token=per_million_tokens(0.044),
+                cache_creation_cost_per_token=per_million_tokens(0.55),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "in.openai.gpt-5.6-terra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(13.2),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(19.8),
+                cache_read_cost_per_token=per_million_tokens(0.44),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "openai.gpt-5.4": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.75),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.275),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(24.75),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "openai.gpt-5.5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(33.0),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(11.0),
+                output_cost_per_token=per_million_tokens(49.5),
+                cache_read_cost_per_token=per_million_tokens(1.1),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "openai.gpt-5.6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.22),
+                output_cost_per_token=per_million_tokens(1.32),
+                cache_read_cost_per_token=per_million_tokens(0.022),
+                cache_creation_cost_per_token=per_million_tokens(0.275),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.44),
+                output_cost_per_token=per_million_tokens(1.98),
+                cache_read_cost_per_token=per_million_tokens(0.044),
+                cache_creation_cost_per_token=per_million_tokens(0.55),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "openai.gpt-5.6-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(22.0),
+                cache_read_cost_per_token=per_million_tokens(0.44),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(8.8),
+                output_cost_per_token=per_million_tokens(33.0),
+                cache_read_cost_per_token=per_million_tokens(0.88),
+                cache_creation_cost_per_token=per_million_tokens(11.0),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "openai.gpt-5.6-terra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(13.2),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(19.8),
+                cache_read_cost_per_token=per_million_tokens(0.44),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
     "openai.gpt-6-astra": ModelPricing(
         tiers=[
             PricingTier(
@@ -951,6 +1215,74 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(82.5),
                 cache_read_cost_per_token=per_million_tokens(2.2),
                 cache_creation_cost_per_token=per_million_tokens(27.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "openai.gpt-6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.11),
+                output_cost_per_token=per_million_tokens(0.55),
+                cache_read_cost_per_token=per_million_tokens(0.011),
+                cache_creation_cost_per_token=per_million_tokens(0.1375),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.22),
+                output_cost_per_token=per_million_tokens(0.825),
+                cache_read_cost_per_token=per_million_tokens(0.022),
+                cache_creation_cost_per_token=per_million_tokens(0.275),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "openai.gpt-6-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(11.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.44),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "openai.gpt-6.1-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(11.0),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "openai.gpt-6.1-terra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.1),
+                output_cost_per_token=per_million_tokens(5.5),
+                cache_read_cost_per_token=per_million_tokens(0.055),
+                cache_creation_cost_per_token=per_million_tokens(1.375),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(8.25),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
                 min_input_tokens=272000,
             ),
         ],
@@ -987,6 +1319,87 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "us.openai.gpt-5.4": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.75),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.275),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(24.75),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "us.openai.gpt-5.5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.5),
+                output_cost_per_token=per_million_tokens(33.0),
+                cache_read_cost_per_token=per_million_tokens(0.55),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(11.0),
+                output_cost_per_token=per_million_tokens(49.5),
+                cache_read_cost_per_token=per_million_tokens(1.1),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "us.openai.gpt-5.6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.22),
+                output_cost_per_token=per_million_tokens(1.32),
+                cache_read_cost_per_token=per_million_tokens(0.022),
+                cache_creation_cost_per_token=per_million_tokens(0.275),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.44),
+                output_cost_per_token=per_million_tokens(1.98),
+                cache_read_cost_per_token=per_million_tokens(0.044),
+                cache_creation_cost_per_token=per_million_tokens(0.55),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "us.openai.gpt-5.6-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(22.0),
+                cache_read_cost_per_token=per_million_tokens(0.44),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(8.8),
+                output_cost_per_token=per_million_tokens(33.0),
+                cache_read_cost_per_token=per_million_tokens(0.88),
+                cache_creation_cost_per_token=per_million_tokens(11.0),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "us.openai.gpt-5.6-terra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(13.2),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(19.8),
+                cache_read_cost_per_token=per_million_tokens(0.44),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
     "us.openai.gpt-6-astra": ModelPricing(
         tiers=[
             PricingTier(
@@ -1000,6 +1413,74 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(82.5),
                 cache_read_cost_per_token=per_million_tokens(2.2),
                 cache_creation_cost_per_token=per_million_tokens(27.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "us.openai.gpt-6-luna": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.11),
+                output_cost_per_token=per_million_tokens(0.55),
+                cache_read_cost_per_token=per_million_tokens(0.011),
+                cache_creation_cost_per_token=per_million_tokens(0.1375),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.22),
+                output_cost_per_token=per_million_tokens(0.825),
+                cache_read_cost_per_token=per_million_tokens(0.022),
+                cache_creation_cost_per_token=per_million_tokens(0.275),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "us.openai.gpt-6-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(11.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.44),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "us.openai.gpt-6.1-sol": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(11.0),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.4),
+                output_cost_per_token=per_million_tokens(16.5),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(5.5),
+                min_input_tokens=272000,
+            ),
+        ],
+    ),
+    "us.openai.gpt-6.1-terra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.1),
+                output_cost_per_token=per_million_tokens(5.5),
+                cache_read_cost_per_token=per_million_tokens(0.055),
+                cache_creation_cost_per_token=per_million_tokens(1.375),
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(8.25),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
                 min_input_tokens=272000,
             ),
         ],
@@ -3038,6 +3519,19 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "openai.gpt-5.4": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.75),
+                    output_cost_per_token=per_million_tokens(16.5),
+                ),
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(5.5),
+                    output_cost_per_token=per_million_tokens(24.75),
+                    min_input_tokens=272000,
+                ),
+            ],
+        ),
     },
     "ca-west-1": {
         "amazon.nova-2-lite-v1": ModelPricing(
@@ -3071,6 +3565,19 @@ _BEDROCK_REGIONAL: dict[str, dict[str, ModelPricing]] = {
                     input_cost_per_token=per_million_tokens(0.34),
                     output_cost_per_token=per_million_tokens(2.81),
                     cache_read_cost_per_token=per_million_tokens(0.85),
+                ),
+            ],
+        ),
+        "openai.gpt-5.4": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(2.75),
+                    output_cost_per_token=per_million_tokens(16.5),
+                ),
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(5.5),
+                    output_cost_per_token=per_million_tokens(24.75),
+                    min_input_tokens=272000,
                 ),
             ],
         ),

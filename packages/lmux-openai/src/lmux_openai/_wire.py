@@ -33,9 +33,15 @@ class WireChoice(BaseModel):
     finish_reason: str | None = None
 
 
+class WireCacheWriteTokensDetails(BaseModel):
+    ttl_30m_tokens: int | None = None
+    ttl_12h_tokens: int | None = None
+
+
 class WirePromptTokensDetails(BaseModel):
     cached_tokens: int | None = None
     cache_write_tokens: int | None = None
+    cache_write_tokens_details: WireCacheWriteTokensDetails | None = None
 
 
 class WireCompletionTokensDetails(BaseModel):
@@ -121,6 +127,7 @@ class WireOutputItem(BaseModel):
 class WireResponsesInputDetails(BaseModel):
     cached_tokens: int | None = None
     cache_write_tokens: int | None = None
+    cache_write_tokens_details: WireCacheWriteTokensDetails | None = None
 
 
 class WireResponsesOutputDetails(BaseModel):
