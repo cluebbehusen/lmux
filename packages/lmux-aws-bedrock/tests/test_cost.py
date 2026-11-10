@@ -224,8 +224,10 @@ class TestCalculateBedrockCost:
         a human to confirm it is real rather than another leak.
         """
         # Input/output only: a partial override omits cache rates and prices a cached call as None,
-        # which is not what this guard is about.
-        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
+        # which is not what this guard is about. Stay below every long-context threshold: a Region
+        # that publishes only base meters would otherwise be compared against us-east-1's
+        # long-context rate.
+        usage = Usage(input_tokens=50_000, output_tokens=50_000)
         for region, models in _REGIONAL_PRICING.items():
             for model in models:
                 # The premium premise is about standard rates. A per-Region Global rate is a

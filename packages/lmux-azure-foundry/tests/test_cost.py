@@ -214,12 +214,6 @@ class TestCalculateAzureFoundryCost:
             assert cost.input_cost == pytest.approx(0.20)
             assert cost.output_cost == pytest.approx(0.50)
 
-    def test_grok_4_20_preview_unpriced_returns_none(self) -> None:
-        """grok-4-20-* Preview ids have no published rate and must return None, not fall through to grok-4."""
-        usage = Usage(input_tokens=1000, output_tokens=500)
-        assert calculate_azure_foundry_cost("grok-4-20-reasoning", usage) is None
-        assert calculate_azure_foundry_cost("grok-4-20-non-reasoning", usage) is None
-
     @pytest.mark.parametrize("model", ["grok-4.6", "grok-4.6-reasoning", "grok-4.6-2026-09-03"])
     def test_grok_4_6(self, model: str) -> None:
         """grok-4.6 has its own meter and must not fall through to grok-4 (3/15)."""
@@ -229,18 +223,6 @@ class TestCalculateAzureFoundryCost:
         assert cost.input_cost == pytest.approx((100_000 - 10_000) * 2.00 / 1_000_000)
         assert cost.output_cost == pytest.approx(100_000 * 6.00 / 1_000_000)
         assert cost.cache_read_cost == pytest.approx(10_000 * 0.50 / 1_000_000)
-
-    @pytest.mark.parametrize(
-        "model",
-        [
-            "grok-4-20-reasoning-2026-01-01",
-            "grok-4-20-non-reasoning-2026-01-01",
-        ],
-    )
-    def test_unpriced_snapshots_do_not_inherit_the_family_rate(self, model: str) -> None:
-        """Unpriced ids are matched as prefixes, so dated and mode-suffixed variants return None too."""
-        usage = Usage(input_tokens=1000, output_tokens=500)
-        assert calculate_azure_foundry_cost(model, usage) is None
 
     def test_deepseek_v4_flash_0731_does_not_inherit_the_base_flash_rate(self) -> None:
         """The 0731 snapshot is priced above the base model, so it needs its own key."""

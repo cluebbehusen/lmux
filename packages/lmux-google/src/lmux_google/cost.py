@@ -1,9 +1,9 @@
 """Google model pricing data and cost calculation.
 
 Prices are for standard on-demand (global endpoint) Vertex AI pricing. The
-Gemini Developer API paid tier matches these rates for Gemini 2.5 and later,
-but diverges on Gemini 2.0: the Developer API bills 2.0 Flash at 0.10/0.40
-against Vertex's 0.15/0.60. The Vertex rates are the ones stored here.
+Gemini Developer API paid tier matches these rates for every model both
+services list. Gemini 2.0 Flash and Flash-Lite are Vertex-only rates: the
+Developer API shut both down on 2026-06-01.
 
 These are global-endpoint rates. Non-global Vertex endpoints carry a 10%
 premium on the GA Gemini 3 and later families, in effect since 2026-07-01;
@@ -27,6 +27,37 @@ from lmux.cost import (
 from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
+    # ── Google Gemini 4 ────────────────────────────────────────
+    "gemini-4-argon-cyber": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(20.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+            ),
+        ],
+    ),
+    "gemini-4-argon": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+            ),
+        ],
+        schedules=[
+            PricingSchedule(
+                valid_from=date(2026, 12, 1),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(4.00),
+                        output_cost_per_token=per_million_tokens(20.00),
+                        cache_read_cost_per_token=per_million_tokens(0.20),
+                    ),
+                ],
+            ),
+        ],
+    ),
     # ── Google Gemini 3 ────────────────────────────────────────
     "gemini-3.8-flash-cyber": ModelPricing(
         tiers=[
@@ -79,15 +110,26 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    # The half-price introductory window for 3.6 Flash began on 2026-08-13, after its GA.
     "gemini-3.6-flash": ModelPricing(
         tiers=[
             PricingTier(
-                input_cost_per_token=per_million_tokens(0.75),
-                output_cost_per_token=per_million_tokens(3.75),
-                cache_read_cost_per_token=per_million_tokens(0.075),
+                input_cost_per_token=per_million_tokens(1.50),
+                output_cost_per_token=per_million_tokens(7.50),
+                cache_read_cost_per_token=per_million_tokens(0.15),
             ),
         ],
         schedules=[
+            PricingSchedule(
+                valid_from=date(2026, 8, 13),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(0.75),
+                        output_cost_per_token=per_million_tokens(3.75),
+                        cache_read_cost_per_token=per_million_tokens(0.075),
+                    ),
+                ],
+            ),
             PricingSchedule(
                 valid_from=date(2027, 1, 1),
                 tiers=[
@@ -190,9 +232,6 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
-    # Image-output models (gemini-*-image) are intentionally NOT priced — see _UNPRICED_IMAGE_PREFIXES
-    # below. Google bills generated-image output far higher than text output ($30-$120/M vs
-    # $1.50-$12/M), which a single output rate cannot represent, so they return None.
     "gemini-3-flash-preview": ModelPricing(
         tiers=[
             PricingTier(
@@ -287,8 +326,6 @@ _PRICING: dict[str, ModelPricing] = {
         ],
     ),
     # ── Google Gemini (additional) ────────────────────────────
-    # gemini-2.5-flash-image is intentionally unpriced (see _UNPRICED_IMAGE_PREFIXES) — its image output
-    # is billed far above the modeled text-output rate.
     "gemini-robotics-er-2-preview": ModelPricing(
         tiers=[
             PricingTier(
@@ -331,22 +368,6 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(2.50),
                 output_cost_per_token=per_million_tokens(15.00),
                 min_input_tokens=200_000,
-            ),
-        ],
-    ),
-    "gemini-3.5-transcribe": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(2.00),
-                output_cost_per_token=per_million_tokens(12.00),
-            ),
-        ],
-    ),
-    "gemini-3.5-transcribe-live": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(3.50),
-                output_cost_per_token=per_million_tokens(21.00),
             ),
         ],
     ),
@@ -406,19 +427,6 @@ _PRICING: dict[str, ModelPricing] = {
 # Case-insensitive, longest-prefix index (see lmux.cost.resolve_pricing).
 _PRICING_BY_PREFIX = build_pricing_index(_PRICING)
 
-# Image-output model families: Google bills generated-image output tokens far higher than text
-# output (e.g. $30-$120/M vs $1.50-$12/M), but the provider collapses all output into one token
-# count, so a single output rate would underprice image generation ~10-20x. Return None (unknown)
-# rather than a confidently-wrong cost until modality-aware costing exists. Matched as *prefixes*
-# (case-insensitively) so every dated/`-preview` variant — e.g. gemini-2.5-flash-image-preview — is
-# covered, not just the bare id; a bare prefix would otherwise fall through to the text-priced base.
-_UNPRICED_IMAGE_PREFIXES = (
-    "gemini-2.5-flash-image",
-    "gemini-3.1-flash-image",
-    "gemini-3.1-flash-lite-image",
-    "gemini-3-pro-image",
-)
-
 # MARK: Vertex endpoint premium
 
 VERTEX_NON_GLOBAL_MULTIPLIER = 1.1
@@ -440,6 +448,7 @@ costs replayed against an earlier date take no multiplier.
 # the preview Gemini 3 models publish no Non-global rate, so they bill list price
 # everywhere.
 _VERTEX_PREMIUM_PRICING_MODELS = (
+    "gemini-4-argon",
     "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-3.6-flash",
@@ -490,9 +499,6 @@ def calculate_google_cost(model: str, usage: Usage, as_of: date | None = None) -
     (e.g. the Gemini Flash introductory windows); it defaults to the latest
     schedule. See ``lmux.cost.calculate_cost``.
     """
-    model_lower = model.lower()
-    if any(model_lower.startswith(prefix) for prefix in _UNPRICED_IMAGE_PREFIXES):
-        return None
     pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:
         return None

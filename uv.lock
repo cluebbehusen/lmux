@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 
 [options]
@@ -719,7 +719,7 @@ requires-dist = [{ name = "pydantic", specifier = "~=2.10" }]
 
 [[package]]
 name = "lmux-anthropic"
-version = "0.17.0"
+version = "0.17.1"
 source = { editable = "packages/lmux-anthropic" }
 dependencies = [
     { name = "httpx" },
@@ -751,7 +751,7 @@ provides-extras = ["vertex", "requests", "bedrock"]
 
 [[package]]
 name = "lmux-aws-bedrock"
-version = "0.13.6"
+version = "0.13.7"
 source = { editable = "packages/lmux-aws-bedrock" }
 dependencies = [
     { name = "boto3" },
@@ -777,7 +777,7 @@ provides-extras = ["async"]
 
 [[package]]
 name = "lmux-azure-foundry"
-version = "0.10.6"
+version = "0.10.7"
 source = { editable = "packages/lmux-azure-foundry" }
 dependencies = [
     { name = "httpx" },
@@ -799,7 +799,7 @@ provides-extras = ["identity"]
 
 [[package]]
 name = "lmux-bedrock-shared"
-version = "0.3.5"
+version = "0.3.6"
 source = { editable = "packages/lmux-bedrock-shared" }
 dependencies = [
     { name = "boto3" },
@@ -825,7 +825,7 @@ requires-dist = [{ name = "lmux-google", editable = "packages/lmux-google" }]
 
 [[package]]
 name = "lmux-google"
-version = "0.12.6"
+version = "0.12.7"
 source = { editable = "packages/lmux-google" }
 dependencies = [
     { name = "google-auth" },
@@ -875,7 +875,7 @@ requires-dist = [{ name = "lmux", editable = "packages/lmux" }]
 
 [[package]]
 name = "lmux-openai"
-version = "0.10.5"
+version = "0.11.0"
 source = { editable = "packages/lmux-openai" }
 dependencies = [
     { name = "httpx" },

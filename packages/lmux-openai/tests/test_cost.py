@@ -103,6 +103,26 @@ class TestCalculateOpenAICost:
         assert cost.cache_read_cost == pytest.approx(100 * 1.00 / 1_000_000)
         assert cost.cache_creation_cost == pytest.approx(200 * 12.50 / 1_000_000)
 
+    def test_12h_cache_writes_bill_at_twice_the_30m_rate(self) -> None:
+        usage = Usage(
+            input_tokens=12_000,
+            output_tokens=0,
+            cache_read_tokens=4000,
+            cache_creation_tokens=7000,
+            cache_creation_tokens_by_ttl={"30m": 3000, "12h": 4000},
+        )
+        cost = calculate_openai_cost("gpt-6.1-sol", usage)
+        input_cost = 1000 * (2.00 / 1_000_000)
+        cache_read_cost = 4000 * (0.10 / 1_000_000)
+        cache_creation_cost = 3000 * (2.50 / 1_000_000) + 4000 * (5.00 / 1_000_000)
+        assert cost == Cost(
+            input_cost=input_cost,
+            output_cost=0.0,
+            cache_read_cost=cache_read_cost,
+            cache_creation_cost=cache_creation_cost,
+            total_cost=input_cost + cache_read_cost + cache_creation_cost,
+        )
+
     def test_gpt_6_astra_long_context_tier(self) -> None:
         usage = Usage(
             input_tokens=300_000,

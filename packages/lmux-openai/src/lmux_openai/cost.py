@@ -22,12 +22,33 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(10.00),
                 cache_read_cost_per_token=per_million_tokens(0.10),
                 cache_creation_cost_per_token=per_million_tokens(2.50),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(5.00)},
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(4.00),
                 output_cost_per_token=per_million_tokens(15.00),
                 cache_read_cost_per_token=per_million_tokens(0.20),
                 cache_creation_cost_per_token=per_million_tokens(5.00),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(10.00)},
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-6.1-terra": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.00),
+                output_cost_per_token=per_million_tokens(5.00),
+                cache_read_cost_per_token=per_million_tokens(0.05),
+                cache_creation_cost_per_token=per_million_tokens(1.25),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(2.50)},
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(7.50),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+                cache_creation_cost_per_token=per_million_tokens(2.50),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(5.00)},
                 min_input_tokens=272_000,
             ),
         ],
@@ -39,13 +60,24 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(50.00),
                 cache_read_cost_per_token=per_million_tokens(1.00),
                 cache_creation_cost_per_token=per_million_tokens(12.50),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(25.00)},
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(20.00),
                 output_cost_per_token=per_million_tokens(75.00),
                 cache_read_cost_per_token=per_million_tokens(2.00),
                 cache_creation_cost_per_token=per_million_tokens(25.00),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(50.00)},
                 min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-6-astra-law": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(10.00),
+                output_cost_per_token=per_million_tokens(50.00),
+                cache_read_cost_per_token=per_million_tokens(1.00),
             ),
         ],
     ),
@@ -56,12 +88,14 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(10.00),
                 cache_read_cost_per_token=per_million_tokens(0.20),
                 cache_creation_cost_per_token=per_million_tokens(2.50),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(5.00)},
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(4.00),
                 output_cost_per_token=per_million_tokens(15.00),
                 cache_read_cost_per_token=per_million_tokens(0.40),
                 cache_creation_cost_per_token=per_million_tokens(5.00),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(10.00)},
                 min_input_tokens=272_000,
             ),
         ],
@@ -73,20 +107,58 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(0.50),
                 cache_read_cost_per_token=per_million_tokens(0.01),
                 cache_creation_cost_per_token=per_million_tokens(0.125),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(0.25)},
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.20),
                 output_cost_per_token=per_million_tokens(0.75),
                 cache_read_cost_per_token=per_million_tokens(0.02),
                 cache_creation_cost_per_token=per_million_tokens(0.25),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(0.50)},
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-6-cyber": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(20.00),
+                output_cost_per_token=per_million_tokens(100.00),
+                cache_read_cost_per_token=per_million_tokens(2.00),
+                cache_creation_cost_per_token=per_million_tokens(25.00),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(50.00)},
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(40.00),
+                output_cost_per_token=per_million_tokens(150.00),
+                cache_read_cost_per_token=per_million_tokens(4.00),
+                min_input_tokens=272_000,
+            ),
+        ],
+    ),
+    "gpt-6-rosalind": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(15.00),
+                output_cost_per_token=per_million_tokens(75.00),
+                cache_read_cost_per_token=per_million_tokens(1.50),
+                cache_creation_cost_per_token=per_million_tokens(18.75),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(37.50)},
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(30.00),
+                output_cost_per_token=per_million_tokens(112.50),
+                cache_read_cost_per_token=per_million_tokens(3.00),
+                cache_creation_cost_per_token=per_million_tokens(37.50),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(75.00)},
                 min_input_tokens=272_000,
             ),
         ],
     ),
     # GPT-5 family
-    # gpt-5.6 family (sol/terra/luna). Cache writes are billed on gpt-5.6+ only,
-    # at a flat 1.25x the input rate (no per-TTL split), via cache_creation_cost_per_token.
-    # Sol's rates are promotional, published as running at least through 2026-11-21;
+    # gpt-5.6 family (sol/terra/luna). Cache writes are billed on gpt-5.6+ only: 30-minute writes at
+    # 1.25x the input rate and 12-hour writes at 2.5x (the "12h" per-TTL rate).
+    # Sol's rates are promotional, published as running through 2026-11-30;
     # OpenAI has not published a post-promotion rate, so no PricingSchedule is set.
     "gpt-5.6-sol": ModelPricing(
         tiers=[
@@ -95,12 +167,14 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(20.00),
                 cache_read_cost_per_token=per_million_tokens(0.40),
                 cache_creation_cost_per_token=per_million_tokens(5.00),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(10.00)},
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(8.00),
                 output_cost_per_token=per_million_tokens(30.00),
                 cache_read_cost_per_token=per_million_tokens(0.80),
                 cache_creation_cost_per_token=per_million_tokens(10.00),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(20.00)},
                 min_input_tokens=272_000,
             ),
         ],
@@ -112,12 +186,14 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(12.00),
                 cache_read_cost_per_token=per_million_tokens(0.20),
                 cache_creation_cost_per_token=per_million_tokens(2.50),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(5.00)},
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(4.00),
                 output_cost_per_token=per_million_tokens(18.00),
                 cache_read_cost_per_token=per_million_tokens(0.40),
                 cache_creation_cost_per_token=per_million_tokens(5.00),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(10.00)},
                 min_input_tokens=272_000,
             ),
         ],
@@ -129,12 +205,14 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(1.20),
                 cache_read_cost_per_token=per_million_tokens(0.02),
                 cache_creation_cost_per_token=per_million_tokens(0.25),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(0.50)},
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(0.40),
                 output_cost_per_token=per_million_tokens(1.80),
                 cache_read_cost_per_token=per_million_tokens(0.04),
                 cache_creation_cost_per_token=per_million_tokens(0.50),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(1.00)},
                 min_input_tokens=272_000,
             ),
         ],
@@ -148,12 +226,14 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(20.00),
                 cache_read_cost_per_token=per_million_tokens(0.40),
                 cache_creation_cost_per_token=per_million_tokens(5.00),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(10.00)},
             ),
             PricingTier(
                 input_cost_per_token=per_million_tokens(8.00),
                 output_cost_per_token=per_million_tokens(30.00),
                 cache_read_cost_per_token=per_million_tokens(0.80),
                 cache_creation_cost_per_token=per_million_tokens(10.00),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(20.00)},
                 min_input_tokens=272_000,
             ),
         ],
@@ -168,6 +248,7 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(75.00),
                 cache_read_cost_per_token=per_million_tokens(1.25),
                 cache_creation_cost_per_token=per_million_tokens(15.625),
+                cache_creation_cost_per_token_by_ttl={"12h": per_million_tokens(31.25)},
             ),
         ],
     ),
@@ -509,6 +590,15 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "gpt-rosalind-discovery": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(5.00),
+                output_cost_per_token=per_million_tokens(25.00),
+                cache_read_cost_per_token=per_million_tokens(0.50),
+            )
+        ],
+    ),
     # Reasoning models
     "o3-pro": ModelPricing(
         tiers=[
@@ -630,13 +720,20 @@ _UNPRICED_MODELS = frozenset({"gpt-5.4-cyber"})
 # 10% uplift for regional processing (data residency) endpoints. Per OpenAI, this
 # applies to the gpt-5.4 family (gpt-5.4, gpt-5.4-mini, gpt-5.4-nano, gpt-5.4-pro),
 # the gpt-5.5 family (gpt-5.5, gpt-5.5-pro), the gpt-5.6 family (sol/terra/luna),
-# and the gpt-6 family (astra/sol/luna).
+# and the gpt-6 family (astra/sol/luna, 6.1 sol/terra).
 REGIONAL_UPLIFT = 1.1
 _REGIONAL_UPLIFT_PREFIXES = ("gpt-5.4", "gpt-5.5", "gpt-5.6", "gpt-6")
-# The "cyber" variants share those family prefixes but are absent from OpenAI's
-# data-residency eligible-model list. Matched as prefixes, like the pricing table,
-# so dated snapshots (gpt-5.6-cyber-2026-08-01) are excluded too.
-_REGIONAL_UPLIFT_EXCLUDED_PREFIXES = ("gpt-5.4-cyber", "gpt-5.5-cyber", "gpt-5.6-cyber")
+# The "cyber", Rosalind and Astra Law variants share those family prefixes but are absent
+# from OpenAI's data-residency eligible-model list. Matched as prefixes, like the pricing
+# table, so dated snapshots (gpt-5.6-cyber-2026-08-01) are excluded too.
+_REGIONAL_UPLIFT_EXCLUDED_PREFIXES = (
+    "gpt-5.4-cyber",
+    "gpt-5.5-cyber",
+    "gpt-5.6-cyber",
+    "gpt-6-cyber",
+    "gpt-6-rosalind",
+    "gpt-6-astra-law",
+)
 
 
 def calculate_openai_cost(model: str, usage: Usage) -> Cost | None:

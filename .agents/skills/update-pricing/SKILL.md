@@ -115,6 +115,10 @@ showing:
 - Which providers are fully verified
 - Any caveats or fetch failures
 
+Apply the "Scope" rules from the Subagent Instructions to the summary too: if a
+report slips in an out-of-scope model or a removal suggestion, drop it rather
+than relaying it.
+
 ### Step 5: Apply updates (only if user approves)
 
 Do NOT automatically apply changes. Ask the user whether to proceed. If
@@ -127,7 +131,8 @@ approved:
 2. Do not enter this mutation phase concurrently with another pricing run in
    the same worktree. Audits may run concurrently because their `RUN_DIR`
    values are isolated; tracked-file updates may not.
-3. Update each provider's `cost.py` with corrected prices and new models
+3. Update each provider's `cost.py` with corrected prices and new models.
+   Never delete an existing model key (see "Scope").
 4. Follow existing code patterns exactly:
    - Use `per_million_tokens()` for all per-token prices
    - Maintain alphabetical grouping by model family with comment headers
@@ -143,7 +148,7 @@ approved:
 ## Large pricing pages
 
 Some pricing pages (notably GCP Vertex AI) are too large for `WebFetch` to
-return in full — it truncates before reaching partner/embedding model sections.
+return in full — it truncates before reaching the embedding model sections.
 
 For these pages, subagents should use `curl` via Bash to download the full HTML
 inside their assigned `WORK_DIR`, then extract relevant sections with
@@ -152,7 +157,7 @@ root. For example:
 
 ```bash
 curl -s 'https://cloud.google.com/vertex-ai/generative-ai/pricing' > "{WORK_DIR}/vertex-pricing.html"
-# Extract partner models section (Claude, Mistral, Llama, etc.)
+# Extract the embedding models section
 sed -n '28100,28800p' "{WORK_DIR}/vertex-pricing.html" | python3 -c "
 import sys, html, re
 content = sys.stdin.read()
@@ -166,7 +171,7 @@ for line in [l.strip() for l in content.split('\n') if l.strip()]:
 ```
 
 Line ranges shift as the page is updated — use `grep -n` to find section
-anchors (e.g., `id="partner-models"`, `id="embedding-models"`) first.
+anchors (e.g., `id="embedding-costs"`, `id="multimodal-embeddings"`) first.
 
 ---
 
@@ -270,10 +275,11 @@ transpose input/output or conflate SKU versions). Use Azure's first-party source
 2. **Playwright CLI** to render the DeepSeek / Llama / Grok / Mistral Foundry
    pricing tables when you need the on-page layout — see "JavaScript-rendered
    pages (Playwright CLI)".
-3. **Microsoft Learn** for lifecycle — check the **Retired Foundry Models** and
-   model-retirement-schedule pages to catch models that should be _removed_ from
-   `cost.py`. Absence from the pricing catalog alone is NOT proof of retirement;
-   the retired-models page is.
+3. **Microsoft Learn** for lifecycle — when a `cost.py` model is missing from
+   the pricing catalog, check the **Retired Foundry Models** and
+   model-retirement-schedule pages to tell a retired model from a renamed one.
+   Retired models stay in `cost.py` (see "Scope"); a renamed model needs a key
+   under its new name.
 
 ### anthropic
 
@@ -282,8 +288,8 @@ two are expected to match: Vertex bills Anthropic list prices on its global
 endpoint. Check BOTH sources:
 
 1. The Anthropic pricing page (the `Pricing source:` URL from cost.py)
-2. The Claude section of the Vertex AI pricing page:
-   https://cloud.google.com/vertex-ai/generative-ai/pricing
+2. The Claude section of the Vertex AI partner models pricing page:
+   https://cloud.google.com/model-garden/partner-models/pricing
 
 Compare cost.py against both. A mismatch between the two pages' global
 prices is itself a finding — flag it in Caveats even if cost.py agrees with
@@ -301,6 +307,19 @@ Foundry-specific deployment types or premiums, flag that in Caveats.
 ## Subagent Instructions
 
 You are a pricing validation subagent for the **{provider}** provider.
+
+### Scope
+
+- **Ignore TTS, STT (speech-to-text / transcription), image, and video
+  models.** lmux covers text generation and embeddings only. Do not add these
+  models to "New Models", and do not raise Caveats about them (including their
+  IDs prefix-matching a text model's pricing). Ignore speech-to-speech /
+  realtime audio models for the same reason.
+- **Legacy models are never removed from lmux.** A model that is retired, shut
+  down, deprecated, or delisted keeps its `_PRICING` key. Never recommend
+  removing a key or list one as a removal candidate. If a legacy model can no
+  longer be verified, name it once in the Caveats list of unverifiable models
+  and move on.
 
 ### Your task
 
@@ -391,7 +410,7 @@ Write findings to `{RUN_DIR}/{provider}.md` using exactly this format:
 ## Caveats
 
 - Any regional pricing complexities not handled in code
-- Models in cost.py not found on the pricing page (possible deprecation)
+- Models in cost.py not found on the pricing page (unverifiable; legacy keys stay, see "Scope")
 - Multi-tier pricing details for new models
 - Data quality issues (page didn't load, pricing behind JS rendering, etc.)
 - Multiplier constant changes

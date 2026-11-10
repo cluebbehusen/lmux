@@ -34,6 +34,7 @@ from lmux.types import (
     UserMessage,
 )
 from lmux_openai._wire import (
+    WireCacheWriteTokensDetails,
     WireChunk,
     WireCompletion,
     WireCompletionUsage,
@@ -67,9 +68,9 @@ def map_messages(messages: Sequence[Message], *, explicit_cache: bool = False) -
 
     When ``explicit_cache`` is set (gpt-5.6+), a ``CachePointContent`` becomes a
     ``prompt_cache_breakpoint`` on the preceding content block; otherwise cache points are dropped
-    (older models have no explicit representation). ``CachePointContent.ttl`` is per-breakpoint, but
-    OpenAI's cache lifetime is a request-wide option (``prompt_cache_options.ttl``, currently only
-    ``"30m"``, the default), so the per-breakpoint ``ttl`` is not mapped and has no effect.
+    (older models have no explicit representation). ``CachePointContent.ttl`` passes through
+    verbatim as the breakpoint's ``ttl``; the API validates it (``"30m"``, the default, or
+    ``"12h"`` on the Responses API).
     """
     result: list[Json] = []
     for msg in messages:
@@ -81,7 +82,7 @@ def map_messages(messages: Sequence[Message], *, explicit_cache: bool = False) -
             content, leading_cache_point = _map_user_content(msg.content, explicit_cache=explicit_cache)
             if leading_cache_point is not None and result:
                 # Nothing precedes the marker in this message — cache the prior message's prefix.
-                _attach_breakpoint(result[-1])
+                _attach_breakpoint(result[-1], leading_cache_point)
             if isinstance(content, str) or content or not msg.content:
                 result.append({"role": "user", "content": content})
         elif isinstance(msg, AssistantMessage):
@@ -142,13 +143,20 @@ def _map_content_with_cache_points(
                 if leading_cache_point is None:
                     leading_cache_point = part
             elif "prompt_cache_breakpoint" not in blocks[-1]:
-                blocks[-1]["prompt_cache_breakpoint"] = {"mode": "explicit"}
+                blocks[-1]["prompt_cache_breakpoint"] = _map_breakpoint(part)
         else:
             blocks.append(mapper(part))
     return blocks, leading_cache_point
 
 
-def _attach_breakpoint(message: Json, *, text_type: str = "text") -> None:
+def _map_breakpoint(cache_point: CachePointContent) -> Json:
+    breakpoint_: Json = {"mode": "explicit"}
+    if cache_point.ttl is not None:
+        breakpoint_["ttl"] = cache_point.ttl
+    return breakpoint_
+
+
+def _attach_breakpoint(message: Json, cache_point: CachePointContent, *, text_type: str = "text") -> None:
     """Attach a prompt_cache_breakpoint to the last content block of ``message`` (the first marker wins)."""
     content = message.get("content")
     if content is None:
@@ -156,11 +164,13 @@ def _attach_breakpoint(message: Json, *, text_type: str = "text") -> None:
     if isinstance(content, str):
         if not content:
             return
-        message["content"] = [{"type": text_type, "text": content, "prompt_cache_breakpoint": {"mode": "explicit"}}]
+        message["content"] = [
+            {"type": text_type, "text": content, "prompt_cache_breakpoint": _map_breakpoint(cache_point)}
+        ]
         return
     blocks: list[Json] = content
     if blocks and "prompt_cache_breakpoint" not in blocks[-1]:
-        blocks[-1]["prompt_cache_breakpoint"] = {"mode": "explicit"}
+        blocks[-1]["prompt_cache_breakpoint"] = _map_breakpoint(cache_point)
 
 
 def _map_content_part(part: TextContent | ImageContent) -> Json:
@@ -222,7 +232,7 @@ def map_response_input(
             item.content, explicit_cache=explicit_cache, mapper=_map_response_content_part
         )
         if leading_cache_point is not None and result:
-            _attach_breakpoint(result[-1], text_type="input_text")
+            _attach_breakpoint(result[-1], leading_cache_point, text_type="input_text")
         if isinstance(content, str) or content or not item.content:
             result.append({"role": item.role, "content": content})
     return result
@@ -278,6 +288,9 @@ def _map_completion_usage(usage: WireCompletionUsage | None) -> Usage | None:
         output_tokens=usage.completion_tokens,
         cache_read_tokens=(prompt_details.cached_tokens if prompt_details else None) or None,
         cache_creation_tokens=(prompt_details.cache_write_tokens if prompt_details else None) or None,
+        cache_creation_tokens_by_ttl=_map_cache_write_breakdown(
+            prompt_details.cache_write_tokens_details if prompt_details else None
+        ),
         reasoning_tokens=(completion_details.reasoning_tokens if completion_details else None) or None,
     )
 
@@ -373,5 +386,20 @@ def _map_responses_usage(usage: WireResponsesUsage | None) -> Usage | None:
         output_tokens=usage.output_tokens,
         cache_read_tokens=(input_details.cached_tokens if input_details else None) or None,
         cache_creation_tokens=(input_details.cache_write_tokens if input_details else None) or None,
+        cache_creation_tokens_by_ttl=_map_cache_write_breakdown(
+            input_details.cache_write_tokens_details if input_details else None
+        ),
         reasoning_tokens=(output_details.reasoning_tokens if output_details else None) or None,
     )
+
+
+def _map_cache_write_breakdown(details: WireCacheWriteTokensDetails | None) -> dict[str, int] | None:
+    """Per-TTL cache-write counts keyed by the TTL values the API accepts, or None if none were written."""
+    if details is None:
+        return None
+    breakdown: dict[str, int] = {}
+    if details.ttl_30m_tokens:
+        breakdown["30m"] = details.ttl_30m_tokens
+    if details.ttl_12h_tokens:
+        breakdown["12h"] = details.ttl_12h_tokens
+    return breakdown or None

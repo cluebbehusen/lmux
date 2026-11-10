@@ -100,6 +100,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "anthropic.claude-fable-5-2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(8.8),
+                output_cost_per_token=per_million_tokens(44.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(11.0),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(17.6)},
+            ),
+        ],
+    ),
     "anthropic.claude-haiku-4-5-20251001-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -146,6 +157,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.275),
                 cache_creation_cost_per_token=per_million_tokens(13.75),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(22.0)},
+            ),
+        ],
+    ),
+    "anthropic.claude-mythos-5-2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(8.8),
+                output_cost_per_token=per_million_tokens(44.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(11.0),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(17.6)},
             ),
         ],
     ),
@@ -481,6 +503,36 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "au.anthropic.claude-sonnet-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(11.0),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.4)},
+            ),
+        ],
+    ),
+    "ca.anthropic.claude-haiku-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.11),
+                output_cost_per_token=per_million_tokens(0.55),
+                cache_read_cost_per_token=per_million_tokens(0.011),
+                cache_creation_cost_per_token=per_million_tokens(0.1375),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(0.22)},
+            ),
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.55),
+                output_cost_per_token=per_million_tokens(2.75),
+                cache_read_cost_per_token=per_million_tokens(0.055),
+                cache_creation_cost_per_token=per_million_tokens(0.6875),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(1.1)},
+                min_input_tokens=100000,
+            ),
+        ],
+    ),
     "eu.anthropic.claude-3-haiku-20240307-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -669,6 +721,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "global.anthropic.claude-fable-5-2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(8.0),
+                output_cost_per_token=per_million_tokens(40.0),
+                cache_read_cost_per_token=per_million_tokens(0.2),
+                cache_creation_cost_per_token=per_million_tokens(10.0),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(16.0)},
+            ),
+        ],
+    ),
     "global.anthropic.claude-haiku-4-5-20251001-v1": ModelPricing(
         tiers=[
             PricingTier(
@@ -707,6 +770,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.25),
                 cache_creation_cost_per_token=per_million_tokens(12.5),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(20.0)},
+            ),
+        ],
+    ),
+    "global.anthropic.claude-mythos-5-2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(8.0),
+                output_cost_per_token=per_million_tokens(40.0),
+                cache_read_cost_per_token=per_million_tokens(0.2),
+                cache_creation_cost_per_token=per_million_tokens(10.0),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(16.0)},
             ),
         ],
     ),
@@ -983,6 +1057,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
                 cache_read_cost_per_token=per_million_tokens(0.275),
                 cache_creation_cost_per_token=per_million_tokens(13.75),
                 cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(22.0)},
+            ),
+        ],
+    ),
+    "us.anthropic.claude-fable-5-2": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(8.8),
+                output_cost_per_token=per_million_tokens(44.0),
+                cache_read_cost_per_token=per_million_tokens(0.22),
+                cache_creation_cost_per_token=per_million_tokens(11.0),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(17.6)},
             ),
         ],
     ),
@@ -1308,6 +1393,17 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "anthropic.claude-fable-5-2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(9.6),
+                    output_cost_per_token=per_million_tokens(48.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                    cache_creation_cost_per_token=per_million_tokens(12.0),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(19.2)},
+                ),
+            ],
+        ),
         "anthropic.claude-haiku-5-5": ModelPricing(
             tiers=[
                 PricingTier(
@@ -1324,6 +1420,17 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
                     cache_creation_cost_per_token=per_million_tokens(0.75),
                     cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(1.2)},
                     min_input_tokens=100000,
+                ),
+            ],
+        ),
+        "anthropic.claude-mythos-5-2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(9.6),
+                    output_cost_per_token=per_million_tokens(48.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                    cache_creation_cost_per_token=per_million_tokens(12.0),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(19.2)},
                 ),
             ],
         ),
@@ -1432,6 +1539,17 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
                 ),
             ],
         ),
+        "anthropic.claude-fable-5-2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(9.6),
+                    output_cost_per_token=per_million_tokens(48.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                    cache_creation_cost_per_token=per_million_tokens(12.0),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(19.2)},
+                ),
+            ],
+        ),
         "anthropic.claude-haiku-5-5": ModelPricing(
             tiers=[
                 PricingTier(
@@ -1448,6 +1566,17 @@ ANTHROPIC_REGIONAL_PRICING: dict[str, dict[str, ModelPricing]] = {
                     cache_creation_cost_per_token=per_million_tokens(0.75),
                     cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(1.2)},
                     min_input_tokens=100000,
+                ),
+            ],
+        ),
+        "anthropic.claude-mythos-5-2": ModelPricing(
+            tiers=[
+                PricingTier(
+                    input_cost_per_token=per_million_tokens(9.6),
+                    output_cost_per_token=per_million_tokens(48.0),
+                    cache_read_cost_per_token=per_million_tokens(0.24),
+                    cache_creation_cost_per_token=per_million_tokens(12.0),
+                    cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(19.2)},
                 ),
             ],
         ),
