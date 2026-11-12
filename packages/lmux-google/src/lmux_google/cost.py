@@ -28,6 +28,15 @@ from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
     # ── Google Gemini 4 ────────────────────────────────────────
+    "gemini-4-hydrogen": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(1.50),
+                output_cost_per_token=per_million_tokens(7.50),
+                cache_read_cost_per_token=per_million_tokens(0.075),
+            ),
+        ],
+    ),
     "gemini-4-argon-cyber": ModelPricing(
         tiers=[
             PricingTier(

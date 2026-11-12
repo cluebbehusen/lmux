@@ -200,6 +200,14 @@ class TestCalculateGoogleCost:
         assert cost.output_cost == pytest.approx(7.50)
         assert cost.cache_read_cost == pytest.approx(100_000 * 0.15 / 1_000_000)
 
+    def test_gemini_4_hydrogen(self) -> None:
+        usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_tokens=100_000)
+        cost = calculate_google_cost("gemini-4-hydrogen", usage)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx((1_000_000 - 100_000) * 1.50 / 1_000_000)
+        assert cost.output_cost == pytest.approx(7.50)
+        assert cost.cache_read_cost == pytest.approx(100_000 * 0.075 / 1_000_000)
+
     @pytest.mark.parametrize(
         ("model", "rate"),
         [("gemini-2.0-flash", 0.0375), ("gemini-2.0-flash-lite", 0.01875)],
