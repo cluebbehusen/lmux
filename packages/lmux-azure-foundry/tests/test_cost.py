@@ -175,7 +175,7 @@ class TestCalculateAzureFoundryCost:
         assert cache.cache_read_cost == pytest.approx(cache_rate)
 
     def test_o1_pro_not_o1_prefix(self) -> None:
-        """o1-pro must use its own 10x rate with no cache meter, not inherit the cheaper o1 prefix."""
+        """o1-pro must use its own 10x rates, cache read included, not inherit the cheaper o1 prefix."""
         usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000)
         pro = calculate_azure_foundry_cost("o1-pro", usage)
         base = calculate_azure_foundry_cost("o1", usage)
@@ -188,7 +188,7 @@ class TestCalculateAzureFoundryCost:
             "o1-pro", Usage(input_tokens=1_000_000, output_tokens=0, cache_read_tokens=1_000_000)
         )
         assert cache is not None
-        assert cache.cache_read_cost == pytest.approx(0.0)
+        assert cache.cache_read_cost == pytest.approx(75.00)
 
     def test_gpt_5_2_pro_not_gpt_5_2_prefix(self) -> None:
         """gpt-5.2-pro uses its own ~12x rate with no cache meter, not the gpt-5.2 prefix."""

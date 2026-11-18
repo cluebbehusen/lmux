@@ -48,6 +48,8 @@ _EU_DATA_ZONE_PREMIUM_MODELS = (
     "grok-4.7",
     "deepseek-v4.1-flash",
     "cohere-embed-v5",
+    "mistral-large-4",
+    "mai-cyber-2-flash",
 )
 
 REGIONAL_MULTIPLIER = 1.1
@@ -516,13 +518,13 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
-    # o1-pro is 10x o1 on Azure and has no cached-input meter; explicit key stops it inheriting
-    # the cheaper "o1" prefix (and its cache rate).
+    # o1-pro is 10x o1 on Azure; explicit key stops it inheriting the cheaper "o1" prefix.
     "o1-pro": ModelPricing(
         tiers=[
             PricingTier(
                 input_cost_per_token=per_million_tokens(150.00),
                 output_cost_per_token=per_million_tokens(600.00),
+                cache_read_cost_per_token=per_million_tokens(75.00),
             )
         ],
     ),
@@ -848,6 +850,15 @@ _PRICING: dict[str, ModelPricing] = {
             )
         ],
     ),
+    "mistral-large-4": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.70),
+                output_cost_per_token=per_million_tokens(2.10),
+                cache_read_cost_per_token=per_million_tokens(0.07),
+            )
+        ],
+    ),
     # Mistral-Large-3 — same Global Standard rate as the family; explicit key documents the
     # current GA id (matched case-insensitively, so casing here is cosmetic).
     "Mistral-Large-3": ModelPricing(
@@ -961,6 +972,24 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(0.60),
                 output_cost_per_token=per_million_tokens(3.50),
                 cache_read_cost_per_token=per_million_tokens(0.06),
+            )
+        ],
+    ),
+    "MAI-Cyber-2-Flash": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.05),
+                output_cost_per_token=per_million_tokens(0.25),
+                cache_read_cost_per_token=per_million_tokens(0.005),
+            )
+        ],
+    ),
+    "MAI-Code-2-Flash": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(0.05),
+                output_cost_per_token=per_million_tokens(0.25),
+                cache_read_cost_per_token=per_million_tokens(0.005),
             )
         ],
     ),

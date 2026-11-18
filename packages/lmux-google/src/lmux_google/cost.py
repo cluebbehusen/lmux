@@ -37,6 +37,36 @@ _PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "gemini-4-carbon-cyber": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(4.00),
+                output_cost_per_token=per_million_tokens(20.00),
+                cache_read_cost_per_token=per_million_tokens(0.20),
+            ),
+        ],
+    ),
+    "gemini-4-carbon": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.00),
+                output_cost_per_token=per_million_tokens(10.00),
+                cache_read_cost_per_token=per_million_tokens(0.10),
+            ),
+        ],
+        schedules=[
+            PricingSchedule(
+                valid_from=date(2026, 12, 1),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(4.00),
+                        output_cost_per_token=per_million_tokens(20.00),
+                        cache_read_cost_per_token=per_million_tokens(0.20),
+                    ),
+                ],
+            ),
+        ],
+    ),
     "gemini-4-argon-cyber": ModelPricing(
         tiers=[
             PricingTier(
@@ -457,6 +487,8 @@ costs replayed against an earlier date take no multiplier.
 # the preview Gemini 3 models publish no Non-global rate, so they bill list price
 # everywhere.
 _VERTEX_PREMIUM_PRICING_MODELS = (
+    "gemini-4-hydrogen",
+    "gemini-4-carbon",
     "gemini-4-argon",
     "gemini-3.8-flash",
     "gemini-3.7-flash",
