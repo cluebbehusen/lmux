@@ -533,6 +533,17 @@ ANTHROPIC_PRICING: dict[str, ModelPricing] = {
             ),
         ],
     ),
+    "ca.anthropic.claude-sonnet-5-5": ModelPricing(
+        tiers=[
+            PricingTier(
+                input_cost_per_token=per_million_tokens(2.2),
+                output_cost_per_token=per_million_tokens(11.0),
+                cache_read_cost_per_token=per_million_tokens(0.11),
+                cache_creation_cost_per_token=per_million_tokens(2.75),
+                cache_creation_cost_per_token_by_ttl={"1h": per_million_tokens(4.4)},
+            ),
+        ],
+    ),
     "eu.anthropic.claude-3-haiku-20240307-v1": ModelPricing(
         tiers=[
             PricingTier(
