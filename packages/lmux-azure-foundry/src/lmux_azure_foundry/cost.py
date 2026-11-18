@@ -49,7 +49,6 @@ _EU_DATA_ZONE_PREMIUM_MODELS = (
     "deepseek-v4.1-flash",
     "cohere-embed-v5",
     "mistral-large-4",
-    "mai-cyber-2-flash",
 )
 
 REGIONAL_MULTIPLIER = 1.1
@@ -972,15 +971,6 @@ _PRICING: dict[str, ModelPricing] = {
                 input_cost_per_token=per_million_tokens(0.60),
                 output_cost_per_token=per_million_tokens(3.50),
                 cache_read_cost_per_token=per_million_tokens(0.06),
-            )
-        ],
-    ),
-    "MAI-Cyber-2-Flash": ModelPricing(
-        tiers=[
-            PricingTier(
-                input_cost_per_token=per_million_tokens(0.05),
-                output_cost_per_token=per_million_tokens(0.25),
-                cache_read_cost_per_token=per_million_tokens(0.005),
             )
         ],
     ),
