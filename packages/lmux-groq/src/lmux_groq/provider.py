@@ -3,6 +3,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from datetime import date
 from typing import TYPE_CHECKING, Any, Literal, override
 
 if TYPE_CHECKING:
@@ -36,6 +37,11 @@ from lmux_groq.params import GroqParams
 
 PROVIDER_NAME = "groq"
 _CHAT_PATH = "/chat/completions"
+
+
+def _today() -> date:
+    """Return today's date, indirected so tests can pin the pricing clock."""
+    return date.today()
 
 
 class GroqProvider(
@@ -73,11 +79,18 @@ class GroqProvider(
     def register_pricing(self, model: str, pricing: ModelPricing) -> None:
         self._custom_pricing[model] = pricing
 
-    def _calculate_cost(self, model: str, usage: Usage) -> Cost | None:
+    @staticmethod
+    def _resolve_pricing_as_of(provider_params: GroqParams | None) -> date:
+        """Effective pricing date: an explicit ``pricing_as_of`` override, else today."""
+        if provider_params is not None and provider_params.pricing_as_of is not None:
+            return provider_params.pricing_as_of
+        return _today()
+
+    def _calculate_cost(self, model: str, usage: Usage, as_of: date) -> Cost | None:
         pricing = self._custom_pricing.get(model)
         if pricing is not None:
-            return calculate_cost(usage, pricing)
-        return calculate_groq_cost(model, usage)
+            return calculate_cost(usage, pricing, as_of)
+        return calculate_groq_cost(model, usage, as_of)
 
     def _get_sync_client(self) -> "httpx.Client":
         if self._sync_client is None:
@@ -134,13 +147,16 @@ class GroqProvider(
             model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
         )  # fmt: skip
+        as_of = self._resolve_pricing_as_of(provider_params)
         try:
             client = self._get_sync_client()
             response = client.post(_CHAT_PATH, json={**body, "stream": False})
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_chat_completion(parse_completion(response), PROVIDER_NAME, self._calculate_cost)
+        return map_chat_completion(
+            parse_completion(response), PROVIDER_NAME, lambda m, u: self._calculate_cost(m, u, as_of)
+        )
 
     @override
     async def achat(
@@ -162,13 +178,16 @@ class GroqProvider(
             model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
         )  # fmt: skip
+        as_of = self._resolve_pricing_as_of(provider_params)
         try:
             client = await self._get_async_client()
             response = await client.post(_CHAT_PATH, json={**body, "stream": False})
         except Exception as e:
             raise map_transport_error(e) from e
         raise_for_status(response)
-        return map_chat_completion(parse_completion(response), PROVIDER_NAME, self._calculate_cost)
+        return map_chat_completion(
+            parse_completion(response), PROVIDER_NAME, lambda m, u: self._calculate_cost(m, u, as_of)
+        )
 
     @override
     def chat_stream(
@@ -190,6 +209,7 @@ class GroqProvider(
             model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
         )  # fmt: skip
+        as_of = self._resolve_pricing_as_of(provider_params)
         try:
             client = self._get_sync_client()
         except Exception as e:
@@ -205,7 +225,7 @@ class GroqProvider(
                     chunk = json.loads(data)
                     if "error" in chunk:
                         raise error_from_stream(chunk)  # noqa: TRY301
-                    yield self._map_stream_chunk(chunk, model)
+                    yield self._map_stream_chunk(chunk, model, as_of)
         except LmuxError:
             raise
         except Exception as e:
@@ -231,6 +251,7 @@ class GroqProvider(
             model, messages, temperature, max_tokens, top_p, stop,
             tools, tool_choice, response_format, reasoning_effort, provider_params,
         )  # fmt: skip
+        as_of = self._resolve_pricing_as_of(provider_params)
         try:
             client = await self._get_async_client()
         except Exception as e:
@@ -246,7 +267,7 @@ class GroqProvider(
                     chunk = json.loads(data)
                     if "error" in chunk:
                         raise error_from_stream(chunk)  # noqa: TRY301
-                    yield self._map_stream_chunk(chunk, model)
+                    yield self._map_stream_chunk(chunk, model, as_of)
         except LmuxError:
             raise
         except Exception as e:
@@ -254,7 +275,7 @@ class GroqProvider(
 
     # MARK: Internal Helpers
 
-    def _map_stream_chunk(self, chunk: dict[str, Any], model: str) -> ChatChunk:
+    def _map_stream_chunk(self, chunk: dict[str, Any], model: str, as_of: date) -> ChatChunk:
         # Groq reports usage on more than one streaming chunk — both the finish chunk
         # and a trailing chunk (unlike OpenAI's single trailing usage chunk) — so cost
         # is attached to each; the values agree and the terminal chunk is authoritative
@@ -262,7 +283,8 @@ class GroqProvider(
         wire = WireChunk.model_validate(chunk)
         mapped = map_chat_chunk(wire, PROVIDER_NAME)
         if mapped.usage is not None:
-            mapped = mapped.model_copy(update={"cost": self._calculate_cost(wire.model or model, mapped.usage)})
+            cost = self._calculate_cost(wire.model or model, mapped.usage, as_of)
+            mapped = mapped.model_copy(update={"cost": cost})
         return mapped
 
     def _stream_body(  # noqa: PLR0913
