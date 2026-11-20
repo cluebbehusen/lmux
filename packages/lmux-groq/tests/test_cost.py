@@ -1,5 +1,7 @@
 """Tests for Groq pricing and cost calculation."""
 
+from datetime import date
+
 import pytest
 
 from lmux.types import Usage
@@ -104,12 +106,33 @@ class TestCalculateGroqCost:
 
     def test_with_cache_tokens_gpt_oss(self) -> None:
         usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)
-        cost = calculate_groq_cost("openai/gpt-oss-20b", usage)
+        cost = calculate_groq_cost("openai/gpt-oss-20b", usage, as_of=date(2026, 11, 30))
         assert cost is not None
         # 200 cached tokens at 50% discount ($0.0375/M), 800 regular input at $0.075/M
         assert cost.cache_read_cost is not None
         assert cost.cache_read_cost == pytest.approx(200 * 0.0375 / 1_000_000)
         assert cost.input_cost == pytest.approx(800 * 0.075 / 1_000_000)
+
+    @pytest.mark.parametrize(
+        ("model", "as_of", "input_rate", "cache_read_rate", "output_rate"),
+        [
+            ("openai/gpt-oss-20b", date(2026, 11, 30), 0.075, 0.0375, 0.30),
+            ("openai/gpt-oss-20b", date(2026, 12, 1), 0.17, 0.09, 0.36),
+            ("openai/gpt-oss-20b", None, 0.17, 0.09, 0.36),
+            ("openai/gpt-oss-120b", date(2026, 11, 30), 0.15, 0.075, 0.60),
+            ("openai/gpt-oss-120b", date(2026, 12, 1), 0.33, 0.17, 0.71),
+            ("openai/gpt-oss-120b", None, 0.33, 0.17, 0.71),
+        ],
+    )
+    def test_gpt_oss_dated_pricing(
+        self, model: str, as_of: date | None, input_rate: float, cache_read_rate: float, output_rate: float
+    ) -> None:
+        usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)
+        cost = calculate_groq_cost(model, usage, as_of=as_of)
+        assert cost is not None
+        assert cost.input_cost == pytest.approx(800 * input_rate / 1_000_000)
+        assert cost.cache_read_cost == pytest.approx(200 * cache_read_rate / 1_000_000)
+        assert cost.output_cost == pytest.approx(500 * output_rate / 1_000_000)
 
     def test_with_cache_tokens_safeguard(self) -> None:
         usage = Usage(input_tokens=1000, output_tokens=500, cache_read_tokens=200)

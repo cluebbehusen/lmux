@@ -4,8 +4,11 @@ Pricing source: https://console.groq.com/docs/models (per-model cards at
 https://console.groq.com/docs/model/<model-id> carry the cached-input rate)
 """
 
+from datetime import date
+
 from lmux.cost import (
     ModelPricing,
+    PricingSchedule,
     PricingTier,
     build_pricing_index,
     calculate_cost,
@@ -15,7 +18,8 @@ from lmux.cost import (
 from lmux.types import Cost, Usage
 
 _PRICING: dict[str, ModelPricing] = {
-    # OpenAI GPT OSS family (prompt caching: 50% discount on cached input tokens)
+    # OpenAI GPT OSS family (prompt caching: discounted cached input tokens). The 2026-12-01
+    # gpt-oss-20b/120b rates come from Groq's pricing-change notice ahead of the models page.
     "openai/gpt-oss-20b": ModelPricing(
         tiers=[
             PricingTier(
@@ -23,6 +27,18 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(0.30),
                 cache_read_cost_per_token=per_million_tokens(0.0375),
             )
+        ],
+        schedules=[
+            PricingSchedule(
+                valid_from=date(2026, 12, 1),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(0.17),
+                        output_cost_per_token=per_million_tokens(0.36),
+                        cache_read_cost_per_token=per_million_tokens(0.09),
+                    )
+                ],
+            ),
         ],
     ),
     "openai/gpt-oss-safeguard-20b": ModelPricing(
@@ -41,6 +57,18 @@ _PRICING: dict[str, ModelPricing] = {
                 output_cost_per_token=per_million_tokens(0.60),
                 cache_read_cost_per_token=per_million_tokens(0.075),
             )
+        ],
+        schedules=[
+            PricingSchedule(
+                valid_from=date(2026, 12, 1),
+                tiers=[
+                    PricingTier(
+                        input_cost_per_token=per_million_tokens(0.33),
+                        output_cost_per_token=per_million_tokens(0.71),
+                        cache_read_cost_per_token=per_million_tokens(0.17),
+                    )
+                ],
+            ),
         ],
     ),
     # Moonshot Kimi family (prompt caching: 50% discount on cached input tokens)
@@ -117,9 +145,14 @@ _PRICING: dict[str, ModelPricing] = {
 _PRICING_BY_PREFIX = build_pricing_index(_PRICING)
 
 
-def calculate_groq_cost(model: str, usage: Usage) -> Cost | None:
-    """Calculate cost for a Groq API call. Returns None if model pricing is unknown."""
+def calculate_groq_cost(model: str, usage: Usage, as_of: date | None = None) -> Cost | None:
+    """Calculate cost for a Groq API call. Returns None if model pricing is unknown.
+
+    ``as_of`` selects dated pricing for models with scheduled rate changes
+    (e.g. the gpt-oss repricing on 2026-12-01); it defaults to the latest
+    schedule. See ``lmux.cost.calculate_cost``.
+    """
     pricing = resolve_pricing(model, _PRICING_BY_PREFIX)
     if pricing is None:
         return None
-    return calculate_cost(usage, pricing)
+    return calculate_cost(usage, pricing, as_of)

@@ -64,11 +64,12 @@ response = provider.chat(
 )
 ```
 
-| Parameter      | Type                                               | Description                 |
-| -------------- | -------------------------------------------------- | --------------------------- |
-| `service_tier` | `"auto" \| "on_demand" \| "flex" \| "performance"` | Service tier selection      |
-| `seed`         | `int`                                              | Deterministic sampling seed |
-| `user`         | `str`                                              | End-user identifier         |
+| Parameter       | Type                                               | Description                                                            |
+| --------------- | -------------------------------------------------- | ---------------------------------------------------------------------- |
+| `service_tier`  | `"auto" \| "on_demand" \| "flex" \| "performance"` | Service tier selection                                                 |
+| `seed`          | `int`                                              | Deterministic sampling seed                                            |
+| `user`          | `str`                                              | End-user identifier                                                    |
+| `pricing_as_of` | `datetime.date`                                    | Override the date used for dated pricing; defaults to the current date |
 
 ## Constructor Options
 

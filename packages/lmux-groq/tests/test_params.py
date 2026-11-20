@@ -12,6 +12,7 @@ class TestGroqParams:
         assert params.service_tier is None
         assert params.seed is None
         assert params.user is None
+        assert params.pricing_as_of is None
 
     def test_groq_specific_reasoning_effort_values(self) -> None:
         assert GroqParams(reasoning_effort="none").reasoning_effort == "none"

@@ -3,6 +3,7 @@
 import asyncio
 import json
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -11,7 +12,7 @@ import pytest
 import respx
 from pytest_mock import MockerFixture
 
-from lmux.cost import ModelPricing, PricingTier
+from lmux.cost import ModelPricing, PricingSchedule, PricingTier
 from lmux.exceptions import AuthenticationError, InvalidRequestError, ProviderError
 from lmux.types import FunctionDefinition, JsonObjectResponseFormat, JsonSchemaResponseFormat, Tool, UserMessage
 from lmux_groq import preload
@@ -523,6 +524,159 @@ class TestRegisterPricing:
         assert result.cost is None
 
 
+# MARK: Dated Pricing
+
+
+_GPT_OSS = "openai/gpt-oss-120b"
+
+
+@pytest.fixture
+def gpt_oss_completion() -> dict[str, Any]:
+    return {
+        "model": _GPT_OSS,
+        "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
+        "usage": {"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500},
+    }
+
+
+@pytest.fixture
+def gpt_oss_stream_bytes() -> bytes:
+    chunks = [
+        {"model": _GPT_OSS, "choices": [{"index": 0, "finish_reason": None, "delta": {"content": "x"}}]},
+        {
+            "model": _GPT_OSS,
+            "choices": [{"index": 0, "finish_reason": "stop", "delta": {}}],
+            "usage": {"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500},
+        },
+    ]
+    lines = [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
+    return ("\n\n".join(lines) + "\n\n").encode()
+
+
+class TestPricingAsOf:
+    def test_rate_before_change(
+        self,
+        sync_provider: GroqProvider,
+        gpt_oss_completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr("lmux_groq.provider._today", lambda: date(2026, 11, 30))
+        mount_completion(gpt_oss_completion)
+        result = sync_provider.chat(_GPT_OSS, [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1000 * 0.15 / 1_000_000)
+        assert result.cost.output_cost == pytest.approx(500 * 0.60 / 1_000_000)
+
+    def test_rate_after_change(
+        self,
+        sync_provider: GroqProvider,
+        gpt_oss_completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr("lmux_groq.provider._today", lambda: date(2026, 12, 1))
+        mount_completion(gpt_oss_completion)
+        result = sync_provider.chat(_GPT_OSS, [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1000 * 0.33 / 1_000_000)
+        assert result.cost.output_cost == pytest.approx(500 * 0.71 / 1_000_000)
+
+    def test_override_wins_over_clock(
+        self,
+        sync_provider: GroqProvider,
+        gpt_oss_completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr("lmux_groq.provider._today", lambda: date(2026, 12, 15))
+        mount_completion(gpt_oss_completion)
+        result = sync_provider.chat(
+            _GPT_OSS,
+            [UserMessage(content="Hi")],
+            provider_params=GroqParams(pricing_as_of=date(2026, 11, 30)),
+        )
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1000 * 0.15 / 1_000_000)
+
+    async def test_achat_applies_dated_pricing(
+        self,
+        async_provider: GroqProvider,
+        gpt_oss_completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr("lmux_groq.provider._today", lambda: date(2026, 11, 30))
+        mount_completion(gpt_oss_completion)
+        result = await async_provider.achat(_GPT_OSS, [UserMessage(content="Hi")])
+        assert result.cost is not None
+        assert result.cost.input_cost == pytest.approx(1000 * 0.15 / 1_000_000)
+
+    def test_chat_stream_applies_dated_pricing(
+        self,
+        sync_provider: GroqProvider,
+        respx_mock: respx.MockRouter,
+        gpt_oss_stream_bytes: bytes,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr("lmux_groq.provider._today", lambda: date(2026, 11, 30))
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=gpt_oss_stream_bytes))
+        chunks = list(sync_provider.chat_stream(_GPT_OSS, [UserMessage(content="Hi")]))
+        final = chunks[-1]
+        assert final.cost is not None
+        assert final.cost.input_cost == pytest.approx(1000 * 0.15 / 1_000_000)
+
+    async def test_achat_stream_applies_dated_pricing(
+        self,
+        async_provider: GroqProvider,
+        respx_mock: respx.MockRouter,
+        gpt_oss_stream_bytes: bytes,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr("lmux_groq.provider._today", lambda: date(2026, 11, 30))
+        respx_mock.post(_URL).mock(return_value=httpx.Response(200, content=gpt_oss_stream_bytes))
+        chunks = [c async for c in async_provider.achat_stream(_GPT_OSS, [UserMessage(content="Hi")])]
+        final = chunks[-1]
+        assert final.cost is not None
+        assert final.cost.input_cost == pytest.approx(1000 * 0.15 / 1_000_000)
+
+    def test_custom_dated_pricing_honors_pricing_as_of(
+        self,
+        sync_provider: GroqProvider,
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr("lmux_groq.provider._today", lambda: date(2027, 6, 1))
+        sync_provider.register_pricing(
+            "custom-v1",
+            ModelPricing(
+                tiers=[PricingTier(input_cost_per_token=1e-6, output_cost_per_token=0.0)],
+                schedules=[
+                    PricingSchedule(
+                        valid_from=date(2027, 1, 1),
+                        tiers=[PricingTier(input_cost_per_token=9e-6, output_cost_per_token=0.0)],
+                    )
+                ],
+            ),
+        )
+        mount_completion(
+            {
+                "model": "custom-v1",
+                "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 0},
+            }
+        )
+        later = sync_provider.chat("custom-v1", [UserMessage(content="Hi")])
+        assert later.cost is not None
+        assert later.cost.input_cost == pytest.approx(100 * 9e-6)
+
+        earlier = sync_provider.chat(
+            "custom-v1", [UserMessage(content="Hi")], provider_params=GroqParams(pricing_as_of=date(2026, 8, 16))
+        )
+        assert earlier.cost is not None
+        assert earlier.cost.input_cost == pytest.approx(100 * 1e-6)
+
+
 # MARK: Aclose & Preload
 
 
@@ -577,6 +731,19 @@ class TestProviderParams:
         sync_provider.chat(MODEL, [UserMessage(content="Hi")], provider_params=GroqParams())
         body = json.loads(route.calls.last.request.content)
         assert "service_tier" not in body
+
+    def test_pricing_as_of_not_sent(
+        self,
+        sync_provider: GroqProvider,
+        completion: dict[str, Any],
+        mount_completion: Callable[[dict[str, Any]], respx.Route],
+    ) -> None:
+        route = mount_completion(completion)
+        sync_provider.chat(
+            MODEL, [UserMessage(content="Hi")], provider_params=GroqParams(pricing_as_of=date(2026, 11, 30))
+        )
+        body = json.loads(route.calls.last.request.content)
+        assert "pricing_as_of" not in body
 
     def test_params_reasoning_effort(
         self,
